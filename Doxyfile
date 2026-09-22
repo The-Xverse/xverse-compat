@@ -1,0 +1,60 @@
+# Doxygen configuration for the X-Verse compatibility conformance package.
+
+DOXYFILE_ENCODING      = UTF-8
+PROJECT_NAME           = "X-Verse Compatibility"
+PROJECT_NUMBER         = 0.2.0
+PROJECT_BRIEF          = "Compatibility provider conformance and controlled rebuild tooling"
+OUTPUT_DIRECTORY       = build/doxygen
+OUTPUT_LANGUAGE        = English
+
+FULL_PATH_NAMES        = YES
+STRIP_FROM_PATH        = .
+JAVADOC_AUTOBRIEF      = YES
+PYTHON_DOCSTRING       = YES
+MARKDOWN_SUPPORT       = YES
+AUTOLINK_SUPPORT       = YES
+
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = YES
+EXTRACT_STATIC         = YES
+EXTRACT_LOCAL_CLASSES  = YES
+HIDE_UNDOC_MEMBERS     = NO
+HIDE_UNDOC_CLASSES     = NO
+
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = NO
+WARN_IF_DOC_ERROR      = YES
+WARN_IF_INCOMPLETE_DOC = YES
+WARN_NO_PARAMDOC       = NO
+WARN_AS_ERROR          = NO
+WARN_FORMAT            = "$file:$line: $text"
+WARN_LOGFILE           = build/doxygen-warnings.log
+
+INPUT                  = docs/doxygen/mainpage.md src scripts tests
+INPUT_ENCODING         = UTF-8
+FILE_PATTERNS          = *.py *.md
+RECURSIVE              = YES
+EXCLUDE_PATTERNS       = */__pycache__/* */.venv/* */build/*
+USE_MDFILE_AS_MAINPAGE = docs/doxygen/mainpage.md
+
+SOURCE_BROWSER         = YES
+REFERENCED_BY_RELATION = YES
+REFERENCES_RELATION    = YES
+REFERENCES_LINK_SOURCE = YES
+
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+HTML_TIMESTAMP         = NO
+GENERATE_TREEVIEW      = YES
+SEARCHENGINE           = YES
+SERVER_BASED_SEARCH    = NO
+
+GENERATE_XML           = YES
+XML_OUTPUT             = xml
+XML_PROGRAMLISTING     = NO
+GENERATE_LATEX         = NO
+GENERATE_MAN           = NO
+GENERATE_RTF           = NO
+GENERATE_DOCBOOK       = NO
+
+QUIET                  = YES

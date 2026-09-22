@@ -1,0 +1,45 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "xverse-compat"
+version = "0.2.0"
+description = "Compatibility provider conformance and controlled rebuild tooling for X-Verse vNext"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {file = "LICENSE"}
+authors = []
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+]
+dependencies = [
+  "xverse-xdl==0.4.0",
+]
+
+[project.urls]
+Repository = "https://github.com/The-Xverse/xverse-compat"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/xverse_compat"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/src",
+  "/tests",
+  "/scripts",
+  "/docs/doxygen",
+  "/Doxyfile",
+  "/platform-api.lock.json",
+  "/README.md",
+  "/LICENSE",
+]
+
+[tool.uv.sources]
+xverse-xdl = { path = "../xverse-platform" }
