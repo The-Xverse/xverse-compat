@@ -2,10 +2,10 @@
   "envSizeKiB": 194700,
   "executed": "none of CARLA, bridge, zenohd",
   "importOutput": [
-    "terminate called after throwing an instance of 'std::logic_error'",
-    "  what():  basic_string::_M_construct null not valid"
+    "0.9.15",
+    "/media/jefferson/11c42dee-73a3-4c2b-ab42-a0440011d9e0/.x-verse-build/cache/xverse-compat-carla-0.9.15-cp310/lib/python3.10/site-packages/carla/__init__.py"
   ],
-  "importReturnCode": 134,
+  "importReturnCode": 0,
   "interpreter": "/usr/bin/python3.10",
   "networkSessions": "none (download only)",
   "pipFreeze": [
