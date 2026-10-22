@@ -1,0 +1,22 @@
+{
+  "envSizeKiB": 194700,
+  "executed": "none of CARLA, bridge, zenohd",
+  "importOutput": [
+    "terminate called after throwing an instance of 'std::logic_error'",
+    "  what():  basic_string::_M_construct null not valid"
+  ],
+  "importReturnCode": 134,
+  "interpreter": "/usr/bin/python3.10",
+  "networkSessions": "none (download only)",
+  "pipFreeze": [
+    "carla @ file:///media/jefferson/11c42dee-73a3-4c2b-ab42-a0440011d9e0/.x-verse-build/cache/xverse-compat-wheels/carla-0.9.15-cp310-cp310-manylinux_2_27_x86_64.whl",
+    "pip==22.0.2",
+    "setuptools==59.6.0"
+  ],
+  "pyCompileReturnCode": 0,
+  "schema": "xverse-compat.carla-env-record/1",
+  "wheel": "carla-0.9.15-cp310-cp310-manylinux_2_27_x86_64.whl",
+  "wheelSha256": "61449e33260f6a0cfd2f88d56f2463a5797a0b51bc46618beec07365422d4ad6",
+  "wheelSize": 31895950,
+  "wheelSource": "https://files.pythonhosted.org/packages/86/5a/74cf6657e5bb4b8ffe790ef92a01d7f44592a992d758c7053cd6bc75bd96/carla-0.9.15-cp310-cp310-manylinux_2_27_x86_64.whl"
+}
