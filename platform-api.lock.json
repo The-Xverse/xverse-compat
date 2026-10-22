@@ -1,6 +1,6 @@
 {
   "algorithm": "sha256-path-null-content-null-v1",
-  "fileCount": 22,
+  "fileCount": 26,
   "includedRoots": [
     "pyproject.toml",
     "src/xverse_xdl",
@@ -10,5 +10,6 @@
   "package": "xverse-xdl",
   "packageVersion": "0.4.0",
   "sourceKind": "reviewed-sibling-tree",
-  "treeSha256": "7d730f85d71defd974dcba20e6d7e08591aa2113c886306caf64ee2f1d0bbb14"
+  "treeSha256": "def8039614b6a33eda4f9017d08528d540031fed2ea3eedb2c92f93aa1e59ac6",
+  "platformRevision": "744b66f9c3b964f8ec0105a08ddb905a5e24d2b5"
 }

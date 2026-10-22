@@ -1,0 +1,173 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-22T09:49:57.175503+00:00",
+  "platform": {
+    "revision": "744b66f9c3b964f8ec0105a08ddb905a5e24d2b5",
+    "sourceSurfaceFileCount": 26,
+    "sourceSurfaceTreeSha256": "def8039614b6a33eda4f9017d08528d540031fed2ea3eedb2c92f93aa1e59ac6",
+    "schemasTree": {
+      "fileCount": 7,
+      "sha256": "9ea15542d657c755600d1fb1f0f0e85ee9fe9c56e6951f71f02aa5c46c963506"
+    },
+    "profilesTree": {
+      "fileCount": 4,
+      "sha256": "c57d0931a60cf2a83e2c409d42c862d1b926454eb92de0ff476514f4beb0287f"
+    },
+    "xdlPackageVersion": "0.4.0"
+  },
+  "phase1to3": {
+    "xdlLite": "c1fd213cd00259b74f8308d8ca58157ea985aaa0",
+    "argusLite": "c2997c0f810d117cf45b2e34a4011b3ba7219494",
+    "maestroLite": "63f5cb8c7d686b3c2bfb8dd8aedb7e7a9245baa8"
+  },
+  "selectionRecord": {
+    "path": "xdl/selection/aeb-sim-selection.json",
+    "sha256": "f0ca78a986958fd6f46db6ede91521277d214f62e8f1a16ea97970cdd2879700"
+  },
+  "pins": [
+    {
+      "id": "carla-server",
+      "availability": "present",
+      "digest": "sha256:1da989e4ff136e0658fdea421bc1da2b0e5cb018c6e767efc4f6129c21ab1a81",
+      "recomputed": "match"
+    },
+    {
+      "id": "bridge-auto",
+      "availability": "present",
+      "digest": "sha256:37b6b6be6ac843475bcddd9f2139d6f265e42aaa30d7f295f8d586022bce62ed",
+      "recomputed": "match"
+    },
+    {
+      "id": "carla-python-client",
+      "availability": "NOT_AVAILABLE",
+      "digest": null,
+      "recomputed": "unpinned"
+    }
+  ],
+  "descriptors": [
+    {
+      "path": "xdl/descriptors/aeb-sim/component-bridge-auto.xdl.yaml",
+      "sha256": "6f5b70365e1c4d4ebf21c5f3b3c941f1d89b8be5d8eea3124a7968d83179a6a1",
+      "catalogEntryIds": []
+    },
+    {
+      "path": "xdl/descriptors/aeb-sim/component-carla-server.xdl.yaml",
+      "sha256": "0b1bb2a620bc12085321ccc442cb831c33ead740755f18d6720e96397f91a491",
+      "catalogEntryIds": []
+    },
+    {
+      "path": "xdl/descriptors/aeb-sim/deployment.xdl.yaml",
+      "sha256": "92b810c66f763a3dbf77bc806a72596aca367622d2314e114ec86a40eefab440",
+      "catalogEntryIds": [
+        "xdl://io.xverse.thesis.aebsim/deployment/aeb-sim-descriptors#binding/bridge-auto-binding",
+        "xdl://io.xverse.thesis.aebsim/deployment/aeb-sim-descriptors#binding/carla-server-binding"
+      ]
+    },
+    {
+      "path": "xdl/descriptors/aeb-sim/profile.xdl.yaml",
+      "sha256": "5c39820ea32b7eaa8af9ff3dac57d4883e5e3bf592926b16a91eb19cc63f4ce4",
+      "catalogEntryIds": []
+    },
+    {
+      "path": "xdl/descriptors/aeb-sim/system.xdl.yaml",
+      "sha256": "8d558fc19847b00a79b4b719871a7d44df8c8b8710fb8234aecb6db32fa3641a",
+      "catalogEntryIds": []
+    }
+  ],
+  "plans": [
+    {
+      "catalogIdentity": "xdl://io.xverse.thesis.aebsim/deployment/aeb-sim-descriptors#binding/bridge-auto-binding",
+      "digest": "sha256:5aa4dd0e5bf610e9ca3fb3d86899035dda4eacbf3d4504b483a63c6797a46375",
+      "blockers": [
+        "XVERSE-PLAN-THESIS-G1",
+        "XVERSE-PLAN-THESIS-G3",
+        "XVERSE-PLAN-THESIS-UNEXECUTED"
+      ],
+      "isPlannable": false,
+      "executionEligible": false
+    },
+    {
+      "catalogIdentity": "xdl://io.xverse.thesis.aebsim/deployment/aeb-sim-descriptors#binding/carla-server-binding",
+      "digest": "sha256:9a6388c6a825fccf45e765f808e83f09b2a26fd856d16d30a4443e70c6d95e92",
+      "blockers": [
+        "XVERSE-PLAN-RESOURCE-LIMITS-UNAPPROVED",
+        "XVERSE-PLAN-THESIS-UNEXECUTED"
+      ],
+      "isPlannable": false,
+      "executionEligible": false
+    }
+  ],
+  "contracts": {
+    "path": "xdl/selection/aeb-sim-contracts.json",
+    "sha256": "303a5ea870eb382fc7a8a919c825015602eed413ed0a93d962f2edf1b97ef6e3",
+    "statements": 15,
+    "verified": 9
+  },
+  "inventory": {
+    "path": "xdl/selection/artifact-inventory-20261022.json",
+    "sha256": "67e579f18697cebb6fe296293b3f44b3b10dd460a5ebe04e6b1f0fc034e325c4"
+  },
+  "fixtures": [
+    {
+      "path": "tests/fixtures/bridge-samples/ego-speed-hand-authored.jsonl",
+      "sha256": "4f528c93aff1cbe4548392db1b515c53dc56386608d5adc24b51524c9c6c488c"
+    }
+  ],
+  "verification": {
+    "suite": "xverse-compat tests",
+    "command": "PYTHONPATH=src python -m pytest tests -q -p no:cacheprovider",
+    "passed": 76,
+    "failed": 0,
+    "logSha256": "f5e24697d18611e2da3cd44b4f9cbaba5f0c811a14a48f380e6de7a2775be206",
+    "logPath": "docs/engineering/thesis-lite-phase4/verification-20261022-d.log"
+  },
+  "executionAuthority": "absent",
+  "blockers": [
+    "XVERSE-PLAN-RESOURCE-LIMITS-UNAPPROVED",
+    "XVERSE-PLAN-THESIS-G1",
+    "XVERSE-PLAN-THESIS-G2",
+    "XVERSE-PLAN-THESIS-G3",
+    "XVERSE-PLAN-THESIS-G4",
+    "XVERSE-PLAN-THESIS-G5",
+    "XVERSE-PLAN-THESIS-UNEXECUTED"
+  ],
+  "previousPlatformLock": {
+    "algorithm": "sha256-path-null-content-null-v1",
+    "fileCount": 22,
+    "includedRoots": [
+      "pyproject.toml",
+      "src/xverse_xdl",
+      "xdl/profiles",
+      "xdl/schemas"
+    ],
+    "package": "xverse-xdl",
+    "packageVersion": "0.4.0",
+    "sourceKind": "reviewed-sibling-tree",
+    "treeSha256": "7d730f85d71defd974dcba20e6d7e08591aa2113c886306caf64ee2f1d0bbb14"
+  },
+  "review": {
+    "verdict": "PASS (implementation review 2; review 1 FAIL repaired)",
+    "reference": "docs/engineering/thesis-lite-phase4/review-phase4.md findings 11-12"
+  },
+  "acceptance": {
+    "decision": "accepted as a bounded partial Phase 4 delivery (D4-4: speed feed only; D4-1 open; adapters blocked by G1/G2)",
+    "basis": "author goal 2026-10-22 and standing delegation (platform finding 476); recorded as finding 13",
+    "date": "2026-10-22"
+  },
+  "platformLock": {
+    "path": "platform-api.lock.json",
+    "algorithm": "sha256-path-null-content-null-v1",
+    "fileCount": 26,
+    "includedRoots": [
+      "pyproject.toml",
+      "src/xverse_xdl",
+      "xdl/profiles",
+      "xdl/schemas"
+    ],
+    "package": "xverse-xdl",
+    "packageVersion": "0.4.0",
+    "sourceKind": "reviewed-sibling-tree",
+    "treeSha256": "def8039614b6a33eda4f9017d08528d540031fed2ea3eedb2c92f93aa1e59ac6",
+    "platformRevision": "744b66f9c3b964f8ec0105a08ddb905a5e24d2b5"
+  }
+}

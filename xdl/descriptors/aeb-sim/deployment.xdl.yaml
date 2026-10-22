@@ -1,0 +1,222 @@
+apiVersion: xverse.io/xdl/v1alpha1
+kind: Deployment
+metadata:
+  namespace: io.xverse.thesis.aebsim
+  name: aeb-sim-descriptors
+  version: 0.1.0
+  description: Fail-closed descriptors for the selected CARLA server and bridge example on the development host.
+  provenance:
+    source: distributed_safety_critical_thesis/specs/003-thesis-lite-artifact-adapters
+    revision: inventory-20261022-rev6
+    maturity: architectural-target
+    limitations:
+      - No selected artifact has been executed under these descriptors; readiness conditions are declared, not measured.
+      - Ordering edges between bindings belong to the experiment Profile dependsOn on Scenario steps (Phase 7 input); parameterValues.dependsOnBindings is an owned traceability declaration only.
+spec:
+  systemRef:
+    apiVersion: xverse.io/xdl/v1alpha1
+    kind: System
+    namespace: io.xverse.thesis.aebsim
+    name: aeb-sim-host
+  targets:
+    - id: carla-target
+      targetClass: process
+      capabilities:
+        - isolated-process
+        - closed-environment
+        - off-screen-render
+      profileRefs:
+        - apiVersion: xverse.io/xdl/v1alpha1
+          kind: Profile
+          namespace: io.xverse.thesis.aebsim
+          name: compatibility-runtime
+      lifecycle: &carla-lifecycle
+        prepare: verify the pinned server binary digest and the launch arguments before staging
+        ready: the CARLA RPC server answers a version query on the declared port within its timeout
+        start: start only the declared launcher process after permit activation
+        stop: stop only the exact process group in the provider-issued ownership handle
+        failure: fail closed, retain evidence, and perform only handle-authorized containment
+        ownership: provider-issued opaque handle; no discovery by name, port or path
+    - id: bridge-target
+      targetClass: process
+      capabilities:
+        - isolated-process
+        - closed-environment
+      profileRefs:
+        - apiVersion: xverse.io/xdl/v1alpha1
+          kind: Profile
+          namespace: io.xverse.thesis.aebsim
+          name: compatibility-runtime
+      lifecycle: &bridge-lifecycle
+        prepare: verify the pinned example digest, the interpreter and the CARLA client availability before staging
+        ready: a sample is published on the zenoh key ego_vehicle/speed within its timeout
+        start: start only the declared interpreter and example after permit activation
+        stop: stop only the exact process group in the provider-issued ownership handle
+        failure: fail closed, retain evidence, and perform only handle-authorized containment
+        ownership: provider-issued opaque handle; no discovery by name, port or path
+  artifacts:
+    - id: carla-server
+      artifactKind: carla-server-binary
+      version: 0.9.15
+      digest: sha256:1da989e4ff136e0658fdea421bc1da2b0e5cb018c6e767efc4f6129c21ab1a81
+      sourceRef: https://tiny.carla.org/carla-0-9-15-linux
+      maturity: observed
+      limitations:
+        - Digest of CarlaUE4/Binaries/Linux/CarlaUE4-Linux-Shipping; the launcher CarlaUE4.sh is sha256 8c683a1aa74e65ba...
+    - id: bridge-auto
+      artifactKind: python-example
+      version: 0.0.0+eef3f717
+      digest: sha256:37b6b6be6ac843475bcddd9f2139d6f265e42aaa30d7f295f8d586022bce62ed
+      sourceRef: https://github.com/The-Xverse/carla-simulator-bridge.git@eef3f71747220d150c0b99c30194ca197fe339f9
+      maturity: observed
+      limitations:
+        - The bridge working tree had one uncommitted change in another example on 2026-10-22; this pin is the committed file.
+    - id: carla-python-client
+      artifactKind: python-wheel
+      version: 0.9.15
+      sourceRef: https://tiny.carla.org/carla-0-9-15-linux
+      maturity: architectural-target
+      limitations:
+        - NOT_AVAILABLE for the admitted CPython 3.13 toolchain; only cp27/cp37 wheels and eggs are present (gap G1, decision D4-1).
+        - Not bound by any binding; listed so the dependency is visible.
+  bindings:
+    - id: carla-server-binding
+      logicalRef:
+        apiVersion: xverse.io/xdl/v1alpha1
+        kind: System
+        namespace: io.xverse.thesis.aebsim
+        name: aeb-sim-host
+        element: carla-server-instance
+      realizationClass: simulated
+      targetId: carla-target
+      artifactIds:
+        - carla-server
+      lifecycle: *carla-lifecycle
+      parameterValues:
+        suppliesStreams: []
+        dependsOnBindings: []
+      extensions:
+        io.xverse.runtime.compatibility:
+          schemaVersion: 0.2.0
+          environmentId: aeb-sim-dev-host
+          provider:
+            id: carla-server-provider
+            kind: process
+          actions:
+            - id: prepare
+              phase: prepare
+              operation: validate
+              timeoutSeconds: 30
+            - id: start
+              phase: start
+              operation: start
+              timeoutSeconds: 60
+            - id: observe
+              phase: observe
+              operation: observe
+              condition: CARLA RPC server answers a version query on tcp port 2000
+              timeoutSeconds: 120
+            - id: stop
+              phase: stop
+              operation: stop
+              timeoutSeconds: 30
+            - id: cleanup
+              phase: cleanup
+              operation: cleanup
+              timeoutSeconds: 30
+          process:
+            executable: /home/jefferson/carla-simulator/CarlaUE4.sh
+            arguments:
+              - -quality-level=Low
+              - -carla-rpc-port=2000
+              - -RenderOffScreen
+            workingDirectory: /home/jefferson/carla-simulator
+            environmentNames: []
+            inheritedHandles: closed
+            implicitShell: false
+          planningBlockers:
+            - XVERSE-PLAN-RESOURCE-LIMITS-UNAPPROVED
+            - XVERSE-PLAN-THESIS-UNEXECUTED
+          evidence:
+            maturity: architectural-target
+            limitations:
+              - Timeouts are proposed ceilings and have not been measured.
+              - Valid catalog derivation does not authorize or establish runtime compatibility.
+    - id: bridge-auto-binding
+      logicalRef:
+        apiVersion: xverse.io/xdl/v1alpha1
+        kind: System
+        namespace: io.xverse.thesis.aebsim
+        name: aeb-sim-host
+        element: bridge-auto-instance
+      realizationClass: simulated
+      targetId: bridge-target
+      artifactIds:
+        - bridge-auto
+      lifecycle: *bridge-lifecycle
+      parameterValues:
+        suppliesStreams:
+          - vehicleSpeed
+        dependsOnBindings:
+          - carla-server-binding
+      extensions:
+        io.xverse.runtime.compatibility:
+          schemaVersion: 0.2.0
+          environmentId: aeb-sim-dev-host
+          provider:
+            id: bridge-auto-provider
+            kind: process
+          actions:
+            - id: prepare
+              phase: prepare
+              operation: validate
+              timeoutSeconds: 30
+            - id: start
+              phase: start
+              operation: start
+              timeoutSeconds: 30
+            - id: observe
+              phase: observe
+              operation: observe
+              condition: a sample is published on the zenoh key ego_vehicle/speed
+              timeoutSeconds: 60
+            - id: stop
+              phase: stop
+              operation: stop
+              timeoutSeconds: 15
+            - id: cleanup
+              phase: cleanup
+              operation: cleanup
+              timeoutSeconds: 15
+          process:
+            executable: /usr/bin/python3.10
+            arguments:
+              - /home/jefferson/carla-simulator-bridge/examples/automatic_control_zenoh.py
+              - --host
+              - 127.0.0.1
+              - --port
+              - "2000"
+              - --sync
+              - --res
+              - 640x480
+            workingDirectory: /home/jefferson/carla-simulator-bridge/examples
+            environmentNames:
+              - SDL_VIDEODRIVER
+            inheritedHandles: closed
+            implicitShell: false
+          planningBlockers:
+            - XVERSE-PLAN-THESIS-G1
+            - XVERSE-PLAN-THESIS-G3
+            - XVERSE-PLAN-THESIS-UNEXECUTED
+          evidence:
+            maturity: architectural-target
+            limitations:
+              - The interpreter /usr/bin/python3.10 is where the bridge recipe's `python3` resolves on this host (an inference, not recipe text) and is a candidate pending decision D4-1; the CARLA client is NOT_AVAILABLE for it until verified.
+              - Timeouts are proposed ceilings and have not been measured.
+              - Valid catalog derivation does not authorize or establish runtime compatibility.
+  readiness:
+    requiredConditions:
+      - every declared planning blocker is resolved through reviewed evidence
+      - artifact digests match the selection record pins
+      - the CARLA client runtime decision D4-1 is recorded
+    failurePolicy: fail-fast

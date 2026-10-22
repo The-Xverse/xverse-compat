@@ -1,0 +1,21 @@
+apiVersion: xverse.io/xdl/v1alpha1
+kind: Profile
+metadata:
+  namespace: io.xverse.thesis.aebsim
+  name: compatibility-runtime
+  version: 0.2.0
+  description: Runtime compatibility vocabulary (platform Profile 0.2) for the Thesis Lite AEB simulation descriptors.
+  provenance:
+    source: xverse-platform
+    revision: 744b66f9c3b964f8ec0105a08ddb905a5e24d2b5
+    maturity: prototype
+    limitations:
+      - Declared blockers preserve reviewable plans but never waive required XDL validation.
+      - The schemaRef names the platform schema file xdl/profiles/runtime-compatibility-v0.2.schema.json at the accepted main 744b66f9c.
+spec:
+  extensionNamespace: io.xverse.runtime.compatibility
+  compatibleApiVersions:
+    - xverse.io/xdl/v1alpha1
+  schemaRef: https://xverse.io/profiles/runtime-compatibility/v0.2/schema.json
+  documentationRef: https://xverse.io/docs/profiles/runtime-compatibility/v0.2/
+  conflictPolicy: reject

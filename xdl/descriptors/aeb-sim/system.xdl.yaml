@@ -1,0 +1,74 @@
+apiVersion: xverse.io/xdl/v1alpha1
+kind: System
+metadata:
+  namespace: io.xverse.thesis.aebsim
+  name: aeb-sim-host
+  version: 0.1.0
+  description: Development-host system containing the selected CARLA server and the selected bridge example.
+  provenance:
+    source: distributed_safety_critical_thesis/specs/003-thesis-lite-artifact-adapters
+    revision: inventory-20261022-rev6
+    maturity: architectural-target
+    limitations:
+      - Only the selected processes are modelled; the AEB topology of Note 21 is a Phase 8 blueprint.
+      - The Zenoh peer session of the bridge example is an external prerequisite outside this boundary.
+spec:
+  nodes:
+    - id: sim-host
+      roles:
+        - development-host
+  componentInstances:
+    - id: carla-server-instance
+      componentRef:
+        apiVersion: xverse.io/xdl/v1alpha1
+        kind: Component
+        namespace: io.xverse.thesis.aebsim
+        name: carla-server
+      nodeId: sim-host
+    - id: bridge-auto-instance
+      componentRef:
+        apiVersion: xverse.io/xdl/v1alpha1
+        kind: Component
+        namespace: io.xverse.thesis.aebsim
+        name: bridge-auto
+      nodeId: sim-host
+  interfaces:
+    - id: system-carla-rpc
+      direction: input
+      payloadSchema: urn:xverse:thesis:aebsim:carla-rpc-0-9-15
+      compatibility: explicit-converter
+      versionRange: unverified
+    - id: system-ego-speed
+      direction: output
+      payloadSchema: urn:xverse:thesis:aebsim:ego-speed-text
+      compatibility: explicit-converter
+      versionRange: unverified
+  endpoints:
+    - id: carla-rpc-in
+      ownerId: carla-server-instance
+      interfaceId: system-carla-rpc
+      direction: input
+    - id: bridge-speed-out
+      ownerId: bridge-auto-instance
+      interfaceId: system-ego-speed
+      direction: output
+  networks:
+    - id: zenoh-peer
+      scope: external-prerequisite
+      capabilities:
+        - publish-subscribe
+  protocols:
+    - id: zenoh-protocol
+      standardRef: urn:xverse:protocol:zenoh:version-unverified
+      capabilities:
+        - publish-subscribe
+      compatibility: selected version is unresolved (eclipse-zenoh 1.9.0 or 1.3.4 depending on D4-1)
+      limitations:
+        - Session, discovery, encoding, and delivery behavior are unverified (gap G3).
+  timeDomains:
+    - id: host-monotonic
+      clockClass: monotonic
+      epoch: process-start
+      rate: wall-rate
+      monotonic: true
+  defaultTimeDomainId: host-monotonic
