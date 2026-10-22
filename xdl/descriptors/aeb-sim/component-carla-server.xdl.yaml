@@ -1,0 +1,29 @@
+apiVersion: xverse.io/xdl/v1alpha1
+kind: Component
+metadata:
+  namespace: io.xverse.thesis.aebsim
+  name: carla-server
+  version: 0.9.15
+  description: Unchanged CARLA 0.9.15 simulator server (binary release) exposing its RPC port.
+  provenance:
+    source: https://tiny.carla.org/carla-0-9-15-linux
+    revision: release:0.9.15
+    maturity: observed
+    limitations:
+      - The release tarball md5 declared by the bridge recipe is NOT_VERIFIED locally; the installed binary is pinned by sha256.
+      - This logical resource does not claim runtime compatibility, simulator fidelity or application parity.
+spec:
+  capabilities:
+    - simulation-server
+    - carla-rpc
+  interfaces:
+    - id: carla-rpc
+      direction: input
+      payloadSchema: urn:xverse:thesis:aebsim:carla-rpc-0-9-15
+      compatibility: explicit-converter
+      versionRange: unverified
+  endpoints:
+    - id: rpc-in
+      ownerId: carla-server
+      interfaceId: carla-rpc
+      direction: input

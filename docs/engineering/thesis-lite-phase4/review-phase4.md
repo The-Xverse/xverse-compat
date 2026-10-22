@@ -68,3 +68,21 @@ read-only throughout; no selected artifact is executed in this phase.
     (U-SEL-01…12). Result: 12 passed; U-SEL-12 recomputed both present digests from the host
     artifacts (match). `scripts/check_doxygen.py`: documentation validation passed. No artifact
     executed.
+
+8. P4-T03 increment (2026-10-22): descriptor graph `xdl/descriptors/aeb-sim/` (Profile 0.2
+    resource, System aeb-sim-host, Components carla-server and bridge-auto, Deployment with the
+    carla-server-binding and bridge-auto-binding), `xverse_compat.descriptors` (platform validation
+    with the Profile schema from the sibling platform checkout, catalog derivation, owned rules:
+    committed/release revision, no duration wording in readiness, declared dependencies, stream
+    traceability, G1 blocker on NOT_AVAILABLE dependencies, at least one blocker per plan, digest
+    equality with the pins, never execution-eligible), and `tests/test_descriptors.py`
+    (U-DSC-01…05 with ten layered negatives). Facts learnt and corrected in the thesis package:
+    (a) artifact `sourceRef` must be a URI reference, so the scp-style `git@github.com:` form was
+    replaced by `https://github.com/…/carla-simulator-bridge.git@<sha>` in descriptors and pins;
+    (b) the platform defines `is_plannable` as blocker-free and `execution_eligible` as always
+    false, so Phase 4 plans are "derived with blockers, not plannable, never eligible", not
+    "plannable but blocked"; (c) a digest-less bound artifact fails the platform binding gate
+    `XDL-BINDING-ARTIFACT-INTEGRITY` before catalog derivation (which rejects it again). The
+    bridge binding names `/usr/bin/python3.10` as the candidate interpreter (the bridge recipe's
+    own system Python) with blocker XVERSE-PLAN-THESIS-G1 pending D4-1. Result: `pytest tests`
+    58 passed, 1 failed (the G5 content-lock test, unchanged); documentation validation passed.

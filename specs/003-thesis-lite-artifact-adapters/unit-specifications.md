@@ -24,9 +24,9 @@ Each row is one test. IDs map to the thesis verification cases V01–V07.
 | ID | Test | Expect |
 | --- | --- | --- |
 | U-DSC-01 | graph validates with Profile 0.2 at the pinned platform | `validation.is_valid`; two catalog entries (`carla-server`, `bridge-auto`) |
-| U-DSC-02 | plans are plannable, never execution-eligible | `plan.is_plannable and not plan.execution_eligible` for each entry; blockers include `XVERSE-PLAN-THESIS-G1` on the bridge binding |
+| U-DSC-02 | plans derive with blockers, never execution-eligible | each plan has blockers, `not plan.is_plannable` (the platform defines plannable as blocker-free), `not plan.execution_eligible`, a process action and a digest; the bridge binding's blockers include `XVERSE-PLAN-THESIS-G1` |
 | U-DSC-03 | artifact digests equal the pins | catalog `artifact_digests` ⊆ pin digests |
-| U-DSC-04 | negatives, layer stated | floating revision → owned `DescriptorError …-REVISION`; missing digest → catalog `XVERSE-CATALOG-ARTIFACT-PIN`; relative executable / `$VAR` argument / `inheritedHandles` not `"closed"` → schema diagnostics; `condition: "wait 10 s"` → owned `…-READINESS-DURATION`; undeclared env name → schema; missing dependency declaration → owned `…-DEPENDENCY` |
+| U-DSC-04 | negatives, layer stated | floating revision → owned `…-REVISION`; missing digest → platform binding gate `XDL-BINDING-ARTIFACT-INTEGRITY` (wrapped as `…-VALIDATION`; catalog derivation would also reject it); relative executable / `inheritedHandles` not `"closed"` / `implicitShell: true` / undeclared env name → platform schema (`…-VALIDATION`); `condition: "wait 10 s"` → owned `…-READINESS-DURATION`; unknown dependency → owned `…-DEPENDENCY`; missing G1 blocker or no blocker at all → owned `…-BLOCKER`; claiming a non-supplied stream → owned `…-STREAM-TRACE` |
 | U-DSC-05 | no discovery | AST of `descriptors.py` imports none of `subprocess`, `socket`, `psutil`, `glob`, `os.scandir` use |
 
 ## `xverse_compat.contracts` (V05)

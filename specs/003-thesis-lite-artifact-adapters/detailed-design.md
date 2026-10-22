@@ -19,8 +19,8 @@ data. It adds no requirement.
 
 ## Data flow
 
-selection record → pins (digests recomputed) → descriptors (validated; catalog derived; plannable,
-not execution-eligible) → contract table (statements cite the inventory) → fixtures → admission
+selection record → pins (digests recomputed) → descriptors (validated; catalog derived; blockers
+declared, so not plannable; never execution-eligible) → contract table (statements cite the inventory) → fixtures → admission
 record. No step starts a selected artifact. Each step is a pure function of files on disk and
 returns stable diagnostics (`SelectionError`, `DescriptorError`, … with a code).
 

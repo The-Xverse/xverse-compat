@@ -26,7 +26,7 @@
       "id": "bridge-auto",
       "artifactKind": "python-example",
       "version": "eef3f717",
-      "sourceRef": "git@github.com:The-Xverse/carla-simulator-bridge.git@eef3f71747220d150c0b99c30194ca197fe339f9",
+      "sourceRef": "https://github.com/The-Xverse/carla-simulator-bridge.git@eef3f71747220d150c0b99c30194ca197fe339f9",
       "availability": "present",
       "digest": "sha256:37b6b6be6ac843475bcddd9f2139d6f265e42aaa30d7f295f8d586022bce62ed",
       "digestCommand": "sha256sum /home/jefferson/carla-simulator-bridge/examples/automatic_control_zenoh.py",

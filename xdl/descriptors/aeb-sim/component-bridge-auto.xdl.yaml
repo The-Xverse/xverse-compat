@@ -1,0 +1,29 @@
+apiVersion: xverse.io/xdl/v1alpha1
+kind: Component
+metadata:
+  namespace: io.xverse.thesis.aebsim
+  name: bridge-auto
+  version: 0.0.0+eef3f717
+  description: Unchanged bridge example automatic_control_zenoh.py publishing the ego vehicle speed over Zenoh.
+  provenance:
+    source: https://github.com/The-Xverse/carla-simulator-bridge.git
+    revision: eef3f71747220d150c0b99c30194ca197fe339f9
+    maturity: observed
+    limitations:
+      - Drives the ego vehicle with its own behavior agent; it accepts no actuation and publishes speed only.
+      - Needs the CARLA Python client, which is NOT_AVAILABLE for the admitted toolchain (gap G1).
+      - Needs a display or SDL_VIDEODRIVER=dummy (pygame.display.set_mode at line 738).
+spec:
+  capabilities:
+    - vehicle-status-publication
+  interfaces:
+    - id: ego-speed
+      direction: output
+      payloadSchema: urn:xverse:thesis:aebsim:ego-speed-text
+      compatibility: explicit-converter
+      versionRange: unverified
+  endpoints:
+    - id: speed-out
+      ownerId: bridge-auto
+      interfaceId: ego-speed
+      direction: output
