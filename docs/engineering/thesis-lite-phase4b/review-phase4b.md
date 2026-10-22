@@ -335,3 +335,36 @@ log edit is committed immediately.
     177 passed, 39 subtests (`verification-20261022-e.log`). The admission record was rebuilt
     against `8b3d8c8e8` (`eb98e1cd7dbb…`), and the suite was re-run after the rebuild. Next: a focused
     independent check of the review-4 repair diff, then acceptance.
+
+16. Independent check 5 of the review-4 repair diff (2026-10-22, `54f56a7..d200f53`): **PASS**, with
+    no HIGH or MEDIUM finding. The reviewer confirmed:
+    - the close handling in `main` (closed exactly once on every path) and the settings-exception
+      path;
+    - the `elapsed` ≥ 0 conditions;
+    - that every fixture carries `actors`, so V04 is unaffected;
+    - kill on timeout;
+    - that §9.10a matches the code;
+    - `verify_admission_record` against `8b3d8c8e8` (`eb98e1cd…`);
+    - the suite: 177 passed.
+
+    The findings are recorded before repair. All of them will be repaired (engineer decision):
+
+    | # | Sev | Finding | Planned repair |
+    | --- | --- | --- | --- |
+    | R5-L1 | LOW | After exit 2, a close failure adds a second stderr line, against rule 5. | When the run code is 2, the close failure is not written; the code stays 2. |
+    | R5-N1 | nit | An exception that `run` does not catch (for example a broken stdout) exits 1 with a traceback. | `main` maps it to exit 3 with one stderr line, after closing the source. |
+    | R5-N2 | nit | The exporter guard uses `isinstance`, so a bool elapsed time reaches `seconds_to_ns`. | Use `type(...) in (int, float)`. |
+    | R5-N3 | nit | Kill on timeout has no test. | Add one with a stubbed process. |
+    | R5-N4 | nit | Python 3.13 bytecode was left by the admission run. | Removed. Run `admit_phase4.py` with `-B` from now on. |
+
+17. Repairs for check 5 applied (2026-10-22), as planned in finding 16:
+    - **R5-L1:** `_close(quiet=…)` writes nothing after exit 2.
+    - **R5-N1:** an exception that `run` does not catch closes the source quietly and exits 3 with
+      one stderr line.
+    - **R5-N2:** the exporter guard uses a `type` check.
+    - **R5-N3:** a kill-on-timeout test was added.
+    - **R5-N4:** the bytecode was removed, and `admit_phase4.py` now runs with `-B`.
+
+    Thesis design §9.10a is extended accordingly. Verification: the full suite gives 180 passed,
+    39 subtests (`verification-20261022-f.log`). The admission record was rebuilt against
+    `8b3d8c8e8` (`35a2c24c0919…`), and the suite was re-run after the rebuild.

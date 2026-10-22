@@ -44,20 +44,25 @@ def main(argv=None) -> int:
     stdin = StrictLines(sys.stdin.buffer)
     try:
         code = run(source, descriptors, stdin, sys.stdout, sys.stderr, carla_version=carla_version, ground_truth=args.ground_truth)
+    except Exception as error:  # noqa: BLE001 - e.g. a broken stdout: one stderr line, exit 3 (review 5 N1)
+        _close(source, quiet=True)
+        print(f"XVERSE-COMPAT-CARLA-SOURCE: {type(error).__name__}: {error}", file=sys.stderr)
+        return 3
     except BaseException:
-        _close(source)
+        _close(source, quiet=True)
         raise
-    closed = _close(source)  # always closed; a clean run becomes 3 if closing fails
+    closed = _close(source, quiet=code == 2)  # always closed; exit 2 keeps its single stderr line (review 5 L1)
     return code or closed
 
 
-def _close(source) -> int:
-    """Close the source; a failure is one stderr line and exit 3 (review 4 L3)."""
+def _close(source, quiet: bool = False) -> int:
+    """Close the source; a failure is one stderr line (unless ``quiet``) and exit 3 (review 4 L3)."""
 
     try:
         source.close()
     except Exception as error:  # noqa: BLE001
-        print(f"XVERSE-COMPAT-CARLA-SOURCE: close failed: {type(error).__name__}: {error}", file=sys.stderr)
+        if not quiet:
+            print(f"XVERSE-COMPAT-CARLA-SOURCE: close failed: {type(error).__name__}: {error}", file=sys.stderr)
         return 3
     return 0
 

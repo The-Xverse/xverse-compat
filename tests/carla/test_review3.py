@@ -167,7 +167,47 @@ def test_review4_l3_close_failure_is_one_line_and_exit_3(monkeypatch, capsys, ru
     monkeypatch.setattr(entry, "run", lambda *a, **k: run_code)
     code = entry.main(["--source", f"fake:{FIXTURES / 'nominal.json'}", "--descriptors", str(DESCRIPTORS)])
     assert closed == [True] and code == (run_code or 3)
-    assert len(capsys.readouterr().err.strip().splitlines()) == 1
+    assert len(capsys.readouterr().err.strip().splitlines()) == (0 if run_code == 2 else 1)  # exit 2 already wrote its line (review 5 L1)
+
+
+def test_review5_n1_uncaught_run_exception_is_one_line_and_exit_3(monkeypatch, capsys):
+    from xverse_compat_carla import main as entry
+
+    closed = []
+
+    class Tracked(FakeSource):
+        def close(self):
+            closed.append(True)
+
+    def broken(*args, **kwargs):
+        raise BrokenPipeError("stdout closed")
+
+    monkeypatch.setattr(entry, "FakeSource", Tracked)
+    monkeypatch.setattr(entry, "run", broken)
+    code = entry.main(["--source", f"fake:{FIXTURES / 'nominal.json'}", "--descriptors", str(DESCRIPTORS)])
+    err = capsys.readouterr().err.strip().splitlines()
+    assert code == 3 and closed == [True] and len(err) == 1 and "BrokenPipeError" in err[0]
+
+
+def test_review5_n2_bool_elapsed_is_not_exported(tmp_path):
+    frame = copy.deepcopy(NOMINAL["frames"][0])
+    frame["elapsedSeconds"] = True
+    stdin = io.StringIO(json.dumps({"type": "start"}) + "\n" + json.dumps({"type": "tick"}) + "\n")
+    out, err = io.StringIO(), io.StringIO()
+    export = tmp_path / "gt.jsonl"
+    code = run(FakeSource(_fixture(tmp_path, [frame])), D, stdin, out, err, ground_truth=export)
+    refusals = [json.loads(line)["code"] for line in out.getvalue().splitlines() if json.loads(line)["type"] == "refusal"]
+    assert code == 0 and refusals == [C.TIMESTAMP] and export.read_text() == ""
+
+
+def test_review5_n3_wait_kills_the_child_on_timeout():
+    import subprocess
+
+    proc = CarlaAdapterProcess(require_env(), DESCRIPTORS, f"fake:{FIXTURES / 'nominal.json'}", timeout_s=0.2)
+    proc._proc = subprocess.Popen(["sleep", "30"])
+    with pytest.raises(subprocess.TimeoutExpired):
+        proc.wait()
+    assert proc._proc.poll() is not None
 
 
 def test_review4_n2_missing_fixture_actors_are_not_an_empty_scene(tmp_path):

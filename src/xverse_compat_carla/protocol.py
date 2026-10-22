@@ -224,7 +224,8 @@ def run(source, descriptors, stdin, stdout, stderr, *, carla_version=None, groun
                 if (type(fd.elapsed_seconds) in (int, float) and math.isfinite(fd.elapsed_seconds) and fd.elapsed_seconds >= 0
                         and elapsed is not None and fd.elapsed_seconds < elapsed):  # a negative time is TIMESTAMP only (review 4 L1)
                     raise C.CarlaRefusal(C.EPISODE, "elapsed_seconds decreased: episode reset", None, frame)
-                if exporter is not None and isinstance(fd.elapsed_seconds, (int, float)) and math.isfinite(fd.elapsed_seconds) and fd.elapsed_seconds >= 0:
+                if (exporter is not None and type(fd.elapsed_seconds) in (int, float) and math.isfinite(fd.elapsed_seconds)
+                        and fd.elapsed_seconds >= 0):  # a bool is not a time (review 5 N2)
                     exporter.write(frame, seconds_to_ns(fd.elapsed_seconds), fd.actors)
             except C.CarlaRefusal as refusal:
                 out.send(refusal.to_message())
