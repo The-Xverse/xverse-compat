@@ -395,3 +395,17 @@ log edit is committed immediately.
     Verification: the full suite gives 181 passed, 39 subtests (`verification-20261022-g.log`). The
     admission record was rebuilt with `python -B` against `8b3d8c8e8` (`7cbaeff6c3d8…`), and the suite was
     re-run after the rebuild. Next: focused independent check 7.
+
+20. Independent check 7 of the check-6 repair (2026-10-22, `3d4ab98..f73e0ba`): **PASS**, with no
+    HIGH or MEDIUM finding. Probes of the real launched process with stdout broken at different
+    moments, covering eleven cases, all gave exit 2 or 3 (never 120), and the source was closed in
+    every case. `verify_admission_record` passed (`7cbaeff6…`), and the suite gave 181 passed.
+
+    | # | Sev | Finding | Disposition (engineer decision, before repair) |
+    | --- | --- | --- | --- |
+    | R7-L1 | LOW | §9.10a says a broken stdout gives one stderr line. A break during item emission or a refusal gives two `SOURCE` lines: the internal handler, then `main`. Rule 5 only limits exit 2. | Correct the §9.10a wording: exit 3 may carry more than one diagnostic line, and only exit 2 is bound to a single line. The code is unchanged. |
+    | R7-L2 | LOW | The R6-M1 test races in principle between the reader close and the child's `hello`. It passed 30/30. | Make it deterministic with an `os.pipe()` whose read end is closed before the spawn. |
+    | R7-N1 | nit | Test subprocess launches write bytecode. | Add `-B` to the test launches only. The contract launch in `CarlaAdapterProcess` stays as specified. |
+
+    These changes touch only tests and the thesis design text. No adapter or client code changes
+    after this PASS.
