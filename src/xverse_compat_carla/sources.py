@@ -70,6 +70,7 @@ class FakeSource:
 
         for cmd in commands:
             self._brake = cmd["brake"]
+            self.throttle = cmd.get("throttle", 0.0)  # protocol 2 (recorded only; the fake has no dynamics)
 
     def tick(self):
         """Advance to the next fixture frame; ``None`` when exhausted."""
@@ -142,13 +143,15 @@ def _check_sensor(name: str, sensor, d) -> None:
 class LiveSource:
     """Declared-unverified live source (design §9.4); never run against a server in this phase."""
 
-    def __init__(self, client, ego_id: int, camera_id: int, radar_id: int, d, carla_module=None) -> None:
-        """Bind to existing actors of ``client``'s world (no spawning)."""
+    def __init__(self, client, ego_id: int, camera_id: int, radar_id: int, d, carla_module=None, *, scenario=None) -> None:
+        """Bind to existing actors of ``client``'s world, or, with ``scenario`` (Phase 7 successor), spawn the
+        declared ego vehicle and sensors itself, own them, and destroy them at ``close()``."""
 
         if carla_module is None:
             import carla as carla_module  # noqa: PLC0415 - lazy: only the live path needs the client
         self._carla = carla_module
         self._d = d
+        self._spawned = []
         self._world = client.get_world()
         self._ego_id = ego_id
         self._saved = self._world.get_settings()
@@ -158,6 +161,13 @@ class LiveSource:
         self._world.apply_settings(settings)
         self._sensors = []
         try:
+            if scenario is not None:
+                from .scenario import spawn  # noqa: PLC0415
+
+                self._spawned = spawn(self._world, carla_module, d, scenario)  # ego, camera, radar
+                self._world.tick()  # the spawned actors exist from the next frame
+                ego_id, camera_id, radar_id = (actor.id for actor in self._spawned)
+                self._ego_id = ego_id
             self._vehicle = self._world.get_actor(ego_id)
             if self._vehicle is None or not str(getattr(self._vehicle, "type_id", "")).startswith("vehicle."):
                 raise CarlaRefusal(SETTINGS, f"actor {ego_id} is not a vehicle")  # review 2 L-i
@@ -179,8 +189,8 @@ class LiveSource:
     def apply(self, commands) -> None:
         """Apply brake commands to the ego vehicle."""
 
-        for cmd in commands:
-            self._vehicle.apply_control(self._carla.VehicleControl(brake=cmd["brake"]))
+        for cmd in commands:  # steer is held at 0: the Lite actuation path carries no steering
+            self._vehicle.apply_control(self._carla.VehicleControl(throttle=cmd.get("throttle", 0.0), brake=cmd["brake"], steer=0.0))
 
     def _wait(self, name: str, frame: int, deadline: float):
         """Return ``name``'s data for ``frame`` before the per-tick ``deadline``; ``None`` if absent."""
@@ -216,4 +226,13 @@ class LiveSource:
             for sensor in getattr(self, "_sensors", []):
                 sensor.stop()
         finally:  # review 2 L-d: the saved settings are restored even if a stop fails
-            self._world.apply_settings(self._saved)
+            try:
+                for actor in reversed(getattr(self, "_spawned", [])):  # owned scenario actors: sensors before the ego
+                    actor.destroy()
+            finally:
+                self._world.apply_settings(self._saved)
+                if not getattr(self._saved, "synchronous_mode", False):
+                    try:  # a synchronous world applies new settings on the next tick (live finding 02)
+                        self._world.tick(2.0)
+                    except Exception:  # noqa: BLE001 - the restore guard verifies the result afterwards
+                        pass

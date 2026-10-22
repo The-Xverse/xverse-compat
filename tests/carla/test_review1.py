@@ -134,7 +134,7 @@ class _FakeSensor:
 def test_m4_live_source_against_an_owned_fake_carla_module():
     world = _FakeWorld()
     client = SimpleNamespace(get_world=lambda: world)
-    fake_carla = SimpleNamespace(VehicleControl=lambda brake: SimpleNamespace(brake=brake))
+    fake_carla = SimpleNamespace(VehicleControl=lambda **control: SimpleNamespace(**control))
     source = LiveSource(client, 1, 2, 3, D, carla_module=fake_carla)
     assert world.settings.synchronous_mode is True and world.settings.fixed_delta_seconds == 0.05
     source.apply([{"brake": 0.7}])
