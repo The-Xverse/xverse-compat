@@ -1,0 +1,82 @@
+{
+  "recordVersion": "0.1.0",
+  "aebSource": "distributed_safety_critical_thesis notes/dynamic_thesis_notes.md Note 21, AEB-EXPERIMENT-2026-08-30-v2",
+  "platformRevision": "744b66f9c",
+  "inventory": "distributed_safety_critical_thesis/specs/003-thesis-lite-artifact-adapters/review/artifact-inventory-20261022.json (revision 4)",
+  "pins": [
+    {
+      "id": "carla-server",
+      "artifactKind": "carla-server-binary",
+      "version": "0.9.15",
+      "sourceRef": "https://tiny.carla.org/carla-0-9-15-linux",
+      "releaseArtifact": true,
+      "availability": "present",
+      "digest": "sha256:1da989e4ff136e0658fdea421bc1da2b0e5cb018c6e767efc4f6129c21ab1a81",
+      "digestCommand": "sha256sum /home/jefferson/carla-simulator/CarlaUE4/Binaries/Linux/CarlaUE4-Linux-Shipping",
+      "localPath": "/home/jefferson/carla-simulator/CarlaUE4/Binaries/Linux/CarlaUE4-Linux-Shipping",
+      "license": "MIT (CARLA); assets under their own terms",
+      "classification": "public-safe",
+      "toolchain": "Linux x86_64 binary release; launched through CarlaUE4.sh",
+      "limitations": [
+        "release tarball md5 32fa681fb925cd62951a63977582ea8c declared by the bridge recipe is NOT_VERIFIED locally",
+        "launcher CarlaUE4.sh sha256 8c683a1aa74e65ba... recorded separately in the inventory"
+      ]
+    },
+    {
+      "id": "bridge-auto",
+      "artifactKind": "python-example",
+      "version": "eef3f717",
+      "sourceRef": "git@github.com:The-Xverse/carla-simulator-bridge.git@eef3f71747220d150c0b99c30194ca197fe339f9",
+      "availability": "present",
+      "digest": "sha256:37b6b6be6ac843475bcddd9f2139d6f265e42aaa30d7f295f8d586022bce62ed",
+      "digestCommand": "sha256sum /home/jefferson/carla-simulator-bridge/examples/automatic_control_zenoh.py",
+      "localPath": "/home/jefferson/carla-simulator-bridge/examples/automatic_control_zenoh.py",
+      "license": "Apache-2.0 (file header)",
+      "classification": "public-safe",
+      "toolchain": "CPython with carla==0.9.15, pygame, numpy, shapely, networkx, eclipse-zenoh; interpreter decided by D4-1",
+      "limitations": [
+        "working tree of the bridge had one uncommitted change (examples/manual_control_steeringwheel_zenoh.py) on 2026-10-22; not selected",
+        "needs a display or SDL_VIDEODRIVER=dummy (pygame.display.set_mode, line 738)",
+        "drives the ego vehicle with its own agent; publishes ego_vehicle/speed as int km/h text"
+      ]
+    },
+    {
+      "id": "carla-python-client",
+      "artifactKind": "python-wheel",
+      "version": "0.9.15",
+      "sourceRef": "https://tiny.carla.org/carla-0-9-15-linux",
+      "releaseArtifact": true,
+      "availability": "NOT_AVAILABLE",
+      "reason": "only CPython 2.7 and 3.7 wheels/eggs are present (cp37 wheel sha256 8782039dfa9ee6796b20c9193940d9a089b972d161c19fe64d33ab8184a0cf20); the admitted toolchain is CPython 3.13 and no 3.10 wheel was verified (gap G1, decision D4-1)",
+      "license": "MIT (CARLA)",
+      "classification": "public-safe",
+      "toolchain": "CPython 3.7 only",
+      "limitations": ["required by the bridge example and by every owned adapter on CARLA RPC"]
+    }
+  ],
+  "adapters": ["adapter-carla-rpc"],
+  "streams": [
+    {"stream": "vehicleSpeed", "disposition": "supplied", "supplier": "bridge-auto", "interface": "zenoh key ego_vehicle/speed, payload f\"{int(3.6*|v|)}\" (automatic_control_zenoh.py:285,300-304,742)", "dependsOn": ["carla-server", "carla-python-client"]},
+    {"stream": "brakeStatus", "disposition": "blocked", "blocker": "G2", "interface": "vehicle/status/braking_status is published by manual_control_zenoh.py only under keyboard input (line 682); not selected for unattended use"},
+    {"stream": "brakeActuation", "disposition": "adapter", "supplier": "adapter-carla-rpc", "blocker": "G1", "interface": "carla.Vehicle.apply_control over the CARLA RPC port", "dependsOn": ["carla-server", "carla-python-client"]},
+    {"stream": "wheelSpeedEscStatus", "disposition": "blocked", "blocker": "G2", "interface": "not published by any selected artifact"},
+    {"stream": "camera", "disposition": "adapter", "supplier": "adapter-carla-rpc", "blocker": "G1", "interface": "sensor.camera.rgb over the CARLA RPC port", "dependsOn": ["carla-server", "carla-python-client"]},
+    {"stream": "radar", "disposition": "adapter", "supplier": "adapter-carla-rpc", "blocker": "G1", "interface": "sensor.other.radar over the CARLA RPC port", "dependsOn": ["carla-server", "carla-python-client"]},
+    {"stream": "groundTruth", "disposition": "adapter", "supplier": "adapter-carla-rpc", "blocker": "G1", "interface": "actor transforms/velocities over the CARLA RPC port; offline export only (DYN-002)", "dependsOn": ["carla-server", "carla-python-client"]},
+    {"stream": "scenarioControl", "disposition": "adapter", "supplier": "adapter-carla-rpc", "blocker": "G1", "interface": "world settings (synchronous mode, fixed delta), map, spawn, seed over the CARLA RPC port", "dependsOn": ["carla-server", "carla-python-client"]}
+  ],
+  "notSelected": [
+    "examples/zenoh_vehicle.py (dead code at eef3f717; no example imports it)",
+    "examples/manual_control_zenoh.py (emits only under an operator; Phase 7 may re-select for an attended smoke case)",
+    "examples/manual_control_steeringwheel_zenoh.py (dirty working tree; manual hardware)",
+    "zenohd router 1.10.1 (only the manual example needs it)",
+    "Distrobox and Rust workspace recipes",
+    "xverse-compat spec 002 SOME/IP gateway",
+    "CARLA 0.9.16 maps cache (no server or client)"
+  ],
+  "decisions": [
+    "D4-1 CARLA client runtime (3.7 environment / pip on system 3.10 / build for 3.13 / newer release)",
+    "D4-2 owned adapters on CARLA RPC versus an author-authorized bridge change",
+    "D4-4 accept a speed-only delivery as Phase 4, or wait for D4-1"
+  ]
+}

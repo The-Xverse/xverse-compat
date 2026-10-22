@@ -58,3 +58,13 @@ read-only throughout; no selected artifact is executed in this phase.
     the CARLA 0.9.15 server and `automatic_control_zenoh.py` (speed feed only). Reviewer verdict
     on M8's repair: READY FOR DETAILED DESIGN; DRAFT; NOT READY FOR IMPLEMENTATION. Detailed
     design and the P4-T01/T02 records start here; T03 code follows the owner-side unit specs.
+
+7. P4-T01/T02 increment (2026-10-22): owner-side detailed design and unit specifications
+    (specs/003-thesis-lite-artifact-adapters/), `xverse_compat.selection` (fail-closed loader for
+    the selection record and pins; digest recomputation that never raises), the record
+    `xdl/selection/aeb-sim-selection.json` (pins carla-server present, bridge-auto present,
+    carla-python-client NOT_AVAILABLE; eight streams: vehicleSpeed supplied, five adapter streams
+    blocked by G1, brakeStatus and wheelSpeedEscStatus blocked by G2), and `tests/test_selection.py`
+    (U-SEL-01…12). Result: 12 passed; U-SEL-12 recomputed both present digests from the host
+    artifacts (match). `scripts/check_doxygen.py`: documentation validation passed. No artifact
+    executed.
