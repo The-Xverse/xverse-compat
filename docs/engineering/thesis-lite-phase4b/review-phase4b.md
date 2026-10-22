@@ -190,3 +190,34 @@ log edit is committed immediately.
    (`verification-20261022-b.log`). The admission record was rebuilt against platform
    `8b3d8c8e8` (`f1981d9946d2…`), and the suite was re-run after the rebuild: 126 passed. Inventory
    `0b784c71bca6…`. Next: independent review 2.
+
+10. Independent implementation review 2 (2026-10-22, on `7677afd`): **FAIL**, with no HIGH and two
+    MEDIUM findings (recorded before any repair). The reviewer confirmed:
+    - the repairs for M1–M4, finding 8, L1 and L3–L9;
+    - the 3.10 / standard-library-only constraint, using an in-memory compile and an AST scan;
+    - re-derivation items 1–8;
+    - `verify_admission_record` against `8b3d8c8e8`, with execution authority absent;
+    - the bridge unchanged at `eef3f71`;
+    - the suite: 126 passed.
+
+    | # | Sev | Finding | Planned repair |
+    | --- | --- | --- | --- |
+    | N1 | MEDIUM | `parse_outbound` does not enforce exact item, ack, hello and refusal schemas. A ground-truth payload is accepted as an `item` with any `flowId`. | Accept only the four declared flows, and only those announced in `hello`. Closed value schemas per flow. `commandId` must be a non-empty string. `refusal.code` must be in the closed code set. `hello` must match the contract. Add a test that ground truth sent as an `item` is refused. |
+    | N2 | MEDIUM | Live `--ground-truth` writes empty `actors` for every frame. This fails open, and the limit is not in the selection record. | Live mode refuses `--ground-truth` (exit 3, `SOURCE`) until actor collection exists. Design amendment §9.7 (under the author's delegation): ground-truth export is fake-source only in Phase 4b, and live collection is carried to Phase 7. Record the limit in the selection record's `groundTruth` entry. |
+
+    Repairs for the LOW findings:
+    - **L-a:** under `env -i` the interpreter runs in UTF-8 mode with `surrogateescape`. Read
+      `sys.stdin.buffer` and decode strictly, so invalid UTF-8 exits 2. Add a subprocess test with
+      `\xff`. This corrects finding 9, which wrongly listed L2's UTF-8 part as effective.
+    - **L-b:** descriptor load, missing fixture, unwritable ground-truth path and non-integer
+      fixture frames take the exit-3 path with one stderr line; `opened` moves inside the guarded
+      block.
+    - **L-c:** look up the carla version before building `LiveSource`.
+    - **L-d:** restore settings in a `finally` around the sensor stops.
+    - **L-e:** capture `accel` only after a successful emit.
+    - **L-f:** run the time and identity checks before the value checks for every stream.
+    - **L-g:** the 3.10 compile test compiles in memory and writes no bytecode.
+    - **L-h:** the client raises `CarlaProtocolError` when there is no `hello`, and tolerates
+      `BrokenPipeError` at `stop()`.
+    - **L-i:** at bind time, check the ego actor and each sensor's blueprint and attributes against
+      `carla-sensors.json`.
