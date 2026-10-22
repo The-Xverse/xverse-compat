@@ -5,6 +5,7 @@ HOME=/nonexistent-carla-home`` from ``<checkout>/src`` (no ``PYTHONPATH``)."""
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 
 from .descriptors import load_descriptors
@@ -47,12 +48,25 @@ def main(argv=None) -> int:
     except Exception as error:  # noqa: BLE001 - e.g. a broken stdout: one stderr line, exit 3 (review 5 N1)
         _close(source, quiet=True)
         print(f"XVERSE-COMPAT-CARLA-SOURCE: {type(error).__name__}: {error}", file=sys.stderr)
+        _discard_stdout()
         return 3
     except BaseException:
         _close(source, quiet=True)
         raise
     closed = _close(source, quiet=code == 2)  # always closed; exit 2 keeps its single stderr line (review 5 L1)
     return code or closed
+
+
+def _discard_stdout() -> None:
+    """Point stdout at the null device so the interpreter's final flush of a broken pipe cannot fail again
+    (that would exit 120 with further stderr lines; review 6 M1)."""
+
+    try:
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(devnull, sys.stdout.fileno())
+        os.close(devnull)
+    except (OSError, ValueError, AttributeError):  # stdout without a descriptor (e.g. under a test harness)
+        pass
 
 
 def _close(source, quiet: bool = False) -> int:

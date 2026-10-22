@@ -214,3 +214,22 @@ def test_review4_n2_missing_fixture_actors_are_not_an_empty_scene(tmp_path):
     frame = copy.deepcopy(NOMINAL["frames"][0])
     del frame["actors"]
     assert FakeSource(_fixture(tmp_path, [frame])).tick().actors is None
+
+
+def test_review6_m1_broken_stdout_exits_3_with_one_stderr_line():
+    import subprocess
+
+    from .support import ROOT
+
+    proc = subprocess.Popen(["env", "-i", "PATH=/usr/bin", "HOME=/nonexistent-carla-home", str(require_env()), "-s", "-m",
+                             "xverse_compat_carla.main", "--source", f"fake:{FIXTURES / 'nominal.json'}", "--descriptors", str(DESCRIPTORS)],
+                            cwd=ROOT / "src", stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    proc.stdout.close()  # the platform side has gone away before the adapter writes anything
+    try:
+        proc.stdin.write(b'{"type":"start"}\n{"type":"tick"}\n')
+        proc.stdin.close()
+    except BrokenPipeError:
+        pass
+    err = proc.stderr.read().decode().strip().splitlines()
+    assert proc.wait(timeout=60) == 3
+    assert len(err) == 1 and err[0].startswith(C.SOURCE) and "BrokenPipeError" in err[0]

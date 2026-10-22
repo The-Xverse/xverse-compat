@@ -383,3 +383,15 @@ log edit is committed immediately.
     | R6-M1 | MEDIUM | A broken stdout makes the real adapter process exit 120 with three stderr lines: the failed write stays buffered, and the interpreter's shutdown flush fails again. The R5-N1 test patched `run` in process, so it could not see this. | In that path, `dup2` `os.devnull` onto stdout's descriptor before returning 3. Add a subprocess test with the stdout reader closed, asserting exit 3 and one stderr line. |
     | R6-L1 | LOW | After `run` returns 3 with a `SOURCE` line, a close failure adds a second line. Rule 5 allows this, but it is undocumented. | §9.10a states that the single-line rule binds exit 2, and that exit 3 may carry a close line. |
     | R6-N1 | nit | Finding 17 says `admit_phase4.py` "now runs with `-B`". That is a procedure, not code. | Correction: the procedure is to invoke it as `python -B`; the script is unchanged. |
+
+19. Repairs for check 6 applied (2026-10-22), as planned in finding 18:
+    - **R6-M1:** `_discard_stdout()` duplicates `os.devnull` onto stdout's descriptor in the
+      uncaught-exception path. The new subprocess test closes the stdout reader and asserts exit 3
+      and one `SOURCE` stderr line. Without the repair it fails with exit 120; this was confirmed
+      by temporarily disabling the call.
+    - **R6-L1:** thesis design §9.10a is extended.
+    - **R6-N1:** corrected in finding 18.
+
+    Verification: the full suite gives 181 passed, 39 subtests (`verification-20261022-g.log`). The
+    admission record was rebuilt with `python -B` against `8b3d8c8e8` (`7cbaeff6c3d8…`), and the suite was
+    re-run after the rebuild. Next: focused independent check 7.
