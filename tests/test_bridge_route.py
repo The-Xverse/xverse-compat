@@ -11,7 +11,7 @@ from xverse_compat.adapters.bridge_samples import read_fixture
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "bridge-samples" / "ego-speed-hand-authored.jsonl"
 
-#: Values computed with the platform's xverse.flows.timebase.seconds_to_ns (candidate flows-lite 17d4b1c8a).
+#: Values computed with the platform's xverse.flows.timebase.seconds_to_ns; also compared live below (L6).
 PLATFORM_PINS = [(0, 0), (0.0, 0), (1, 1000000000), (1.0, 1000000000), (100.05, 100050000000), (100.1, 100100000000),
                  (2.5e-09, 2), (3.5e-09, 4), (123456.789012345, 123456789012345), (1e-09, 1)]
 
@@ -45,7 +45,46 @@ def test_v06_undeclared_key_is_refused_at_construction():
 
 @pytest.mark.parametrize("seconds, ns", PLATFORM_PINS)
 def test_seconds_to_ns_matches_the_platform_rule(seconds, ns):
-    assert seconds_to_ns(seconds) == ns
+    from xverse.flows import seconds_to_ns as platform_seconds_to_ns  # requires the Phase 6 platform (L6)
+
+    assert seconds_to_ns(seconds) == ns == platform_seconds_to_ns(seconds)
+
+
+def test_v06_adapter_items_through_the_platform_receiver_with_hand_computed_ages():
+    """M2: recorded samples -> adapter -> xverse.flows.FlowReceiver in the bridge-recorder-monotonic domain."""
+    from xverse.flows import FlowItem, FlowReceiver
+    from xverse.flows.binding import FlowBinding, FlowPolicy
+    from xverse.flows.timebase import TimeMapping
+
+    domain = "bridge-recorder-monotonic"
+    binding = FlowBinding("speed-flow", "bridge-out", "ecu-in", "speed", "ordered", FlowPolicy("fifo", "best-effort", 8, "reject", 0, 0),
+                          "best_effort", "per_route_fifo", "loopback", domain, domain, TimeMapping(domain, domain, 0, 0),
+                          freshness_ns=60_000_000, deadline_ns=80_000_000)
+
+    class Clock:
+        now = 0
+
+        def read(self, d):
+            assert d == domain
+            return self.now
+
+    clock = Clock()
+    receiver = FlowReceiver(binding, clock)
+    clock.now = 99_990_000_000  # route activation 10 ms before the first recorded sample
+    receiver.activate()
+    items = BridgeRouteAdapter("speed-flow", "ego_vehicle/speed").to_items(read_fixture(FIXTURE)).items
+    # Receiver readings: each recorded origin plus a 5 ms processing latency, except sample 3 at +70 ms.
+    readings = [100_005_000_000, 100_055_000_000, 100_170_000_000]
+    verdicts = []
+    for item, reading in zip(items, readings):
+        clock.now = reading
+        verdicts.append(receiver.receive(FlowItem(item["flowId"], item["sequence"], item["originNs"])))
+    assert [(v.sequence, v.age_ns, v.verdict) for v in verdicts] == [
+        (1, 5_000_000, "delivered"), (2, 5_000_000, "delivered"), (3, 70_000_000, "stale")]
+    clock.now = 100_300_000_000  # final reading: last delivery at 100.055 s, deadline 80 ms
+    receiver.poll()
+    # 100.300 > 100.055 + k*0.080 for k = 1, 2, 3 (100.135, 100.215, 100.295): three deadline events
+    assert receiver.deadline_missed_count == 3 and receiver.summary()["counts"]["stale"] == 1
 
 
 def test_seconds_to_ns_refusals():

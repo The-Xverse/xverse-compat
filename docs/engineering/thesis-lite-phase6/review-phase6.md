@@ -43,3 +43,10 @@ Specification (thesis `specs/027-lite-flow-runtime`): contract rule 16 (rev 8b),
    Repair: the test environment gets the candidate platform wheel. The V06 test then feeds the
    adapter's items through `xverse.flows.FlowReceiver` with hand-computed ages, a deadline check
    and a final poll, and the pins compare directly against `xverse.flows.seconds_to_ns`.
+
+4. Repairs (2026-10-22). M2: `test_v06_adapter_items_through_the_platform_receiver_with_hand_computed_ages`
+   (hand-computed ages and deadline events through `xverse.flows.FlowReceiver`). L6: the
+   `seconds_to_ns` pins are compared live with the platform function. The test environment is
+   `/dev/shm/compat-p6-venv`, which holds the candidate platform wheel. Result: 16/16
+   `test_bridge_route.py`. The full suite gives 90 passed and 1 failed (the content lock awaiting
+   the post-merge re-pin, finding 2).
