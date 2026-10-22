@@ -221,10 +221,14 @@ def test_review6_m1_broken_stdout_exits_3_with_one_stderr_line():
 
     from .support import ROOT
 
-    proc = subprocess.Popen(["env", "-i", "PATH=/usr/bin", "HOME=/nonexistent-carla-home", str(require_env()), "-s", "-m",
+    import os
+
+    read_end, write_end = os.pipe()
+    os.close(read_end)  # the platform side has gone away before the adapter writes anything (deterministic; check 7 L2)
+    proc = subprocess.Popen(["env", "-i", "PATH=/usr/bin", "HOME=/nonexistent-carla-home", str(require_env()), "-s", "-B", "-m",
                              "xverse_compat_carla.main", "--source", f"fake:{FIXTURES / 'nominal.json'}", "--descriptors", str(DESCRIPTORS)],
-                            cwd=ROOT / "src", stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    proc.stdout.close()  # the platform side has gone away before the adapter writes anything
+                            cwd=ROOT / "src", stdin=subprocess.PIPE, stdout=write_end, stderr=subprocess.PIPE)
+    os.close(write_end)
     try:
         proc.stdin.write(b'{"type":"start"}\n{"type":"tick"}\n')
         proc.stdin.close()

@@ -409,3 +409,30 @@ log edit is committed immediately.
 
     These changes touch only tests and the thesis design text. No adapter or client code changes
     after this PASS.
+
+21. Check-7 dispositions applied and acceptance decision (2026-10-22), recorded before the merge.
+    - **R7-L1:** the thesis §9.10a wording is corrected.
+    - **R7-L2:** the R6-M1 test uses a pre-closed `os.pipe()`.
+    - **R7-N1:** the test launches use `-B`.
+    - The suite gives 181 passed. No adapter or client code changed after check 7.
+
+    **Decision: ACCEPTED (Phase 4b, P4b-T01–T06).** It rests on:
+    - implementation review 4 PASS and checks 5 and 7 PASS (findings 14, 16, 20); review 1, review
+      2, review 3 and check 6 failed, and each was repaired (findings 7–13, 18–19);
+    - no open HIGH or MEDIUM finding;
+    - V01–V07 passing on owned fakes, with the owner suite run against the installed platform
+      wheel equal to main `8b3d8c8e8`.
+
+    Basis: the author's goal of 2026-10-22 (accept, merge and push after independent review)
+    together with delegated decisions DLG-1 and DLG-2. Phase 4b changes only `xverse-compat`, so
+    no platform full run and no DV12 gate applies.
+
+    Limits:
+    - live behaviour is unverified: `LiveSource` is a declared-unverified skeleton, and live
+      ground-truth export is refused;
+    - CARLA, the bridge and zenohd were never executed;
+    - `brakeStatus` and `wheelSpeedEscStatus` stay blocked (G2);
+    - G3 and G6 stay open until Phase 7;
+    - execution authority is absent;
+    - the five REF-002 parents receive bounded partial contributions only;
+    - no scientific claim is made.

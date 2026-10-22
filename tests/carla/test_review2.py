@@ -32,7 +32,7 @@ def _item(flow, value):
 
 def _adapter(args, stdin=b""):
     python = require_env()
-    return subprocess.run(["env", "-i", "PATH=/usr/bin", "HOME=/nonexistent-carla-home", str(python), "-s", "-m", "xverse_compat_carla.main",
+    return subprocess.run(["env", "-i", "PATH=/usr/bin", "HOME=/nonexistent-carla-home", str(python), "-s", "-B", "-m", "xverse_compat_carla.main",
                            *args], cwd=ROOT / "src", input=stdin, capture_output=True, timeout=60)
 
 
