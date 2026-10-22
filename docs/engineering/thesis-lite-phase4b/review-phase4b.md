@@ -368,3 +368,18 @@ log edit is committed immediately.
     Thesis design §9.10a is extended accordingly. Verification: the full suite gives 180 passed,
     39 subtests (`verification-20261022-f.log`). The admission record was rebuilt against
     `8b3d8c8e8` (`35a2c24c0919…`), and the suite was re-run after the rebuild.
+
+18. Independent check 6 of the check-5 repair diff (2026-10-22, `d200f53..111b6aa`): **FAIL**, with
+    one MEDIUM finding (recorded before repair). The reviewer confirmed:
+    - the source is closed once on every path, and `KeyboardInterrupt` and `SystemExit` still
+      propagate;
+    - the exporter type check;
+    - that the new tests exercise their behaviour;
+    - `verify_admission_record` (`35a2c24c…`);
+    - the suite: 180 passed.
+
+    | # | Sev | Finding | Planned repair |
+    | --- | --- | --- | --- |
+    | R6-M1 | MEDIUM | A broken stdout makes the real adapter process exit 120 with three stderr lines: the failed write stays buffered, and the interpreter's shutdown flush fails again. The R5-N1 test patched `run` in process, so it could not see this. | In that path, `dup2` `os.devnull` onto stdout's descriptor before returning 3. Add a subprocess test with the stdout reader closed, asserting exit 3 and one stderr line. |
+    | R6-L1 | LOW | After `run` returns 3 with a `SOURCE` line, a close failure adds a second line. Rule 5 allows this, but it is undocumented. | §9.10a states that the single-line rule binds exit 2, and that exit 3 may carry a close line. |
+    | R6-N1 | nit | Finding 17 says `admit_phase4.py` "now runs with `-B`". That is a procedure, not code. | Correction: the procedure is to invoke it as `python -B`; the script is unchanged. |
