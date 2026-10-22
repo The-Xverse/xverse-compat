@@ -50,3 +50,16 @@ Specification (thesis `specs/027-lite-flow-runtime`): contract rule 16 (rev 8b),
    `/dev/shm/compat-p6-venv`, which holds the candidate platform wheel. Result: 16/16
    `test_bridge_route.py`. The full suite gives 90 passed and 1 failed (the content lock awaiting
    the post-merge re-pin, finding 2).
+
+5. Re-pin after the platform Phase 6 merge (2026-10-22). Platform main is now `8b3d8c8e8` (Phase 6
+   accepted and pushed, platform finding 15). The content lock still pins `744b66f9c`
+   (`def80396…`), so `test_platform_dependency_source_matches_content_lock` fails, as recorded in
+   finding 2.
+
+   Planned repair, following the Phase 4 practice:
+   1. Run `scripts/admit_phase4.py --platform-main 8b3d8c8e8` with an interim log; this rebuilds the
+      admission record and re-pins `platform-api.lock.json`.
+   2. Run the full owner suite.
+   3. Rebuild the record with the passing log and the review and acceptance fields.
+
+   Nothing in the platform or in any legacy repository is executed.
