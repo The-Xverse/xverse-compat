@@ -23,6 +23,7 @@ REQUIRED_STREAMS: frozenset[str] = frozenset({
 DISPOSITIONS: frozenset[str] = frozenset({"supplied", "adapter", "blocked"})
 AVAILABILITY: frozenset[str] = frozenset({"present", "NOT_AVAILABLE"})
 _COMMIT_REF = re.compile(r"@[0-9a-f]{40}$")
+_URI = re.compile(r"^[a-z][a-z0-9+.-]*:")
 _DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 _GAP = re.compile(r"^G[0-9]+$")
 
@@ -131,7 +132,10 @@ def _pin(raw: Mapping[str, Any]) -> ArtifactPin:
         if not isinstance(digest, str) or not _DIGEST.match(digest):
             raise SelectionError(f"{code}-DIGEST", f"pin {pin_id!r} needs a sha256:<64 hex> digest")
         _string(raw.get("digestCommand"), f"{code}-DIGEST-COMMAND", f"pin {pin_id!r} digestCommand")
-        if not _COMMIT_REF.search(source_ref) and not raw.get("releaseArtifact"):
+        release = raw.get("releaseArtifact", False)
+        if release is not False and release is not True:
+            raise SelectionError(f"{code}-RELEASE", f"pin {pin_id!r} releaseArtifact must be a JSON boolean")
+        if not _COMMIT_REF.search(source_ref) and release is not True:
             raise SelectionError(f"{code}-FLOATING", f"pin {pin_id!r} sourceRef names no 40-hex commit and no release artifact")
     else:
         if digest is not None:
@@ -139,6 +143,11 @@ def _pin(raw: Mapping[str, Any]) -> ArtifactPin:
         _string(raw.get("reason"), f"{code}-REASON", f"pin {pin_id!r} reason")
     if _COMMIT_REF.search(source_ref) is None and "@" in source_ref:
         raise SelectionError(f"{code}-FLOATING", f"pin {pin_id!r} sourceRef revision is not a 40-hex commit")
+    if not _URI.match(source_ref):
+        raise SelectionError(f"{code}-SOURCE", f"pin {pin_id!r} sourceRef is not a URI (scheme required)")
+    local_path = raw.get("localPath")
+    if local_path is not None and (not isinstance(local_path, str) or not local_path.startswith("/") or "/../" in local_path or local_path.endswith("/..")):
+        raise SelectionError(f"{code}-LOCAL-PATH", f"pin {pin_id!r} localPath must be absolute without parent traversal")
     return ArtifactPin(
         id=pin_id,
         artifact_kind=_string(raw.get("artifactKind"), code, f"pin {pin_id!r} artifactKind"),
@@ -268,7 +277,7 @@ def verify_pins(record: ArtifactSelectionRecord, root: Path = Path("/")) -> dict
         if pin.availability != "present" or not pin.local_path or not pin.digest:
             results[pin.id] = "unpinned"
             continue
-        target = Path(root) / Path(pin.local_path).relative_to("/") if Path(pin.local_path).is_absolute() else Path(root) / pin.local_path
+        target = Path(root) / Path(pin.local_path).relative_to("/")
         try:
             results[pin.id] = "match" if sha256_of(target) == pin.digest else "mismatch"
         except OSError:

@@ -56,7 +56,7 @@ class AdmissionTests(unittest.TestCase):
         """U-ADM-01."""
 
         data = self._build()
-        verified = verify_admission_record(self.output, PLATFORM)
+        verified = verify_admission_record(self.output, PLATFORM, expected_revision=REVISIONS.platform_main)
         self.assertEqual(verified["selectionRecord"], data["selectionRecord"])
         self.assertTrue(data["descriptors"]) and self.assertTrue(data["fixtures"])
         for pin in data["pins"]:
@@ -108,6 +108,26 @@ class AdmissionTests(unittest.TestCase):
         with self.assertRaises(AdmissionError) as caught:
             verify_admission_record(self.output, PLATFORM)
         self.assertEqual(caught.exception.code, "XVERSE-COMPAT-ADMISSION-AUTHORITY")
+        self.output.write_text(json.dumps(raw), encoding="utf-8")
+        with self.assertRaises(AdmissionError) as caught:
+            verify_admission_record(self.output, PLATFORM, expected_revision="0" * 40)
+        self.assertEqual(caught.exception.code, "XVERSE-COMPAT-ADMISSION-REVISION")
+        lock_data = json.loads(self.lock.read_text(encoding="utf-8"))
+        self.lock.write_text(json.dumps(dict(lock_data, extraKey=True)), encoding="utf-8")
+        with self.assertRaises(AdmissionError) as caught:
+            verify_admission_record(self.output, PLATFORM)
+        self.assertEqual(caught.exception.code, "XVERSE-COMPAT-ADMISSION-LOCK")
+        self.lock.write_text(json.dumps(lock_data), encoding="utf-8")
+        self.log.write_text("tampered\n", encoding="utf-8")
+        with self.assertRaises(AdmissionError) as caught:
+            verify_admission_record(self.output, PLATFORM)
+        self.assertEqual(caught.exception.code, "XVERSE-COMPAT-ADMISSION-FILE")
+        self.log.write_text("69 passed, 1 failed\n", encoding="utf-8")
+        altered = dict(raw, plans=[dict(raw["plans"][0], digest="sha256:" + "0" * 64)] + list(raw["plans"][1:]))
+        self.output.write_text(json.dumps(altered), encoding="utf-8")
+        with self.assertRaises(AdmissionError) as caught:
+            verify_admission_record(self.output, PLATFORM)
+        self.assertEqual(caught.exception.code, "XVERSE-COMPAT-ADMISSION-PLAN")
         with tempfile.TemporaryDirectory() as other:
             fake = Path(other) / "xverse-platform"
             shutil.copytree(PLATFORM / "xdl", fake / "xdl")

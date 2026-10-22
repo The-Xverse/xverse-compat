@@ -146,6 +146,23 @@ class SelectionRecordTests(unittest.TestCase):
             self._load_mutated(mutate)
         self.assertEqual(caught.exception.code, "XVERSE-COMPAT-SELECTION-PIN-DIGEST")
 
+    def test_u_sel_10b_release_flag_uri_and_local_path(self) -> None:
+        """LOW repairs: releaseArtifact must be boolean; sourceRef needs a scheme; localPath absolute."""
+
+        def release_string(raw: dict) -> None:
+            raw["pins"][0]["releaseArtifact"] = "no"
+
+        def no_scheme(raw: dict) -> None:
+            raw["pins"][0]["sourceRef"] = "tiny.carla.org/carla-0-9-15-linux"
+
+        def relative_path(raw: dict) -> None:
+            raw["pins"][0]["localPath"] = "carla-simulator/CarlaUE4.sh"
+
+        for mutate, expected in ((release_string, "XVERSE-COMPAT-SELECTION-PIN-RELEASE"), (no_scheme, "XVERSE-COMPAT-SELECTION-PIN-SOURCE"), (relative_path, "XVERSE-COMPAT-SELECTION-PIN-LOCAL-PATH")):
+            with self.subTest(expected=expected), self.assertRaises(SelectionError) as caught:
+                self._load_mutated(mutate)
+            self.assertEqual(caught.exception.code, expected)
+
     def test_u_sel_11_digest_recomputation_on_owned_files(self) -> None:
         """U-SEL-11."""
 

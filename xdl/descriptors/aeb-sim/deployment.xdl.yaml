@@ -7,7 +7,7 @@ metadata:
   description: Fail-closed descriptors for the selected CARLA server and bridge example on the development host.
   provenance:
     source: distributed_safety_critical_thesis/specs/003-thesis-lite-artifact-adapters
-    revision: inventory-20261022-rev4
+    revision: inventory-20261022-rev6
     maturity: architectural-target
     limitations:
       - No selected artifact has been executed under these descriptors; readiness conditions are declared, not measured.

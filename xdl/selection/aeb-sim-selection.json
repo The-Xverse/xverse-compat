@@ -2,7 +2,7 @@
   "recordVersion": "0.1.0",
   "aebSource": "distributed_safety_critical_thesis notes/dynamic_thesis_notes.md Note 21, AEB-EXPERIMENT-2026-08-30-v2",
   "platformRevision": "744b66f9c",
-  "inventory": "distributed_safety_critical_thesis/specs/003-thesis-lite-artifact-adapters/review/artifact-inventory-20261022.json (revision 4)",
+  "inventory": "distributed_safety_critical_thesis/specs/003-thesis-lite-artifact-adapters/review/artifact-inventory-20261022.json (revision 6)",
   "pins": [
     {
       "id": "carla-server",
@@ -31,7 +31,7 @@
       "digest": "sha256:37b6b6be6ac843475bcddd9f2139d6f265e42aaa30d7f295f8d586022bce62ed",
       "digestCommand": "sha256sum /home/jefferson/carla-simulator-bridge/examples/automatic_control_zenoh.py",
       "localPath": "/home/jefferson/carla-simulator-bridge/examples/automatic_control_zenoh.py",
-      "license": "Apache-2.0 (file header)",
+      "license": "MIT (file header, Intel Labs 2018)",
       "classification": "public-safe",
       "toolchain": "CPython with carla==0.9.15, pygame, numpy, shapely, networkx, eclipse-zenoh; interpreter decided by D4-1",
       "limitations": [
@@ -51,19 +51,92 @@
       "license": "MIT (CARLA)",
       "classification": "public-safe",
       "toolchain": "CPython 3.7 only",
-      "limitations": ["required by the bridge example and by every owned adapter on CARLA RPC"]
+      "limitations": [
+        "required by the bridge example and by every owned adapter on CARLA RPC"
+      ]
     }
   ],
-  "adapters": ["adapter-carla-rpc"],
+  "adapters": [
+    "adapter-carla-rpc"
+  ],
   "streams": [
-    {"stream": "vehicleSpeed", "disposition": "supplied", "supplier": "bridge-auto", "interface": "zenoh key ego_vehicle/speed, payload f\"{int(3.6*|v|)}\" (automatic_control_zenoh.py:285,300-304,742)", "dependsOn": ["carla-server", "carla-python-client"]},
-    {"stream": "brakeStatus", "disposition": "blocked", "blocker": "G2", "interface": "vehicle/status/braking_status is published by manual_control_zenoh.py only under keyboard input (line 682); not selected for unattended use"},
-    {"stream": "brakeActuation", "disposition": "adapter", "supplier": "adapter-carla-rpc", "blocker": "G1", "interface": "carla.Vehicle.apply_control over the CARLA RPC port", "dependsOn": ["carla-server", "carla-python-client"]},
-    {"stream": "wheelSpeedEscStatus", "disposition": "blocked", "blocker": "G2", "interface": "not published by any selected artifact"},
-    {"stream": "camera", "disposition": "adapter", "supplier": "adapter-carla-rpc", "blocker": "G1", "interface": "sensor.camera.rgb over the CARLA RPC port", "dependsOn": ["carla-server", "carla-python-client"]},
-    {"stream": "radar", "disposition": "adapter", "supplier": "adapter-carla-rpc", "blocker": "G1", "interface": "sensor.other.radar over the CARLA RPC port", "dependsOn": ["carla-server", "carla-python-client"]},
-    {"stream": "groundTruth", "disposition": "adapter", "supplier": "adapter-carla-rpc", "blocker": "G1", "interface": "actor transforms/velocities over the CARLA RPC port; offline export only (DYN-002)", "dependsOn": ["carla-server", "carla-python-client"]},
-    {"stream": "scenarioControl", "disposition": "adapter", "supplier": "adapter-carla-rpc", "blocker": "G1", "interface": "world settings (synchronous mode, fixed delta), map, spawn, seed over the CARLA RPC port", "dependsOn": ["carla-server", "carla-python-client"]}
+    {
+      "stream": "vehicleSpeed",
+      "disposition": "supplied",
+      "supplier": "bridge-auto",
+      "interface": "zenoh key ego_vehicle/speed, payload f\"{int(3.6*|v|)}\" (automatic_control_zenoh.py:285,300-304,742)",
+      "dependsOn": [
+        "carla-server",
+        "carla-python-client"
+      ]
+    },
+    {
+      "stream": "brakeStatus",
+      "disposition": "blocked",
+      "blocker": "G2",
+      "interface": "vehicle/status/braking_status is published by manual_control_zenoh.py only under keyboard input (line 682); not selected for unattended use"
+    },
+    {
+      "stream": "brakeActuation",
+      "disposition": "adapter",
+      "supplier": "adapter-carla-rpc",
+      "blocker": "G1",
+      "interface": "carla.Vehicle.apply_control over the CARLA RPC port",
+      "dependsOn": [
+        "carla-server",
+        "carla-python-client"
+      ]
+    },
+    {
+      "stream": "wheelSpeedEscStatus",
+      "disposition": "blocked",
+      "blocker": "G2",
+      "interface": "not published by any selected artifact"
+    },
+    {
+      "stream": "camera",
+      "disposition": "adapter",
+      "supplier": "adapter-carla-rpc",
+      "blocker": "G1",
+      "interface": "sensor.camera.rgb over the CARLA RPC port",
+      "dependsOn": [
+        "carla-server",
+        "carla-python-client"
+      ]
+    },
+    {
+      "stream": "radar",
+      "disposition": "adapter",
+      "supplier": "adapter-carla-rpc",
+      "blocker": "G1",
+      "interface": "sensor.other.radar over the CARLA RPC port",
+      "dependsOn": [
+        "carla-server",
+        "carla-python-client"
+      ]
+    },
+    {
+      "stream": "groundTruth",
+      "disposition": "adapter",
+      "supplier": "adapter-carla-rpc",
+      "blocker": "G1",
+      "interface": "actor transforms/velocities over the CARLA RPC port; offline export only (DYN-002)",
+      "dependsOn": [
+        "carla-server",
+        "carla-python-client"
+      ]
+    },
+    {
+      "stream": "scenarioControl",
+      "disposition": "adapter",
+      "supplier": "adapter-carla-rpc",
+      "blocker": "G1",
+      "interface": "world settings (synchronous mode, fixed delta), map, spawn, seed over the CARLA RPC port",
+      "dependsOn": [
+        "carla-server",
+        "carla-python-client"
+      ]
+    }
   ],
   "notSelected": [
     "examples/zenoh_vehicle.py (dead code at eef3f717; no example imports it)",

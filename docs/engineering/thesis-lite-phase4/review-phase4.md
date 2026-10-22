@@ -119,3 +119,35 @@ read-only throughout; no selected artifact is executed in this phase.
     tree). `scripts/admit_phase4.py` reads the revisions with read-only `git rev-parse` and
     refuses a platform checkout whose HEAD is not the named main. Documentation validation passed.
     Next: independent read-only review of the whole candidate (P4-T07), then the acceptance package.
+
+11. Implementation review 1 (2026-10-22, independent read-only): FAIL, no HIGH, four MEDIUM; all
+    verified against the artifacts before repair. (M1) the bridge example's license was recorded
+    as Apache-2.0; its header is MIT (Intel Labs 2018; only the unselected zenoh_vehicle.py is
+    Apache-2.0): corrected in the thesis inventory (revision 6, re-vendored), research.md and the
+    pin. (M2) `verify_admission_record` was weaker than its docstring and finding 10 claimed: it
+    now recomputes the verification-log hash, compares the on-disk `platform-api.lock.json` with
+    the admitted lock (exact key set and values, so the added `platformRevision` key is no longer
+    accepted silently), re-derives every descriptor plan and compares digests and blockers, and
+    checks the platform revision when the caller names it; the admission script also refuses a
+    platform checkout with uncommitted changes in the pinned surface; U-ADM-04 gained the
+    wrong-revision, tampered-lock, tampered-log and altered-plan negatives. (M3) record and log
+    inconsistencies: the record had been built twice so the superseded 22-file pin was lost; the
+    record is rebuilt from the original lock and keeps the superseded pin across rebuilds
+    (`previousPlatformLock` 22 files, 7d730f85…); G5 is "repaired in the candidate, closes on
+    acceptance and merge", not closed, and the record keeps `XVERSE-PLAN-THESIS-G5` and C-15 as
+    mismatch with that wording; finding 9's counts were wrong: the table has 9 verified, 3
+    NOT_VERIFIED, 3 mismatch; the selection record and descriptors now cite inventory revision 6.
+    (M4) owned rules narrower than the contract: `XVERSE-PLAN-THESIS-UNEXECUTED` is now required
+    on every binding and plan; a `path:line` evidence reference is accepted only when the
+    inventory hashes that file (`cited_files`, seven files added); the duration pattern covers
+    singular units, number words, "after", "elapsed" and "timer". LOW items repaired:
+    `releaseArtifact` must be a JSON boolean, `sourceRef` needs a URI scheme, `localPath` must be
+    absolute without traversal, `release:` revisions need a digit, bound artifacts' `sourceRef`
+    must equal the pin's, payloads over 32 chars and non-finite or future reception times are
+    diagnostics. Wording corrected: `/usr/bin/python3.10` is where the recipe's `python3`
+    resolves on this host, an inference, not recipe text. Not repaired (recorded): C-09 is a
+    universal negative evidenced by the two files that contain subscribers; the platform
+    in-memory lifecycle fixture is not exercised with the Phase 4 plans (FR-007 fixtures are the
+    owned samples and descriptors). Result after repair: run A (original lock) 75 passed /
+    1 failed (content lock), run B (re-pinned) 76 passed; record verified with expected revision.
+    Second implementation review requested.

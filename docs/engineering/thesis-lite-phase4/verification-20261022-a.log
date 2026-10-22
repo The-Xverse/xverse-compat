@@ -1,5 +1,5 @@
-.....................................F.. [ 54%]
-..................................                                       [100%]
+................................... [ 46%]
+...F.....................................                             [100%]
 =================================== FAILURES ===================================
 _ ProviderConformanceTests.test_platform_dependency_source_matches_content_lock _
 
@@ -41,4 +41,4 @@ E           xverse_compat.platform_pin.PlatformPinError: platform package file s
 src/xverse_compat/platform_pin.py:61: PlatformPinError
 =========================== short test summary info ============================
 FAILED tests/test_provider_conformance.py::ProviderConformanceTests::test_platform_dependency_source_matches_content_lock
-1 failed, 73 passed, 32 subtests passed in 7.31s
+1 failed, 75 passed, 40 subtests passed in 8.49s

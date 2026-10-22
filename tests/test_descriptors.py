@@ -87,6 +87,11 @@ class DescriptorTests(unittest.TestCase):
         cases = (
             ("owned revision", "component-bridge-auto.xdl.yaml", "revision: eef3f71747220d150c0b99c30194ca197fe339f9", "revision: main", "XVERSE-COMPAT-DESCRIPTOR-REVISION"),
             ("owned readiness duration", "deployment.xdl.yaml", "condition: a sample is published on the zenoh key ego_vehicle/speed", "condition: wait 10 s", "XVERSE-COMPAT-DESCRIPTOR-READINESS-DURATION"),
+            ("owned readiness duration words", "deployment.xdl.yaml", "condition: a sample is published on the zenoh key ego_vehicle/speed", "condition: ready after one second", "XVERSE-COMPAT-DESCRIPTOR-READINESS-DURATION"),
+            ("owned readiness timer", "deployment.xdl.yaml", "condition: CARLA RPC server answers a version query on tcp port 2000", "condition: the startup timer expires", "XVERSE-COMPAT-DESCRIPTOR-READINESS-DURATION"),
+            ("owned missing UNEXECUTED", "deployment.xdl.yaml", "            - XVERSE-PLAN-THESIS-G3\n            - XVERSE-PLAN-THESIS-UNEXECUTED\n", "            - XVERSE-PLAN-THESIS-G3\n", "XVERSE-COMPAT-DESCRIPTOR-BLOCKER"),
+            ("owned artifact sourceRef differs from pin", "deployment.xdl.yaml", "      sourceRef: https://github.com/The-Xverse/carla-simulator-bridge.git@eef3f71747220d150c0b99c30194ca197fe339f9\n      maturity: observed", "      sourceRef: https://github.com/The-Xverse/carla-simulator-bridge.git@main\n      maturity: observed", "XVERSE-COMPAT-DESCRIPTOR-ARTIFACT-SOURCE"),
+            ("owned release:latest revision", "component-carla-server.xdl.yaml", "revision: release:0.9.15", "revision: release:latest", "XVERSE-COMPAT-DESCRIPTOR-REVISION"),
             ("owned dependency", "deployment.xdl.yaml", "          - carla-server-binding\n", "          - zenoh-router-binding\n", "XVERSE-COMPAT-DESCRIPTOR-DEPENDENCY"),
             ("owned blocker", "deployment.xdl.yaml", "            - XVERSE-PLAN-THESIS-G1\n", "", "XVERSE-COMPAT-DESCRIPTOR-BLOCKER"),
             ("owned stream trace", "deployment.xdl.yaml", "          - vehicleSpeed\n", "          - camera\n", "XVERSE-COMPAT-DESCRIPTOR-STREAM-TRACE"),

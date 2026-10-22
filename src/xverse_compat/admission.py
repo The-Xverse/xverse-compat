@@ -121,6 +121,12 @@ def build_admission_record(
     except OSError as error:
         raise AdmissionError(f"{code}-PLATFORM", "platform source surface is unreadable") from error
     previous_lock = json.loads(Path(lock_path).read_text(encoding="utf-8")) if Path(lock_path).is_file() else None
+    if previous_lock is not None and previous_lock.get("treeSha256") == surface and Path(output).is_file():
+        # Rebuilding against an already re-pinned lock: keep the superseded pin recorded last time.
+        try:
+            previous_lock = json.loads(Path(output).read_text(encoding="utf-8")).get("previousPlatformLock")
+        except (OSError, ValueError):
+            previous_lock = None
     blockers = sorted({item for plan in descriptors.plans for item in plan.blockers} | {f"XVERSE-PLAN-THESIS-{s.gap}" for s in statements if s.gap})
     entries = {entry.binding_id: entry.identity for entry in descriptors.entries}
     data: dict[str, Any] = {
@@ -183,13 +189,24 @@ def build_admission_record(
     return data
 
 
-def verify_admission_record(record_path: Path, platform_root: Path) -> dict[str, Any]:
-    """Recompute every hash in a record and compare it with the current files; fail closed.
+_LOCK_KEYS = frozenset({"algorithm", "fileCount", "includedRoots", "package", "packageVersion", "sourceKind", "treeSha256", "platformRevision"})
+
+
+def verify_admission_record(record_path: Path, platform_root: Path, *, expected_revision: str | None = None) -> dict[str, Any]:
+    """Recompute the record's bindings against the current files and fail closed on any difference.
+
+    Checked: the platform source surface and the ``xdl/schemas``/``xdl/profiles`` trees; every listed
+    file hash (selection record, contracts, inventory, descriptors, fixtures, verification log);
+    the on-disk ``platform-api.lock.json`` against the record's lock (exact key set and values);
+    the re-derived descriptor plans (digests and blockers); execution authority; and, when
+    ``expected_revision`` is given, the platform revision string. Not checked here: that the
+    platform checkout's HEAD is that revision (the admission script checks it with ``git``).
 
     @param record_path The admission record.
     @param platform_root The platform checkout the record claims to be bound to.
+    @param expected_revision Full commit id the record must name as platform main, if known.
     @return The parsed record when every binding holds.
-    @raises AdmissionError ``-READ``, ``-PLATFORM``, ``-FILE`` or ``-AUTHORITY`` on any difference.
+    @raises AdmissionError ``-READ``, ``-PLATFORM``, ``-REVISION``, ``-FILE``, ``-LOCK``, ``-PLAN`` or ``-AUTHORITY``.
     """
 
     code = "XVERSE-COMPAT-ADMISSION"
@@ -207,17 +224,39 @@ def verify_admission_record(record_path: Path, platform_root: Path) -> dict[str,
         count, digest = tree_digest(Path(platform_root), relative)
         if (count, digest) != (platform.get(root_key, {}).get("fileCount"), platform.get(root_key, {}).get("sha256")):
             raise AdmissionError(f"{code}-PLATFORM", f"{relative} tree differs from the admitted one")
+    if expected_revision is not None and platform.get("revision") != expected_revision:
+        raise AdmissionError(f"{code}-REVISION", "admitted platform revision differs from the expected one")
     entries: list[Mapping[str, Any]] = [data.get("selectionRecord", {}), data.get("contracts", {}), data.get("inventory", {})]
     entries += list(data.get("descriptors", ())) + list(data.get("fixtures", ()))
+    verification = data.get("verification", {})
+    entries.append({"path": verification.get("logPath", ""), "sha256": verification.get("logSha256")})
     for item in entries:
-        path = ROOT / str(item.get("path", ""))
+        raw_path = str(item.get("path", ""))
+        path = Path(raw_path) if raw_path.startswith("/") else ROOT / raw_path
         try:
             actual = sha256_of(path).split(":", 1)[1]
         except OSError as error:
-            raise AdmissionError(f"{code}-FILE", f"admitted file missing: {item.get('path')}") from error
+            raise AdmissionError(f"{code}-FILE", f"admitted file missing: {raw_path}") from error
         if actual != item.get("sha256"):
-            raise AdmissionError(f"{code}-FILE", f"admitted file changed: {item.get('path')}")
-    lock = data.get("platformLock", {})
-    if lock.get("treeSha256") != surface:
-        raise AdmissionError(f"{code}-PLATFORM", "platform lock in the record does not match the platform surface")
+            raise AdmissionError(f"{code}-FILE", f"admitted file changed: {raw_path}")
+    lock = dict(data.get("platformLock", {}))
+    lock_path_value = str(lock.pop("path", ""))
+    lock_file = Path(lock_path_value) if lock_path_value.startswith("/") else ROOT / lock_path_value
+    try:
+        on_disk = json.loads(lock_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise AdmissionError(f"{code}-LOCK", "platform lock file unreadable") from error
+    if set(on_disk) != _LOCK_KEYS or on_disk != lock:
+        raise AdmissionError(f"{code}-LOCK", "on-disk platform lock differs from the admitted lock")
+    if lock.get("treeSha256") != surface or lock.get("fileCount") != file_count or lock.get("platformRevision") != platform.get("revision"):
+        raise AdmissionError(f"{code}-PLATFORM", "platform lock in the record does not match the platform surface or revision")
+    record = load_selection_record(SELECTION)
+    plans = {plan.catalog_identity: plan for plan in admit_descriptors(record, platform_root=platform_root).plans}
+    recorded = {str(item.get("catalogIdentity")): item for item in data.get("plans", ())}
+    if set(plans) != set(recorded):
+        raise AdmissionError(f"{code}-PLAN", "set of descriptor plans differs from the admitted one")
+    for identity, plan in plans.items():
+        item = recorded[identity]
+        if item.get("digest") != plan.digest or list(item.get("blockers", ())) != list(plan.blockers):
+            raise AdmissionError(f"{code}-PLAN", f"plan {identity} digest or blockers differ from the admitted ones")
     return data

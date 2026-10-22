@@ -48,8 +48,8 @@ class ContractStatement:
     gap: str | None = None
 
 
-def _check_evidence(reference: str, inventory_text: str, statement_id: str) -> None:
-    """Accept a ``path:line`` reference or a hash that appears in the inventory."""
+def _check_evidence(reference: str, inventory_text: str, cited_files: Mapping[str, str], statement_id: str) -> None:
+    """Accept a hash present in the inventory, or a ``path:line`` whose path the inventory hashes."""
 
     if _HASH_REF.match(reference):
         digest = reference.split(":", 1)[1]
@@ -57,7 +57,10 @@ def _check_evidence(reference: str, inventory_text: str, statement_id: str) -> N
             return
         raise ContractError("XVERSE-COMPAT-CONTRACT-EVIDENCE", f"statement {statement_id} cites a hash absent from the inventory")
     if _LINE_REF.match(reference):
-        return
+        path = reference.rsplit(":", 1)[0]
+        if path in cited_files:
+            return
+        raise ContractError("XVERSE-COMPAT-CONTRACT-EVIDENCE", f"statement {statement_id} cites a file the inventory does not hash")
     raise ContractError("XVERSE-COMPAT-CONTRACT-EVIDENCE", f"statement {statement_id} evidence is neither an absolute path:line nor an inventory hash")
 
 
@@ -78,6 +81,13 @@ def load_contract_table(path: Path, inventory_path: Path) -> tuple[ContractState
         raise ContractError(f"{code}-READ", "contract table or inventory is unreadable or not JSON") from error
     if not isinstance(raw, Mapping):
         raise ContractError(f"{code}-READ", "contract table is not a JSON object")
+    try:
+        inventory = json.loads(inventory_text)
+    except ValueError as error:
+        raise ContractError(f"{code}-READ", "inventory is not JSON") from error
+    cited_files = inventory.get("cited_files") if isinstance(inventory, Mapping) else None
+    if not isinstance(cited_files, Mapping) or not all(isinstance(v, str) and len(v) == 64 for v in cited_files.values()):
+        raise ContractError(f"{code}-READ", "inventory lacks a cited_files map of path to sha256")
     statements: list[ContractStatement] = []
     seen: set[str] = set()
     for item in raw.get("statements") or ():
@@ -95,7 +105,7 @@ def load_contract_table(path: Path, inventory_path: Path) -> tuple[ContractState
             if not evidence:
                 raise ContractError(f"{code}-EVIDENCE", f"verified statement {statement_id} cites no evidence")
             for reference in evidence:
-                _check_evidence(reference, inventory_text, statement_id)
+                _check_evidence(reference, inventory_text, cited_files, statement_id)
         blocker = item.get("blocker")
         gap = item.get("gap")
         if status != "verified" and not blocker:

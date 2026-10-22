@@ -65,6 +65,12 @@ class ContractTableTests(unittest.TestCase):
             with self.assertRaises(ContractError) as caught:
                 load_contract_table(path, INVENTORY)
             self.assertEqual(caught.exception.code, "XVERSE-COMPAT-CONTRACT-BLOCKER")
+            altered = copy.deepcopy(raw)
+            altered["statements"][0]["evidence"] = ["/nonexistent/file.py:1"]
+            path.write_text(json.dumps(altered), encoding="utf-8")
+            with self.assertRaises(ContractError) as caught:
+                load_contract_table(path, INVENTORY)
+            self.assertEqual(caught.exception.code, "XVERSE-COMPAT-CONTRACT-EVIDENCE")
 
 
 class BridgeSampleAdapterTests(unittest.TestCase):
@@ -130,6 +136,19 @@ class BridgeSampleAdapterTests(unittest.TestCase):
         with self.assertRaises(SampleDiagnostic) as caught:
             BridgeSampleDecoder().decode(self._sample(sequence="7"))
         self.assertEqual(caught.exception.code, "XVERSE-COMPAT-SAMPLE-SHAPE")
+
+    def test_u_adp_06b_long_payload_and_bad_times(self) -> None:
+        """LOW repairs: oversized payloads and non-finite or future reception times are diagnostics."""
+
+        with self.assertRaises(SampleDiagnostic) as caught:
+            BridgeSampleDecoder().decode(self._sample(payload="9" * 400))
+        self.assertEqual(caught.exception.code, "XVERSE-COMPAT-SAMPLE-MALFORMED")
+        with self.assertRaises(SampleDiagnostic) as caught:
+            BridgeSampleDecoder().decode(self._sample(receivedMonotonicS=float("nan")))
+        self.assertEqual(caught.exception.code, "XVERSE-COMPAT-SAMPLE-TIME")
+        with self.assertRaises(SampleDiagnostic) as caught:
+            BridgeSampleDecoder(DecoderPolicy(now_monotonic_s=50.0)).decode(self._sample(receivedMonotonicS=100.0))
+        self.assertEqual(caught.exception.code, "XVERSE-COMPAT-SAMPLE-TIME")
 
     def test_u_adp_07_status_decoders_for_the_attended_case(self) -> None:
         """U-ADP-07."""

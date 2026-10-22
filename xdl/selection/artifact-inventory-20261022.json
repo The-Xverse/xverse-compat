@@ -96,7 +96,7 @@
         "actuation_applied_from_zenoh_by_any_example": false
       },
       "client_dependencies": "pygame numpy shapely networkx carla==0.9.15",
-      "license": "Apache-2.0 (file headers)",
+      "license": "MIT (file header of automatic_control_zenoh.py, Intel Labs 2018); zenoh_vehicle.py carries Apache-2.0 (not selected)",
       "dirty_file": "examples/manual_control_steeringwheel_zenoh.py (not selected)",
       "runtime_dependencies": {
         "display": "pygame.display.set_mode in automatic_control_zenoh.py:738 and manual_control_zenoh.py:1311; SDL_VIDEODRIVER=dummy for headless use",
@@ -176,7 +176,7 @@
     "G4": "xverse-compat spec 001 header lag (spec.md vs validation.md)",
     "G5": "xverse-compat platform-api.lock.json pins platform tree 7d730f85 (22 files, commit 4ed17352b); accepted main 744b66f9c has 26 files def80396; content-lock test fails; re-pin at P4-T06"
   },
-  "revision": "5 (full sha256 of the selected bridge example added for contract evidence)",
+  "revision": "6 (implementation review 1: bridge example license corrected to MIT; cited_files hashes added for contract evidence)",
   "decisions": {
     "D4-1": "CARLA client runtime (3.7 env / 3.10 pip / build for 3.13 / newer release)",
     "D4-2": "owned adapters on CARLA RPC vs author-authorized bridge change",
@@ -185,5 +185,14 @@
   "selected_smallest_set": [
     "carla-server-0.9.15",
     "carla-simulator-bridge eef3f717: examples/automatic_control_zenoh.py (publishes ego_vehicle/speed; default peer session; no router)"
-  ]
+  ],
+  "cited_files": {
+    "/home/jefferson/carla-simulator-bridge/just/carla-server.just": "4fd133d5c6307b86985f13db42898fa338f0071634db59ca0a28bcf531de0db3",
+    "/home/jefferson/carla-simulator-bridge/just/carla-client.just": "a0486bee505e80d5cbab7ec8d8f88b3ff956ab324ef388127ffceda6ea9bad56",
+    "/home/jefferson/carla-simulator-bridge/examples/automatic_control_zenoh.py": "37b6b6be6ac843475bcddd9f2139d6f265e42aaa30d7f295f8d586022bce62ed",
+    "/home/jefferson/carla-simulator-bridge/examples/manual_control_zenoh.py": "4025370407f4249a937da0e4431fd037fcb1469914f62180cf92993319e0c598",
+    "/home/jefferson/carla-simulator-bridge/examples/zenoh_vehicle.py": "f53ee2468807cb8b454e51ad9f8001b80f52d92f9d801560a32b571c2854e2b8",
+    "/home/jefferson/xverse-compat/specs/001-compatibility-provider-boundary/validation.md": "a797458d1ae0561893948c4178c7f18efe62720060361095271e285f1876f071",
+    "/home/jefferson/xverse-compat/platform-api.lock.json": "63432d325e9ac626d957a8df208ca7c5920641f7f3e9c2b9e01632df512714aa"
+  }
 }

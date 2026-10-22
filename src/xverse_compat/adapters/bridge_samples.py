@@ -12,12 +12,14 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 import json
+import math
 from pathlib import Path
 import re
 from typing import Any
 
 _INT_TEXT = re.compile(r"^-?[0-9]+$")
 _FLOAT_TEXT = re.compile(r"^-?(?:[0-9]+\.[0-9]*|\.[0-9]+|[0-9]+)(?:[eE][-+]?[0-9]+)?$")
+MAX_PAYLOAD_CHARS = 32
 
 #: Declared keys with their decoder kind and inclusive admissible range.
 DECLARED_KEYS: Mapping[str, tuple[str, float, float]] = {
@@ -81,7 +83,7 @@ class BridgeSampleDecoder:
 
         @param sample Mapping with ``key``, ``payload``, ``sequence``, ``receivedMonotonicS``, ``receivedUtc``.
         @return The decoded observation.
-        @raises SampleDiagnostic ``-KEY``, ``-SHAPE``, ``-MALFORMED``, ``-RANGE``, ``-STALE`` or ``-DUPLICATE``.
+        @raises SampleDiagnostic ``-KEY``, ``-SHAPE``, ``-MALFORMED``, ``-TIME``, ``-RANGE``, ``-STALE`` or ``-DUPLICATE``.
         """
 
         code = "XVERSE-COMPAT-SAMPLE"
@@ -94,6 +96,12 @@ class BridgeSampleDecoder:
         utc = sample.get("receivedUtc")
         if not isinstance(payload, str) or type(sequence) is not int or type(mono) not in (int, float) or not isinstance(utc, str):
             raise SampleDiagnostic(f"{code}-SHAPE", "sample lacks a text payload, integer sequence or labelled reception times")
+        if len(payload) > MAX_PAYLOAD_CHARS:
+            raise SampleDiagnostic(f"{code}-MALFORMED", f"payload of {len(payload)} chars exceeds {MAX_PAYLOAD_CHARS}")
+        if not math.isfinite(float(mono)) or float(mono) < 0:
+            raise SampleDiagnostic(f"{code}-TIME", "reception monotonic time is not a finite non-negative number")
+        if self._policy.now_monotonic_s is not None and float(mono) > self._policy.now_monotonic_s:
+            raise SampleDiagnostic(f"{code}-TIME", "reception monotonic time lies in the future")
         kind, low, high = DECLARED_KEYS[key]
         if kind == "int_kmh":
             if not _INT_TEXT.match(payload):

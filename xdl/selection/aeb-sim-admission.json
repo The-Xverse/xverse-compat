@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-10-22T09:35:01.784964+00:00",
+  "recordedAt": "2026-10-22T09:44:27.118779+00:00",
   "platform": {
     "revision": "744b66f9c3b964f8ec0105a08ddb905a5e24d2b5",
     "sourceSurfaceFileCount": 26,
@@ -22,7 +22,7 @@
   },
   "selectionRecord": {
     "path": "xdl/selection/aeb-sim-selection.json",
-    "sha256": "c55b0a9d8fccd23b3e7950e0faa0a7af25388a0baed27294efaae9d921c4230f"
+    "sha256": "f0ca78a986958fd6f46db6ede91521277d214f62e8f1a16ea97970cdd2879700"
   },
   "pins": [
     {
@@ -57,7 +57,7 @@
     },
     {
       "path": "xdl/descriptors/aeb-sim/deployment.xdl.yaml",
-      "sha256": "3f4f8f0882dccca0890c076a826b827b86dca53e3c20d36ddfe25b134b9c6ed2",
+      "sha256": "d517cb5000e3c189efcfe3d6e9b86eceaee78651e7cb0ec374dafa4823369c0f",
       "catalogEntryIds": [
         "xdl://io.xverse.thesis.aebsim/deployment/aeb-sim-descriptors#binding/bridge-auto-binding",
         "xdl://io.xverse.thesis.aebsim/deployment/aeb-sim-descriptors#binding/carla-server-binding"
@@ -70,7 +70,7 @@
     },
     {
       "path": "xdl/descriptors/aeb-sim/system.xdl.yaml",
-      "sha256": "1ff71907d1b098ff1d8b0e8648080f041c9b3494b217569301d8e74a620b8c11",
+      "sha256": "8d558fc19847b00a79b4b719871a7d44df8c8b8710fb8234aecb6db32fa3641a",
       "catalogEntryIds": []
     }
   ],
@@ -99,13 +99,13 @@
   ],
   "contracts": {
     "path": "xdl/selection/aeb-sim-contracts.json",
-    "sha256": "aaa2da1e2ddff5abbcd2bee221594c9bc9da42d2ac38c3d3d34607ac47d70ea7",
+    "sha256": "303a5ea870eb382fc7a8a919c825015602eed413ed0a93d962f2edf1b97ef6e3",
     "statements": 15,
     "verified": 9
   },
   "inventory": {
     "path": "xdl/selection/artifact-inventory-20261022.json",
-    "sha256": "3dac2eaada25049f167a8b2593c758e6af07887fd072db430b26e909b234a50c"
+    "sha256": "67e579f18697cebb6fe296293b3f44b3b10dd460a5ebe04e6b1f0fc034e325c4"
   },
   "fixtures": [
     {
@@ -116,9 +116,9 @@
   "verification": {
     "suite": "xverse-compat tests",
     "command": "PYTHONPATH=src python -m pytest tests -q -p no:cacheprovider",
-    "passed": 74,
+    "passed": 76,
     "failed": 0,
-    "logSha256": "f6f70bae013cfe268a0ac5c1eecbce0d1c0867096a5189155c74c544ad49f8cf",
+    "logSha256": "44f6b3abf38abf0c1af111320f171d7945c724116dcea269af3d204d87a7488a",
     "logPath": "docs/engineering/thesis-lite-phase4/verification-20261022-b.log"
   },
   "executionAuthority": "absent",
@@ -133,7 +133,7 @@
   ],
   "previousPlatformLock": {
     "algorithm": "sha256-path-null-content-null-v1",
-    "fileCount": 26,
+    "fileCount": 22,
     "includedRoots": [
       "pyproject.toml",
       "src/xverse_xdl",
@@ -143,8 +143,7 @@
     "package": "xverse-xdl",
     "packageVersion": "0.4.0",
     "sourceKind": "reviewed-sibling-tree",
-    "treeSha256": "def8039614b6a33eda4f9017d08528d540031fed2ea3eedb2c92f93aa1e59ac6",
-    "platformRevision": "744b66f9c3b964f8ec0105a08ddb905a5e24d2b5"
+    "treeSha256": "7d730f85d71defd974dcba20e6d7e08591aa2113c886306caf64ee2f1d0bbb14"
   },
   "review": null,
   "acceptance": null,

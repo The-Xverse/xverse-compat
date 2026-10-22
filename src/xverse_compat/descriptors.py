@@ -32,11 +32,14 @@ ROOT = Path(__file__).resolve().parents[2]
 DESCRIPTOR_DIR = ROOT / "xdl" / "descriptors" / "aeb-sim"
 PROFILE_SCHEMA_RELATIVE = Path("xdl") / "profiles" / "runtime-compatibility-v0.2.schema.json"
 _COMMIT = re.compile(r"^[0-9a-f]{40}$")
-_RELEASE = re.compile(r"^release:[A-Za-z0-9][A-Za-z0-9+._-]*$")
+_RELEASE = re.compile(r"^release:(?=[^\s]*\d)[A-Za-z0-9][A-Za-z0-9+._-]*$")
 _DURATION = re.compile(
-    r"(?i)\b(?:sleep|wait|delay)\b|\b\d+(?:\.\d+)?\s*(?:s|sec|secs|seconds|ms|milliseconds|min|minutes)\b"
+    r"(?i)\b(?:sleep|wait|delay|delays|elapsed|elapses|timer|timeout\s+expires|after)\b"
+    r"|\b\d+(?:\.\d+)?\s*(?:s|sec|secs|second|seconds|ms|millisecond|milliseconds|min|minute|minutes)\b"
+    r"|\b(?:one|two|three|four|five|ten|thirty|sixty)\s+(?:second|seconds|minute|minutes)\b"
 )
 _GAP_BLOCKER = "XVERSE-PLAN-THESIS-{gap}"
+UNEXECUTED_BLOCKER = "XVERSE-PLAN-THESIS-UNEXECUTED"
 
 
 class DescriptorError(RuntimeError):
@@ -123,6 +126,7 @@ def check_owned_rules(
         if not (_COMMIT.match(revision) or _RELEASE.match(revision)):
             raise DescriptorError(f"{code}-REVISION", f"component {resource.identity.uri} provenance revision is neither a 40-hex commit nor release:<id>")
     pin_digests = {pin.digest for pin in record.pins if pin.digest}
+    pins_by_digest = {pin.digest: pin for pin in record.pins if pin.digest}
     unavailable_pins = {pin.id for pin in record.pins if pin.availability != "present"}
     streams = {item.stream: item for item in record.streams}
     binding_ids: set[str] = set()
@@ -132,12 +136,21 @@ def check_owned_rules(
         bindings = _sequence(deployment.content.get("bindings"))
         binding_ids |= {str(_mapping(item).get("id")) for item in bindings}
     for deployment in deployments:
+        artifacts = {str(_mapping(item).get("id")): _mapping(item) for item in _sequence(deployment.content.get("artifacts"))}
         for raw in _sequence(deployment.content.get("bindings")):
             binding = _mapping(raw)
             binding_id = str(binding.get("id"))
             payload = _mapping(_mapping(binding.get("extensions")).get(RUNTIME_PROFILE_NAMESPACE))
             if not payload:
                 continue
+            for artifact_id in _sequence(binding.get("artifactIds")):
+                artifact = artifacts.get(str(artifact_id), {})
+                pin = pins_by_digest.get(str(artifact.get("digest", "")))
+                if pin is None or str(artifact.get("sourceRef", "")) != pin.source_ref:
+                    raise DescriptorError(f"{code}-ARTIFACT-SOURCE", f"binding {binding_id} artifact {artifact_id!r} digest or sourceRef differs from the selection pin")
+            blockers = {str(item) for item in _sequence(payload.get("planningBlockers"))}
+            if UNEXECUTED_BLOCKER not in blockers:
+                raise DescriptorError(f"{code}-BLOCKER", f"binding {binding_id} lacks {UNEXECUTED_BLOCKER} although no selected artifact has been executed")
             observe = next((_mapping(item) for item in _sequence(payload.get("actions")) if _mapping(item).get("phase") == "observe"), {})
             condition = str(observe.get("condition", ""))
             if _DURATION.search(condition):
@@ -146,7 +159,6 @@ def check_owned_rules(
             for dependency in _sequence(parameters.get("dependsOnBindings")):
                 if str(dependency) not in binding_ids:
                     raise DescriptorError(f"{code}-DEPENDENCY", f"binding {binding_id} depends on unknown binding {dependency!r}")
-            blockers = {str(item) for item in _sequence(payload.get("planningBlockers"))}
             for stream_name in _sequence(parameters.get("suppliesStreams")):
                 stream = streams.get(str(stream_name))
                 if stream is None or stream.disposition != "supplied":
@@ -194,6 +206,6 @@ def admit_descriptors(
     plans = tuple(build_lifecycle_plan(entry) for entry in catalog.entries)
     if any(plan.execution_eligible for plan in plans):
         raise DescriptorError("XVERSE-COMPAT-DESCRIPTOR-ELIGIBLE", "a descriptor plan is execution-eligible without a permit")
-    if any(not plan.blockers for plan in plans):
-        raise DescriptorError("XVERSE-COMPAT-DESCRIPTOR-BLOCKER", "a descriptor plan declares no planning blocker although no selected artifact has been executed")
+    if any(UNEXECUTED_BLOCKER not in plan.blockers for plan in plans):
+        raise DescriptorError("XVERSE-COMPAT-DESCRIPTOR-BLOCKER", f"a descriptor plan lacks {UNEXECUTED_BLOCKER}")
     return DescriptorAdmission(validation=validation, entries=catalog.entries, plans=plans)

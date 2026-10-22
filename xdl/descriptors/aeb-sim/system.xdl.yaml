@@ -7,7 +7,7 @@ metadata:
   description: Development-host system containing the selected CARLA server and the selected bridge example.
   provenance:
     source: distributed_safety_critical_thesis/specs/003-thesis-lite-artifact-adapters
-    revision: inventory-20261022-rev4
+    revision: inventory-20261022-rev6
     maturity: architectural-target
     limitations:
       - Only the selected processes are modelled; the AEB topology of Note 21 is a Phase 8 blueprint.

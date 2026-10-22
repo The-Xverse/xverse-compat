@@ -47,6 +47,11 @@ def main(argv: list[str] | None = None) -> int:
     if head != main_rev:
         print(f"platform checkout HEAD {head} is not {arguments.platform_main}; refusing", file=sys.stderr)
         return 2
+    dirty = subprocess.check_output(
+        ["git", "-C", str(root), "status", "--porcelain", "--", "pyproject.toml", "src/xverse_xdl", "xdl/schemas", "xdl/profiles"], text=True)
+    if dirty.strip():
+        print("platform source surface has uncommitted changes; refusing", file=sys.stderr)
+        return 3
     revisions = PhaseRevisions(
         xdl_lite=_rev(root, PHASE_REFS["xdl_lite"]),
         argus_lite=_rev(root, PHASE_REFS["argus_lite"]),
