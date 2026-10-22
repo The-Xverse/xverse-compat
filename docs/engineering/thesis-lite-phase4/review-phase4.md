@@ -103,3 +103,19 @@ read-only throughout; no selected artifact is executed in this phase.
     line records its origin). Tests U-CON-01/02 (+1 negative) and U-ADP-01…08. Suite: the only
     failure is the G5 content-lock test; documentation validation passed. `zenohd` 1.10.1
     confirmed from the package database (dpkg), not executed.
+
+10. P4-T06 increment (2026-10-22): `xverse_compat.admission` builds `xdl/selection/aeb-sim-admission.json`
+    binding the platform source surface (26 files, def80396…), the `xdl/schemas` and `xdl/profiles`
+    trees, the Phase 1–3 revisions (c1fd213cd…, c2997c0f8…, 63f5cb8c7d…) and platform main
+    744b66f9c3…, the selection record, the recomputed pins (present pins match), the descriptors
+    with their catalog identities and plan digests, the contract table and inventory, the fixture,
+    and the verification log; it states `executionAuthority: absent` and lists the blockers
+    (RESOURCE-LIMITS-UNAPPROVED, THESIS-G1…G5, THESIS-UNEXECUTED). Building the record re-pins
+    `platform-api.lock.json` to the same surface (previous pin kept inside the record), which
+    closes G5: run A before the re-pin 73 passed / 1 failed (content lock), run B after it 74
+    passed / 0 failed (`verification-20261022-{a,b}.log`); the final record cites run B.
+    `verify_admission_record` recomputes every binding and fails closed (U-ADM-04 negatives:
+    altered platform surface, altered descriptor hash, authority not absent, foreign platform
+    tree). `scripts/admit_phase4.py` reads the revisions with read-only `git rev-parse` and
+    refuses a platform checkout whose HEAD is not the named main. Documentation validation passed.
+    Next: independent read-only review of the whole candidate (P4-T07), then the acceptance package.
