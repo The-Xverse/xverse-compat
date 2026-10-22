@@ -46,3 +46,9 @@ read-only throughout; no selected artifact is executed in this phase.
     repaired in the thesis package (research.md rewritten; spec, plan, data model, contract,
     quickstart, tasks and inventory patched; revision 2). Brake actuation is now `adapter`
     (blocked until D4-1); only speed and brake status are `supplied`. Second review requested.
+
+5. Planning review 2 (2026-10-22): H1–H3 and M1–M3 resolved; new MEDIUM M5 (dependency edges
+    belong to the experiment Profile `dependsOn` on Scenario steps, projection.py:436,518, not to
+    Deployment text), M6 (inventory/quickstart strings), M7 (pygame display and operator-input
+    dependencies of the selected examples). All verified and repaired in the thesis package
+    (revision 3); brake status is now `blocked (unattended)`. Review 3 requested for confirmation.
