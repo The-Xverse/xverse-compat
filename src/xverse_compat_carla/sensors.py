@@ -34,7 +34,8 @@ def camera_value(image, d: SensorDescriptors, flow_id: str = "camera", frame=Non
     """Return ``{width, height, fovDeg, rawSha256, rawLength}``; no pixel bytes."""
 
     width, height, fov = getattr(image, "width", None), getattr(image, "height", None), getattr(image, "fov", None)
-    if width != d.width or height != d.height or not _finite(fov) or abs(fov - d.fov_deg) > FOV_TOLERANCE:
+    if (type(width) is not int or type(height) is not int or width != d.width or height != d.height  # review 3 L2
+            or not _finite(fov) or abs(fov - d.fov_deg) > FOV_TOLERANCE):
         raise CarlaRefusal(SIZE, "image geometry differs from the descriptor", flow_id, frame)
     raw = bytes(getattr(image, "raw_data", b""))
     if len(raw) != 4 * width * height:
@@ -84,4 +85,6 @@ def motion_value(actor_snapshot, flow_id: str = "vehicle-motion", frame=None) ->
         raise CarlaRefusal(RANGE, "zero forward vector", flow_id, frame)
     speed = math.sqrt(sum(c * c for c in v))
     accel = sum(ai * fi for ai, fi in zip(a, f)) / norm
+    if not (math.isfinite(speed) and math.isfinite(accel)):  # overflow of finite inputs (review 3 L2)
+        raise CarlaRefusal(RANGE, "motion values overflow", flow_id, frame)
     return {"speedMps": round(speed, 6), "accelForwardMps2": round(accel, 6)}

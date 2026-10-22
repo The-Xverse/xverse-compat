@@ -5,11 +5,10 @@ HOME=/nonexistent-carla-home`` from ``<checkout>/src`` (no ``PYTHONPATH``)."""
 from __future__ import annotations
 
 import argparse
-import io
 import sys
 
 from .descriptors import load_descriptors
-from .protocol import run
+from .protocol import StrictLines, run
 from .sources import FakeSource, LiveSource
 
 
@@ -42,7 +41,7 @@ def main(argv=None) -> int:
         print(f"XVERSE-COMPAT-CARLA-SOURCE: {type(error).__name__}: {error}", file=sys.stderr)
         return 3
     # strict decoding: under ``env -i`` the interpreter runs in UTF-8 mode with surrogateescape (review 2 L-a)
-    stdin = io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8", errors="strict", newline="\n")
+    stdin = StrictLines(sys.stdin.buffer)
     try:
         return run(source, descriptors, stdin, sys.stdout, sys.stderr, carla_version=carla_version, ground_truth=args.ground_truth)
     finally:

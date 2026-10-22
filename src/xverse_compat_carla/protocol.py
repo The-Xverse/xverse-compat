@@ -42,10 +42,31 @@ def _reject_constant(name):
     raise ProtocolViolation(f"non-finite JSON constant {name}")
 
 
+class StrictLines:
+    """Line reader over a binary stream that decodes each line strictly as UTF-8 (review 2 L-a, review 3 L4).
+
+    Under ``env -i`` the interpreter runs in UTF-8 mode with ``surrogateescape``; decoding per line serves
+    every valid line that precedes an invalid one, which then raises ``UnicodeDecodeError`` (exit 2).
+    """
+
+    def __init__(self, raw) -> None:
+        self._raw = raw
+
+    def readline(self) -> str:
+        return self._raw.readline().decode("utf-8", errors="strict")
+
+    def __iter__(self):
+        while True:
+            line = self.readline()
+            if not line:
+                return
+            yield line
+
+
 def parse_inbound(line: str) -> dict:
     """Validate one platform -> adapter line (rules 1, 4)."""
 
-    if len(line.encode("utf-8")) > MAX_LINE:
+    if len(line.rstrip("\n").encode("utf-8")) > MAX_LINE:  # the terminator is not counted (review 3 nit)
         raise ProtocolViolation("inbound line exceeds the limit")
     try:
         message = json.loads(line, parse_constant=_reject_constant)
@@ -127,6 +148,7 @@ def run(source, descriptors, stdin, stdout, stderr, *, carla_version=None, groun
         print(f"{C.SOURCE}: {type(error).__name__}: {error}", file=stderr)
         return 3
     frame = None
+    elapsed = None
 
     def done(code: int) -> int:
         for ack in tracker.close():  # every termination path acknowledges open and pending commands
@@ -175,6 +197,8 @@ def run(source, descriptors, stdin, stdout, stderr, *, carla_version=None, groun
                 fd = source.tick()
                 if fd is not None and (type(fd.frame) is not int or fd.frame < 0):  # review 2 L-b
                     raise ValueError(f"source frame {fd.frame!r} is not a non-negative integer")
+                if fd is not None and frame is not None and fd.frame <= frame:  # tick-level monotonicity (review 3 L3)
+                    raise ValueError(f"source frame {fd.frame} does not increase after {frame}")
             except C.CarlaRefusal as refusal:
                 tracker.restore(commands)  # review M2: acked unacknowledged by done()
                 out.send(refusal.to_message())
@@ -191,6 +215,11 @@ def run(source, descriptors, stdin, stdout, stderr, *, carla_version=None, groun
             tracker.opened(commands, frame)
             try:
                 accel = _frame_items(fd, descriptors, builder, out)
+                # tick level, after the frame's flows (which stand, design §9.10): an episode reset is caught even
+                # when no flow carries the elapsed time (review 3 L3)
+                if (type(fd.elapsed_seconds) in (int, float) and math.isfinite(fd.elapsed_seconds)
+                        and elapsed is not None and fd.elapsed_seconds < elapsed):
+                    raise C.CarlaRefusal(C.EPISODE, "elapsed_seconds decreased: episode reset", None, frame)
                 if exporter is not None and isinstance(fd.elapsed_seconds, (int, float)) and math.isfinite(fd.elapsed_seconds) and fd.elapsed_seconds >= 0:
                     exporter.write(frame, seconds_to_ns(fd.elapsed_seconds), fd.actors)
             except C.CarlaRefusal as refusal:
@@ -202,6 +231,8 @@ def run(source, descriptors, stdin, stdout, stderr, *, carla_version=None, groun
                 print(f"{C.SOURCE}: {type(error).__name__}: {error}", file=stderr)
                 out.send({"type": "refusal", "code": C.SOURCE, "flowId": None, "frame": frame})
                 return done(3)
+            if type(fd.elapsed_seconds) in (int, float) and math.isfinite(fd.elapsed_seconds):
+                elapsed = fd.elapsed_seconds
             for ack in tracker.observe(frame, fd.echo_brake, accel):
                 out.send(ack)
             out.send({"type": "status", "state": "ticked", "frame": frame})

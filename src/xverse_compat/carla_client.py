@@ -94,15 +94,17 @@ def parse_outbound(line: str, flows: tuple[str, ...] = FLOWS) -> dict:
     elif kind == "refusal":
         ok = (set(message) == {"type", "code", "flowId", "frame"} and message["code"] in CODES
               and (message["flowId"] is None or message["flowId"] in flows)
-              and (message["frame"] is None or _is_int(message["frame"])))
+              and (message["frame"] is None or (_is_int(message["frame"]) and message["frame"] >= 0)))
     elif kind == "ack":
         ok = (set(message) == {"type", "commandId", "result", "echoFrame", "responded"} and isinstance(message["commandId"], str)
-              and message["commandId"] != "" and message["result"] in ("echoed", "unacknowledged")
-              and (message["echoFrame"] is None or _is_int(message["echoFrame"])) and message["responded"] in (True, False, None))
+              and message["commandId"] != "" and message["responded"] in (True, False, None)
+              and ((message["result"] == "echoed" and _is_int(message["echoFrame"]) and message["echoFrame"] >= 0)  # review 3 L1
+                   or (message["result"] == "unacknowledged" and message["echoFrame"] is None)))
     elif kind == "status":
         state = message.get("state")
         members = {"type", "state", "frame", "forbiddenModulesLoaded"} if state == "done" else {"type", "state", "frame"}
-        ok = (state in STATUS and set(message) == members and (message["frame"] is None or _is_int(message["frame"]))
+        ok = (state in STATUS and set(message) == members
+              and ((state != "ticked" and message["frame"] is None) or (_is_int(message["frame"]) and message["frame"] >= 0))
               and (state != "done" or (isinstance(message["forbiddenModulesLoaded"], list)
                                        and all(isinstance(m, str) for m in message["forbiddenModulesLoaded"]))))
     else:
@@ -149,6 +151,7 @@ class CarlaAdapterProcess:
         self._proc: subprocess.Popen | None = None
         self._lines: queue.Queue = queue.Queue()
         self._awaiting = False
+        self._last_tick_frame: int | None = None
 
     def start(self) -> dict:
         """Launch the child, read ``hello``, answer ``start``; return the hello."""
@@ -204,6 +207,13 @@ class CarlaAdapterProcess:
         self._send(message)
 
     def _collect(self, result: TickResult, until: tuple[str, ...]) -> TickResult:
+        try:
+            return self._collect_messages(result, until)
+        except CarlaProtocolError:
+            self.kill()  # any violation kills the child (design §9.2; review 3 M1)
+            raise
+
+    def _collect_messages(self, result: TickResult, until: tuple[str, ...]) -> TickResult:
         last_frame = None
         acks_started = False
         while True:
@@ -237,13 +247,20 @@ class CarlaAdapterProcess:
         """Request one step and collect until ``ticked`` or ``done`` (pacing: one tick at a time)."""
 
         if self._awaiting:
+            self.kill()  # review 3 M1
             raise CarlaProtocolError("pacing: previous tick not finished")
         self._awaiting = True
         try:
             self._send({"type": "tick"})
-            return self._collect(TickResult(), ("ticked", "done"))
+            result = self._collect(TickResult(), ("ticked", "done"))
         finally:
             self._awaiting = False
+        if result.done is None:  # ``ticked`` frames increase across ticks (review 3 L3)
+            if self._last_tick_frame is not None and result.frame <= self._last_tick_frame:
+                self.kill()
+                raise CarlaProtocolError(f"ticked frame {result.frame} does not increase")
+            self._last_tick_frame = result.frame
+        return result
 
     def read_until_done(self) -> TickResult:
         """Collect messages up to ``status: done`` without sending anything (an adapter that ended on its own)."""

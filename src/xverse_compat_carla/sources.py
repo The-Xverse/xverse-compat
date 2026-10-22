@@ -204,7 +204,8 @@ class LiveSource:
         snapshot = self._world.get_snapshot()
         motion = snapshot.find(self._ego_id) if snapshot.frame == frame else None  # stale snapshot: absent
         return FrameData(frame=frame, elapsed_seconds=snapshot.timestamp.elapsed_seconds, camera=self._wait("camera", frame, deadline),
-                         radar=self._wait("radar", frame, deadline), motion=motion, echo_brake=self._vehicle.get_control().brake)
+                         radar=self._wait("radar", frame, deadline), motion=motion, echo_brake=self._vehicle.get_control().brake,
+                         actors=None)  # actors are not collected live: an export refuses None (review 3 L5)
 
     def close(self) -> None:
         """Stop the sensor callbacks and restore the saved world settings (live ground-truth actors are not

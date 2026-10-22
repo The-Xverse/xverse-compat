@@ -270,3 +270,25 @@ log edit is committed immediately.
     | R3-L4 | LOW | Strict decoding by chunk can drop valid lines that precede an invalid one. | Decode each line of `sys.stdin.buffer` strictly. |
     | R3-L5 | LOW | `run()` called directly with `LiveSource` and an export path would write empty actors. | `LiveSource` returns `actors=None`, and the exporter refuses `None` (`SOURCE`, exit 3). |
     | R3-N | nit | A negative refusal `frame` and a null `ticked` frame are accepted; the inbound limit counts the trailing `\n`. | Tighten all three. |
+
+13. Repairs for review 3 applied (2026-10-22), as planned in finding 12:
+    - **R3-M1:** `_collect` kills the child on every `CarlaProtocolError`, and so does the pacing
+      check.
+    - **R3-L1:** `echoed` requires an integer `echoFrame` ≥ 0, and `unacknowledged` requires null.
+    - **R3-L2:** a non-integer image width or height gives `SIZE`; overflowing motion values give
+      `RANGE`.
+    - **R3-L3:**
+      - adapter: a non-increasing source frame gives `SOURCE` (exit 3, before the window
+        opens);
+      - adapter: a decreasing finite `elapsed_seconds` gives `EPISODE` (exit 3). This is checked
+        after the frame's flows, so design §9.10 (earlier flows of the frame stand) is preserved;
+        a first placement before the items broke that rule's test, and was moved;
+      - client: `ticked` frames must increase.
+    - **R3-L4:** `StrictLines` decodes each line of `sys.stdin.buffer` strictly.
+    - **R3-L5:** `LiveSource` returns `actors=None`, and the exporter refuses `None`.
+    - **Nits:** a refusal `frame` must be ≥ 0, a `ticked` frame must be an integer, and the
+      inbound limit excludes the terminator.
+
+    `tests/carla/test_review3.py` adds 15 tests. Verification: the full suite gives 172 passed,
+    39 subtests (`verification-20261022-d.log`). The admission record was rebuilt against
+    `8b3d8c8e8` (`e0df9020f030…`), and the suite was re-run after the rebuild. Next: independent review 4.
