@@ -76,3 +76,36 @@ log edit is committed immediately.
    adapter's own output is unchanged.
 
    **Next:** P4b-T05, the re-derivation items 1–8.
+
+5. P4b-T05 re-derivation, planned (recorded before the changes; thesis plan "P4b-T05 re-derivation"
+   items 1–7 and design §9.8 item 8):
+   1. **Inventory revision 7**, both copies in step (identical today, `67e579f1…`): add the cp310
+      wheel (URL, SHA-256, size, `localPath`); `env-record.json` and `user-site-comparison.json` as
+      cited files; and the user-site `RECORD` hashes of `carla 0.9.15`, `pygame 2.6.1`,
+      `eclipse_zenoh 1.3.4`, `numpy 2.2.6`, `shapely 2.1.2`, `networkx 3.4.2` and `zenoh_cli 0.6.8`.
+   2. **Selection pin `carla-python-client`.**
+      - Make it `present`, with the PyPI `sourceRef`, `releaseArtifact: true`, digest,
+        `digestCommand` and `localPath`.
+      - Remove `reason`.
+      - Set `toolchain` to "system CPython 3.10.12, out of process".
+      - Update the D4-1 decision text to DLG-1.
+      - Drop G1 from the five adapter streams.
+      - Add the G6 note on `vehicleSpeed`.
+   3. **Contracts.**
+      - C-04 restated and verified (evidence: the wheel and the env record).
+      - C-05 verified (the wheel hash).
+      - Remove G1 from `gaps`.
+      - Add G6 with a blocker row C-16.
+   4. **`deployment.xdl.yaml`.** The client artifact gets its source and digest. The bridge binding's
+      blockers become G3, G6, UNEXECUTED, and its limitation text changes. Line 14 of
+      `component-bridge-auto.xdl.yaml` changes.
+   5. **Admission.** A new field `sensorDescriptors {path, sha256}`, written by
+      `build_admission_record` and checked by `verify_admission_record`.
+   6. **Tests.** U-CON-02, U-ADM-03 and U-DSC-02, the re-anchored tamper tests, a synthetic
+      NOT_AVAILABLE fixture, and the `sensorDescriptors` tests.
+   7. **Packaging.** The wheel packages add `src/xverse_compat_carla`; `bridge_route` re-exports
+      `xverse_compat_carla.timeconv.seconds_to_ns`.
+   8. **`system.xdl.yaml`.** Add the `carla-simulation` time domain.
+
+   The admission record is then rebuilt (`admit_phase4.py --platform-main 8b3d8c8e8`) and the suite
+   re-run.
