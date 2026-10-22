@@ -164,3 +164,26 @@ read-only throughout; no selected artifact is executed in this phase.
     package (thesis commits happen only on the author's request). Candidate state for P4-T07: the
     acceptance package is presented to the author; no merge into `xverse-compat` main, no
     canonical-note change, and no execution of any selected artifact follow from this record.
+
+13. Phase 4 acceptance decision (2026-10-22), recorded before acting. Basis: the author's goal of
+    2026-10-22 ("Implement all remaining phases … accept, merge and push only after a clean full
+    installed-wheel run on a quiet host passes the DV12 gate …") and the author's standing
+    delegation style ("I let you think about the decisions that I need to make and do it by
+    yourself in order to progress", platform finding 476). Gate reading for a non-platform owner
+    repository: the DV12 gate is a platform instrument; it holds for the platform revision this
+    candidate consumes (run 22a-1, gate accepted against main 744b66f9c, platform findings
+    491–496), and the candidate changes no platform file. The owner-side equivalent is the
+    installed-wheel suite (run C: 76 passed against the `xverse_xdl-0.4.0` wheel built from that
+    main, sha 94fe115e…), implementation review 2 PASS with no open HIGH or MEDIUM, and the verified
+    admission record. No CAPA record is opened: every defect found was a candidate defect repaired
+    before acceptance; none is a defect of an accepted component. Decision: D4-4 is taken as a
+    bounded partial acceptance, Phase 4 delivers the descriptors, pins, contract verification,
+    adapter fixtures and admission record for the selected set (CARLA 0.9.15 server;
+    `automatic_control_zenoh.py` speed feed), with every other AEB stream recorded as blocked by G1
+    and G2 and carried into Phases 7–9. D4-1 (CARLA client runtime) is an artifact choice left to
+    the author and is not decided here; D4-2 stays recommended, not decided. Scope of the
+    acceptance: engineering delivery into `xverse-compat` main; it does not execute any selected
+    artifact, does not close any REF-002 parent, and makes no scientific claim. The author may
+    revoke it; revocation reverts the merge of `candidate/phase4-descriptors-20261022` only. Next:
+    rebuild the record with the acceptance field (run D), merge `--no-ff` into `xverse-compat`
+    main, push, tick P4-T07.

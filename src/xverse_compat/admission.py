@@ -92,6 +92,7 @@ def build_admission_record(
     lock_path: Path = LOCK,
     now: datetime | None = None,
     review: Mapping[str, Any] | None = None,
+    acceptance: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the admission record, write it, and re-pin the platform content lock.
 
@@ -103,6 +104,7 @@ def build_admission_record(
     @param lock_path The ``platform-api.lock.json`` to re-pin (a temporary path in tests).
     @param now Timestamp to record; defaults to the current UTC time.
     @param review Separate read-only review verdict to record (``verdict``, ``reference``); ``None`` before review.
+    @param acceptance Acceptance decision to record (``decision``, ``basis``, ``date``); ``None`` until accepted.
     @return The record as written.
     @raises AdmissionError When a pin digest does not match the host file, a descriptor is
             rejected, or the platform surface cannot be read.
@@ -173,7 +175,7 @@ def build_admission_record(
         "blockers": blockers,
         "previousPlatformLock": previous_lock,
         "review": dict(review) if review is not None else None,
-        "acceptance": None,
+        "acceptance": dict(acceptance) if acceptance is not None else None,
     }
     new_lock = {
         "algorithm": "sha256-path-null-content-null-v1",
