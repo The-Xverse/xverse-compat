@@ -54,3 +54,14 @@ The work is an engineering integration only: not AEB validation, not a scientifi
    which reported none remaining.
 10. **Owner tests.** `tests/live/test_phase7_live.py` (11 tests on owned fakes and the pinned 3.10 interpreter).
     Full suite: 192 passed, 39 subtests.
+11. **Final live settings (2026-10-23, about 00:41).** Owned units fail fast when a dependency is missing:
+    - the adapter's CARLA client timeout is 5 s, so a missing simulator ends the unit before Maestro's observe
+      step and Maestro sees `ML-RUN-CHILD-EXIT`;
+    - the driver's accept timeout is 12 s.
+
+    The stimulus profile is 1 s idle, throttle 0.6 until 4.5 s, then brake 0.8 until 7 s. The driver episode
+    is 9.5 s. The blueprint schedule has 80 ticks, because measured Maestro cycles span 0.17–0.7 s per tick
+    with host load (live finding 03). Suite: 192 passed, 39 subtests.
+12. **Live finding 05.** Two fresh server starts reported synchronous mode with 0.05 s until a client set
+    the world asynchronous. The origin was not determined. The guard always leaves the world asynchronous and
+    records the before and after state.

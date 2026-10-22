@@ -20,9 +20,9 @@ import time
 from xverse_compat.live.zenoh_io import Latest, open_session, redirect_stderr
 
 PROFILE = (  # (until simulation seconds since the first clock sample, accelerator pedal, brake pedal)
-    (1.5, 0.0, 0.0),
-    (6.5, 0.6, 0.0),
-    (10.0, 0.0, 0.8),
+    (1.0, 0.0, 0.0),
+    (4.5, 0.6, 0.0),
+    (7.0, 0.0, 0.8),
 )
 KEYS = {"acc": "vehicle/command/acc_pedal_sts", "brake": "vehicle/command/brake_pedal_sts", "steer": "vehicle/command/steer_sts",
         "clock": "vehicle/status/clock_status", "speed": "vehicle/status/velocity_status"}

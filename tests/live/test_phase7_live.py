@@ -247,8 +247,8 @@ def test_vcu_commands_staleness_rule_and_clamping():
 
 
 def test_stimulus_profile_segments():
-    assert stimulus.pedals(0.0)[:2] == (0.0, 0.0) and stimulus.pedals(3.0)[:2] == (0.6, 0.0) and stimulus.pedals(8.0)[:2] == (0.0, 0.8)
-    assert stimulus.pedals(10.5)[2] == len(stimulus.PROFILE)
+    assert stimulus.pedals(0.0)[:2] == (0.0, 0.0) and stimulus.pedals(3.0)[:2] == (0.6, 0.0) and stimulus.pedals(5.0)[:2] == (0.0, 0.8)
+    assert stimulus.pedals(7.5)[2] == len(stimulus.PROFILE)
 
 
 def test_lite_loop_routes_items_through_flow_receivers_on_a_fake_adapter():

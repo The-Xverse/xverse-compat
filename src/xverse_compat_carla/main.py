@@ -90,13 +90,13 @@ def _main(argv) -> int:
                 if args.scenario is None:
                     raise ValueError("live:<host>:<port>:scenario requires --scenario")
                 client = carla.Client(fields[0], int(fields[1]))
-                client.set_timeout(10.0)
+                client.set_timeout(5.0)  # a missing simulator fails within 5 s, before Maestro's observe step
                 scenario = json.loads(open(args.scenario, encoding="utf-8").read())
                 source = LiveSource(client, -1, -1, -1, descriptors, scenario=scenario)
             else:
                 host, port, ego, camera, radar = fields
                 client = carla.Client(host, int(port))
-                client.set_timeout(10.0)
+                client.set_timeout(5.0)  # a missing simulator fails within 5 s, before Maestro's observe step
                 source = LiveSource(client, int(ego), int(camera), int(radar), descriptors)
     except Exception as error:  # noqa: BLE001
         print(f"XVERSE-COMPAT-CARLA-SOURCE: {type(error).__name__}: {error}", file=sys.stderr)
