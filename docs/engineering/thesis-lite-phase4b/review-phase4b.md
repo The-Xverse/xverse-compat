@@ -292,3 +292,26 @@ log edit is committed immediately.
     `tests/carla/test_review3.py` adds 15 tests. Verification: the full suite gives 172 passed,
     39 subtests (`verification-20261022-d.log`). The admission record was rebuilt against
     `8b3d8c8e8` (`e0df9020f030…`), and the suite was re-run after the rebuild. Next: independent review 4.
+
+14. Independent implementation review 4 (2026-10-22, on `83873e5`): **PASS**, with no HIGH or MEDIUM
+    finding. The reviewer confirmed:
+    - every review-3 repair, with probes of the client kill (no zombie, no unbounded wait),
+      `StrictLines` end-of-file and `stop` behaviour, and the command windows at the tick-level
+      checks;
+    - the whole delta: protocol, exit codes, FR-004, FR-005 and FR-006, the 3.10 constraint and
+      re-derivation;
+    - `verify_admission_record` against `8b3d8c8e8` (`e0df9020…`);
+    - the bridge unchanged;
+    - the suite: 172 passed.
+
+    The LOW findings and nits are recorded before repair, and all will be repaired before
+    acceptance (engineer decision):
+
+    | # | Sev | Finding | Planned repair |
+    | --- | --- | --- | --- |
+    | R4-L1 | LOW | The tick-level EPISODE check admits a negative `elapsed_seconds`, which inverts the §9.10 order. | Compare and update only when `elapsed_seconds` ≥ 0. Add a test. |
+    | R4-L2 | LOW | A non-increasing tick frame giving `SOURCE` (exit 3) is not in the normative documents. | Thesis design amendment §9.10a under the author's delegation: `FRAME` applies to sample frames; a non-increasing tick frame is `SOURCE`, exit 3. |
+    | R4-L3 | LOW | Live-only exceptions from `settings()` or `close()` give exit 1 with a traceback. | Any settings-check exception gives a `SOURCE` refusal and `done(3)`. A `close()` failure writes one stderr line and gives exit 3, unless the run already returned a non-zero code. Add tests. |
+    | R4-N1 | nit | A `stop()` or `wait()` timeout leaves the child running. | Kill on `TimeoutExpired`. |
+    | R4-N2 | nit | `FrameData.actors` defaults to `[]`. | Default `None`. `FakeSource` passes the fixture's `actors` only when the fixture has them, and the exporter refuses `None`. |
+    | R4-N3 | nit | Ignored `__pycache__` folders are left by the runs. | Remove them before acceptance. |
