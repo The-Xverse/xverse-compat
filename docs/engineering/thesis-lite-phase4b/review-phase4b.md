@@ -251,3 +251,22 @@ log edit is committed immediately.
     Verification: the full suite gives 157 passed, 39 subtests (`verification-20261022-c.log`).
     The admission record was rebuilt against `8b3d8c8e8` (`3dea9416…`), and the selection record
     is `06f38edc…`. The suite was re-run after the rebuild: 157 passed. Next: independent review 3.
+
+12. Independent implementation review 3 (2026-10-22, on `4fbc8bd`): **FAIL**, with no HIGH and one
+    MEDIUM finding (recorded before any repair). The reviewer confirmed:
+    - the review-2 repairs N1, N2 and L-a to L-i, each with a test;
+    - exit-code and stdout/stderr discipline, check precedence and oracle separation;
+    - the 3.10 / standard-library-only constraint;
+    - re-derivation, and `verify_admission_record` against `8b3d8c8e8`;
+    - the bridge unchanged;
+    - the suite: 157 passed.
+
+    | # | Sev | Finding | Planned repair |
+    | --- | --- | --- | --- |
+    | R3-M1 | MEDIUM | The client does not kill the child on rule-6 ordering, unexpected-message or pacing violations (design §9.2). A live world would stay in synchronous mode. | `_collect` and the pacing check kill the child before raising. Add a test asserting the child has exited. |
+    | R3-L1 | LOW | Ack `result` is not tied to `echoFrame`. | `echoed` requires an integer `echoFrame` ≥ 0; `unacknowledged` requires null. |
+    | R3-L2 | LOW | A float image width or height passes the adapter check. Overflowing motion values give `SOURCE` instead of `RANGE`. | Integer width and height, otherwise `SIZE`. Finite speed and acceleration, otherwise `RANGE`. |
+    | R3-L3 | LOW | No tick-level monotonicity: a frame going back, or `elapsed_seconds` decreasing, is still served and acknowledged. | Adapter: a decreasing finite `elapsed_seconds` gives `EPISODE` (exit 3), and a non-increasing source frame gives `SOURCE` (exit 3). Client: `ticked` frames must increase. |
+    | R3-L4 | LOW | Strict decoding by chunk can drop valid lines that precede an invalid one. | Decode each line of `sys.stdin.buffer` strictly. |
+    | R3-L5 | LOW | `run()` called directly with `LiveSource` and an export path would write empty actors. | `LiveSource` returns `actors=None`, and the exporter refuses `None` (`SOURCE`, exit 3). |
+    | R3-N | nit | A negative refusal `frame` and a null `ticked` frame are accepted; the inbound limit counts the trailing `\n`. | Tighten all three. |
