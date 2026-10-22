@@ -315,3 +315,23 @@ log edit is committed immediately.
     | R4-N1 | nit | A `stop()` or `wait()` timeout leaves the child running. | Kill on `TimeoutExpired`. |
     | R4-N2 | nit | `FrameData.actors` defaults to `[]`. | Default `None`. `FakeSource` passes the fixture's `actors` only when the fixture has them, and the exporter refuses `None`. |
     | R4-N3 | nit | Ignored `__pycache__` folders are left by the runs. | Remove them before acceptance. |
+
+15. Repairs for review 4 applied (2026-10-22), as planned in finding 14:
+    - **R4-L1:** the tick-level EPISODE check and the `elapsed` update require `elapsed_seconds`
+      ≥ 0.
+    - **R4-L2:** thesis design amendment §9.10a, under the author's delegation, records the
+      tick-level frame and elapsed-time rules, the settings and close handling, and the client
+      rules.
+    - **R4-L3:**
+      - a settings-check exception gives a `SOURCE` refusal and `done(3)`;
+      - `main` always closes the source, also when `run` raises;
+      - a `close()` failure writes one stderr line and turns exit 0 into exit 3.
+    - **R4-N1:** `wait()` kills the child on `TimeoutExpired`, and `stop()` uses it.
+    - **R4-N2:** `FrameData.actors` defaults to `None`, and `FakeSource` passes the fixture's
+      `actors` only when the fixture has them.
+    - **R4-N3:** the ignored `__pycache__` folders were removed after the runs.
+
+    Five tests were added to `tests/carla/test_review3.py`. Verification: the full suite gives
+    177 passed, 39 subtests (`verification-20261022-e.log`). The admission record was rebuilt
+    against `8b3d8c8e8` (`eb98e1cd7dbb…`), and the suite was re-run after the rebuild. Next: a focused
+    independent check of the review-4 repair diff, then acceptance.

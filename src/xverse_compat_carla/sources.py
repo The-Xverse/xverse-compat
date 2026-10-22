@@ -8,7 +8,7 @@ and is exercised only against an owned fake ``carla`` module.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import json
 import queue
 import time
@@ -29,7 +29,7 @@ class FrameData:
     radar: Any = None
     motion: Any = None
     echo_brake: Any = None
-    actors: list = field(default_factory=list)
+    actors: Any = None  # None: not collected; the exporter refuses it (review 4 N2)
 
 
 class _Canary(SimpleNamespace):
@@ -96,7 +96,8 @@ class FakeSource:
         echo = raw.get("controlEcho", "follow")
         echo_brake = self._brake if echo == "follow" else echo.get("brake")
         return FrameData(frame=frame, elapsed_seconds=raw.get("elapsedSeconds"), camera=camera, radar=radar,
-                         motion=motion, echo_brake=echo_brake, actors=list(raw.get("actors", [])))
+                         motion=motion, echo_brake=echo_brake,
+                         actors=list(raw["actors"]) if "actors" in raw else None)
 
     def close(self) -> None:
         """Nothing to release."""

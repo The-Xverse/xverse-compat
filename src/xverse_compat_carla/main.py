@@ -43,9 +43,23 @@ def main(argv=None) -> int:
     # strict decoding: under ``env -i`` the interpreter runs in UTF-8 mode with surrogateescape (review 2 L-a)
     stdin = StrictLines(sys.stdin.buffer)
     try:
-        return run(source, descriptors, stdin, sys.stdout, sys.stderr, carla_version=carla_version, ground_truth=args.ground_truth)
-    finally:
+        code = run(source, descriptors, stdin, sys.stdout, sys.stderr, carla_version=carla_version, ground_truth=args.ground_truth)
+    except BaseException:
+        _close(source)
+        raise
+    closed = _close(source)  # always closed; a clean run becomes 3 if closing fails
+    return code or closed
+
+
+def _close(source) -> int:
+    """Close the source; a failure is one stderr line and exit 3 (review 4 L3)."""
+
+    try:
         source.close()
+    except Exception as error:  # noqa: BLE001
+        print(f"XVERSE-COMPAT-CARLA-SOURCE: close failed: {type(error).__name__}: {error}", file=sys.stderr)
+        return 3
+    return 0
 
 
 if __name__ == "__main__":

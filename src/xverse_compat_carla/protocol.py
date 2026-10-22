@@ -165,6 +165,10 @@ def run(source, descriptors, stdin, stdout, stderr, *, carla_version=None, groun
         except C.CarlaRefusal as refusal:
             out.send(refusal.to_message())
             return done(3)
+        except Exception as error:  # noqa: BLE001 - a client failure while reading settings (review 4 L3)
+            print(f"{C.SOURCE}: {type(error).__name__}: {error}", file=stderr)
+            out.send({"type": "refusal", "code": C.SOURCE, "flowId": None, "frame": None})
+            return done(3)
         first = stdin.readline()
         if not first:
             return done(0)
@@ -217,8 +221,8 @@ def run(source, descriptors, stdin, stdout, stderr, *, carla_version=None, groun
                 accel = _frame_items(fd, descriptors, builder, out)
                 # tick level, after the frame's flows (which stand, design §9.10): an episode reset is caught even
                 # when no flow carries the elapsed time (review 3 L3)
-                if (type(fd.elapsed_seconds) in (int, float) and math.isfinite(fd.elapsed_seconds)
-                        and elapsed is not None and fd.elapsed_seconds < elapsed):
+                if (type(fd.elapsed_seconds) in (int, float) and math.isfinite(fd.elapsed_seconds) and fd.elapsed_seconds >= 0
+                        and elapsed is not None and fd.elapsed_seconds < elapsed):  # a negative time is TIMESTAMP only (review 4 L1)
                     raise C.CarlaRefusal(C.EPISODE, "elapsed_seconds decreased: episode reset", None, frame)
                 if exporter is not None and isinstance(fd.elapsed_seconds, (int, float)) and math.isfinite(fd.elapsed_seconds) and fd.elapsed_seconds >= 0:
                     exporter.write(frame, seconds_to_ns(fd.elapsed_seconds), fd.actors)
@@ -231,7 +235,7 @@ def run(source, descriptors, stdin, stdout, stderr, *, carla_version=None, groun
                 print(f"{C.SOURCE}: {type(error).__name__}: {error}", file=stderr)
                 out.send({"type": "refusal", "code": C.SOURCE, "flowId": None, "frame": frame})
                 return done(3)
-            if type(fd.elapsed_seconds) in (int, float) and math.isfinite(fd.elapsed_seconds):
+            if type(fd.elapsed_seconds) in (int, float) and math.isfinite(fd.elapsed_seconds) and fd.elapsed_seconds >= 0:
                 elapsed = fd.elapsed_seconds
             for ack in tracker.observe(frame, fd.echo_brake, accel):
                 out.send(ack)

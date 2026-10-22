@@ -130,3 +130,47 @@ def test_l5_uncollected_actors_are_refused_by_the_exporter(tmp_path):
     assert export.read_text() == ""
     with pytest.raises(ValueError):
         GroundTruthExporter(tmp_path / "x.jsonl").write(1, 0, None)
+
+
+def test_review4_l1_negative_elapsed_is_timestamp_only(tmp_path):
+    first, second = copy.deepcopy(NOMINAL["frames"][0]), copy.deepcopy(NOMINAL["frames"][1])
+    second["elapsedSeconds"] = -1.0
+    code, messages, _ = _serve(_fixture(tmp_path, [first, second]), [{"type": "start"}, {"type": "tick"}, {"type": "tick"}])
+    assert code == 0 and [m["code"] for m in messages if m["type"] == "refusal"] == [C.TIMESTAMP]
+
+
+def test_review4_l3_settings_exception_is_a_source_refusal():
+    class Lost(FakeSource):
+        def settings(self):
+            raise RuntimeError("server lost")
+
+    stdin = io.StringIO(json.dumps({"type": "start"}) + "\n")
+    out, err = io.StringIO(), io.StringIO()
+    code = run(Lost(FIXTURES / "nominal.json"), D, stdin, out, err)
+    messages = [json.loads(line) for line in out.getvalue().splitlines()]
+    assert code == 3 and [m["type"] for m in messages] == ["hello", "refusal", "status"] and messages[1]["code"] == C.SOURCE
+    assert len(err.getvalue().strip().splitlines()) == 1
+
+
+@pytest.mark.parametrize("run_code", [0, 2])
+def test_review4_l3_close_failure_is_one_line_and_exit_3(monkeypatch, capsys, run_code):
+    from xverse_compat_carla import main as entry
+
+    closed = []
+
+    class Failing(FakeSource):
+        def close(self):
+            closed.append(True)
+            raise RuntimeError("apply_settings failed")
+
+    monkeypatch.setattr(entry, "FakeSource", Failing)
+    monkeypatch.setattr(entry, "run", lambda *a, **k: run_code)
+    code = entry.main(["--source", f"fake:{FIXTURES / 'nominal.json'}", "--descriptors", str(DESCRIPTORS)])
+    assert closed == [True] and code == (run_code or 3)
+    assert len(capsys.readouterr().err.strip().splitlines()) == 1
+
+
+def test_review4_n2_missing_fixture_actors_are_not_an_empty_scene(tmp_path):
+    frame = copy.deepcopy(NOMINAL["frames"][0])
+    del frame["actors"]
+    assert FakeSource(_fixture(tmp_path, [frame])).tick().actors is None

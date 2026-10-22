@@ -276,12 +276,16 @@ class CarlaAdapterProcess:
         except BrokenPipeError:  # review 2 L-h: the adapter already ended on its own
             pass
         result = self._collect(TickResult(), ("done",))
-        return self._proc.wait(timeout=self.timeout_s), result
+        return self.wait(), result
 
     def wait(self) -> int:
         """Wait for the child to exit; return its code."""
 
-        return self._proc.wait(timeout=self.timeout_s)
+        try:
+            return self._proc.wait(timeout=self.timeout_s)
+        except subprocess.TimeoutExpired:
+            self.kill()  # never leave the child running (review 4 N1)
+            raise
 
     def kill(self) -> None:
         """Kill the child if it is running."""
