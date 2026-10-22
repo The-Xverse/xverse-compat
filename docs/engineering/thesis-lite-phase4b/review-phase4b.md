@@ -28,3 +28,14 @@ log edit is committed immediately.
    - The thesis contract rule 5 and FR-001a launch command are amended accordingly. This is an
      engineering amendment under the author's delegation.
    - The script recreates the environment it created in the first attempt.
+
+3. P4b-T01 complete (2026-10-22).
+   - **Environment.** `…/.x-verse-build/cache/xverse-compat-carla-0.9.15-cp310` on loop10, 195 MB.
+     The wheel is kept in `…/cache/xverse-compat-wheels/` (SHA-256 `61449e33…4ad6`, 31 895 950
+     bytes).
+   - **Record.** `env-record.json` (SHA-256 `b63a490e…`): the import returns 0 and `carla` version
+     0.9.15; `pip freeze` lists only `carla`, `pip` and `setuptools`; `py_compile` result 0 (the
+     package does not exist yet, so this is re-checked at V01b).
+   - **User-site comparison** (`user-site-comparison.json`, plan item 1): all 9 payload files of the
+     user-site `carla 0.9.15` cp310 are byte-identical to the pinned wheel. G6 is unchanged: the
+     bridge runtime also loads unpinned `pygame`, `eclipse-zenoh` and `numpy` from the user site.
