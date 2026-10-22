@@ -33,3 +33,13 @@ Specification (thesis `specs/027-lite-flow-runtime`): contract rule 16 (rev 8b),
 
    Repair order: merge the platform Phase 6 first, then re-pin this lock to the resulting
    platform main, re-run this suite, review, and merge `xverse-compat`.
+
+3. Independent implementation review 1 (2026-10-22): FAIL (platform finding 8). The items that
+   concern this repository:
+   - **M2:** the V06 claim "They cover V06" was an overclaim. There is no receiver-in-loop test and
+     no hand-computed ages.
+   - **L6:** the `seconds_to_ns` pins are constants, not a cross-test.
+
+   Repair: the test environment gets the candidate platform wheel. The V06 test then feeds the
+   adapter's items through `xverse.flows.FlowReceiver` with hand-computed ages, a deadline check
+   and a final poll, and the pins compare directly against `xverse.flows.seconds_to_ns`.
