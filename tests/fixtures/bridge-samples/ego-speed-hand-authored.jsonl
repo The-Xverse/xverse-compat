@@ -1,0 +1,4 @@
+{"key": "ego_vehicle/speed", "payload": "0", "sequence": 1, "receivedMonotonicS": 100.00, "receivedUtc": "2026-10-22T10:00:00.000Z", "origin": "hand-authored from automatic_control_zenoh.py:300-304 (int km/h text); no live capture"}
+{"key": "ego_vehicle/speed", "payload": "37", "sequence": 2, "receivedMonotonicS": 100.05, "receivedUtc": "2026-10-22T10:00:00.050Z", "origin": "hand-authored"}
+{"key": "ego_vehicle/speed", "payload": "38", "sequence": 3, "receivedMonotonicS": 100.10, "receivedUtc": "2026-10-22T10:00:00.100Z", "origin": "hand-authored"}
+{"key": "vehicle/status/braking_status", "payload": "0.5", "sequence": 1, "receivedMonotonicS": 100.10, "receivedUtc": "2026-10-22T10:00:00.100Z", "origin": "hand-authored from manual_control_zenoh.py:431-432 (float text); attended case only"}

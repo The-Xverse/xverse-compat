@@ -86,3 +86,20 @@ read-only throughout; no selected artifact is executed in this phase.
     bridge binding names `/usr/bin/python3.10` as the candidate interpreter (the bridge recipe's
     own system Python) with blocker XVERSE-PLAN-THESIS-G1 pending D4-1. Result: `pytest tests`
     58 passed, 1 failed (the G5 content-lock test, unchanged); documentation validation passed.
+
+9. P4-T04/T05 increment (2026-10-22): contract-verification table `xdl/selection/aeb-sim-contracts.json`
+    (15 statements C-01…C-15; 10 verified with absolute path:line or inventory-hash evidence, 3
+    NOT_VERIFIED and 2 mismatch, each with a blocker; rows for G1–G5) loaded by
+    `xverse_compat.contracts` (fail-closed: evidence form, unknown hash, missing blocker, gap
+    without a row). Two defects found by the tests before commit and repaired: the loader's first
+    run rejected C-11 because the inventory held only a 16-hex prefix of the selected example's
+    digest (inventory completed, thesis revision 5, full sha256 with its command, vendored as
+    `xdl/selection/artifact-inventory-20261022.json`, sha 3dac2eaa…); and the negative test showed
+    that an all-digit hash matched the path:line pattern (hash form is now checked first and a
+    line reference must be an absolute path). Bridge-sample adapter
+    `xverse_compat.adapters.bridge_samples` (declared keys only; int km/h and unit-float decoders;
+    range, freshness, per-key sequence uniqueness; no Zenoh import) with the hand-authored fixture
+    `tests/fixtures/bridge-samples/ego-speed-hand-authored.jsonl` (no live capture exists; each
+    line records its origin). Tests U-CON-01/02 (+1 negative) and U-ADP-01…08. Suite: the only
+    failure is the G5 content-lock test; documentation validation passed. `zenohd` 1.10.1
+    confirmed from the package database (dpkg), not executed.

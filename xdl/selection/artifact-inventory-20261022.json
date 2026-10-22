@@ -1,0 +1,189 @@
+{
+  "schema_version": 1,
+  "observed_at": "2026-10-22",
+  "method": "read-only inspection on the development host; sha256sum, git read-only commands, file listings and package metadata reads; no artifact executed",
+  "host_toolchain": {
+    "python_platform": "CPython 3.13.13 (~/.pyenv/versions/3.13.13)",
+    "python_system": "/usr/bin/python3.10 (3.10.12)",
+    "python3.7_found": false
+  },
+  "platform": {
+    "repository": "/home/jefferson/xverse-platform",
+    "main": "744b66f9c",
+    "code_tree_of": "63f5cb8c7",
+    "xdl_package_version": "0.4.0",
+    "deployment_schema": "xdl/schemas/v1alpha1/deployment.schema.json",
+    "compat_profile": "xdl/profiles/runtime-compatibility-v0.2.schema.json"
+  },
+  "artifacts": {
+    "carla-server-0.9.15": {
+      "path": "/home/jefferson/carla-simulator",
+      "runnable": "CarlaUE4/Binaries/Linux/CarlaUE4-Linux-Shipping",
+      "runnable_bytes": 111356736,
+      "runnable_sha256": "1da989e4ff136e0658fdea421bc1da2b0e5cb018c6e767efc4f6129c21ab1a81",
+      "launcher": "CarlaUE4.sh",
+      "launcher_sha256_prefix": "8c683a1aa74e65ba",
+      "release_tarball_declared_by_bridge": {
+        "url": "https://tiny.carla.org/carla-0-9-15-linux",
+        "md5": "32fa681fb925cd62951a63977582ea8c",
+        "present_locally": false,
+        "status": "NOT_VERIFIED"
+      },
+      "license": "MIT (CARLA); assets under their own terms",
+      "digest_command": "sha256sum /home/jefferson/carla-simulator/CarlaUE4/Binaries/Linux/CarlaUE4-Linux-Shipping"
+    },
+    "carla-python-client-0.9.15": {
+      "path": "/home/jefferson/carla-simulator/PythonAPI/carla/dist",
+      "files": [
+        "carla-0.9.15-cp27-cp27mu-manylinux_2_27_x86_64.whl",
+        "carla-0.9.15-cp37-cp37m-manylinux_2_27_x86_64.whl",
+        "carla-0.9.15-py2.7-linux-x86_64.egg",
+        "carla-0.9.15-py3.7-linux-x86_64.egg"
+      ],
+      "cp37_wheel_sha256": "8782039dfa9ee6796b20c9193940d9a089b972d161c19fe64d33ab8184a0cf20",
+      "compatible_with_host_python": false,
+      "status": "NOT_AVAILABLE for CPython 3.13; not verified for 3.10 (bridge recipe pip install carla==0.9.15 on system Python; PyPI wheel availability NOT_VERIFIED offline) (gap G1)",
+      "sparse_api_checkout": "/home/jefferson/carla-api/PythonAPI (release tag 0.9.15.2 per bridge recipe; examples/agents only)"
+    },
+    "carla-simulator-bridge": {
+      "path": "/home/jefferson/carla-simulator-bridge",
+      "remote": "git@github.com:The-Xverse/carla-simulator-bridge.git",
+      "head": "eef3f71747220d150c0b99c30194ca197fe339f9",
+      "working_tree_dirty_entries": 1,
+      "examples_sha256_prefix": {
+        "examples/automatic_control_zenoh.py": "37b6b6be6ac84347",
+        "examples/manual_control_steeringwheel_zenoh.py": "819108bdec54d756",
+        "examples/manual_control_zenoh.py": "4025370407f4249a",
+        "examples/zenoh_vehicle.py": "f53ee2468807cb8b"
+      },
+      "missing_referenced_file": "camera_stream_viewer.py (named in just/carla-client.just, absent from examples/)",
+      "zenoh_interface": {
+        "automatic_control_zenoh.py": {
+          "session": "default config",
+          "publish": {
+            "ego_vehicle/speed": "f\"{int(3.6*|v|)}\" int km/h text"
+          },
+          "lines": "285,300-304,742-743"
+        },
+        "manual_control_zenoh.py": {
+          "session": "peer; connect/endpoints=[tcp/<router>:7447]",
+          "subscribe": {
+            "adas/cruise_control/engage": "listener prints text only"
+          },
+          "publish": {
+            "vehicle/status/throttle_status": "f\"{float}\"",
+            "vehicle/status/steering_status": "f\"{float}\"",
+            "vehicle/status/braking_status": "f\"{float}\""
+          },
+          "lines": "399-432"
+        },
+        "manual_control_steeringwheel_zenoh.py": {
+          "session": "peer; tcp/<router>:7447",
+          "publish": [
+            "adas/cruise_control/engage",
+            "vehicle/status/throttle_status",
+            "vehicle/status/steering_status",
+            "vehicle/status/braking_status"
+          ],
+          "lines": "260-279 at HEAD (293-314 in the dirty tree)",
+          "selected": false
+        },
+        "zenoh_vehicle.py": {
+          "defines": "ZenohVehicle: subscribe ego_vehicle/input/actuation (scalar in [-1,1]: throttle if >=0 else brake=|v|), publish ego_vehicle/output/{brake,speed}",
+          "imported_by_examples": false,
+          "status": "dead code at eef3f717; not selected"
+        },
+        "actuation_applied_from_zenoh_by_any_example": false
+      },
+      "client_dependencies": "pygame numpy shapely networkx carla==0.9.15",
+      "license": "Apache-2.0 (file headers)",
+      "dirty_file": "examples/manual_control_steeringwheel_zenoh.py (not selected)",
+      "runtime_dependencies": {
+        "display": "pygame.display.set_mode in automatic_control_zenoh.py:738 and manual_control_zenoh.py:1311; SDL_VIDEODRIVER=dummy for headless use",
+        "operator": "manual_control_zenoh.py publishes braking_status only from keyboard events (line 682); nothing unattended",
+        "router": "manual_control_zenoh.py connects to tcp/<router>:7447",
+        "carla_rpc": "both examples connect to the CARLA RPC port"
+      },
+      "selected_example_sha256_full": {
+        "examples/automatic_control_zenoh.py": "37b6b6be6ac843475bcddd9f2139d6f265e42aaa30d7f295f8d586022bce62ed",
+        "digest_command": "sha256sum /home/jefferson/carla-simulator-bridge/examples/automatic_control_zenoh.py"
+      }
+    },
+    "zenoh": {
+      "zenohd": {
+        "path": "/usr/bin/zenohd",
+        "version": "1.10.1",
+        "rustc": "1.97.1",
+        "verified_by": "package metadata (not executed)"
+      },
+      "eclipse-zenoh-python": {
+        "cpython-3.13 (pyenv)": {
+          "version": "1.9.0",
+          "dist_info": "~/.pyenv/versions/3.13.13/lib/python3.13/site-packages/eclipse_zenoh-1.9.0.dist-info"
+        },
+        "cpython-3.10 (system, user site)": {
+          "version": "1.3.4",
+          "dist_info": "~/.local/lib/python3.10/site-packages/eclipse_zenoh-1.3.4.dist-info"
+        }
+      },
+      "source_checkouts": {
+        "/home/jefferson/zenoh": "dd80eea25008a1659d09ab3040ef558d8a73dbc4 (1.4.0-55)",
+        "/home/jefferson/zenoh-python": "671582b9324b8f2d6a5d605cc24df6cd46e2d9f8 (1.3.4)"
+      },
+      "router_vs_python_api_compatibility": "NOT_VERIFIED; pair depends on D4-1 (gap G3)"
+    },
+    "xverse-compat": {
+      "path": "/home/jefferson/xverse-compat",
+      "remote": "git@github.com:The-Xverse/xverse-compat.git",
+      "head": "e162477",
+      "working_tree_dirty_entries": 1,
+      "platform_api_lock": {
+        "package": "xverse-xdl",
+        "packageVersion": "0.4.0",
+        "treeSha256": "7d730f85d71defd974dcba20e6d7e08591aa2113c886306caf64ee2f1d0bbb14",
+        "fileCount": 22
+      },
+      "specs": [
+        "001-compatibility-provider-boundary",
+        "002-controlled-gateway-rebuild"
+      ],
+      "status_inconsistency": "spec 001: spec.md says acceptance pending; validation.md records PASS T008-T011 and ACC017 (2026-09-20): header lag (gap G4)",
+      "baseline_2026_10_22": {
+        "worktree": "/home/jefferson/xverse-compat-worktrees/phase4-20261022",
+        "branch": "candidate/phase4-descriptors-20261022",
+        "base": "e162477",
+        "platform_wheel_sha256_prefix": "94fe115e1d648b4d",
+        "result": "40 passed, 1 failed (content lock, G5)"
+      },
+      "dirty_file": "AGENTS.md (+7 lines, author)",
+      "spec001_tasks": "T001-T011 ticked ([X]), T012-T019 open"
+    }
+  },
+  "not_selected": [
+    "Distrobox recipes",
+    "Rust workspace demo",
+    "SOME/IP gateway (compat spec 002)",
+    "CARLA 0.9.16 maps cache",
+    "examples/zenoh_vehicle.py (dead code)",
+    "examples/manual_control_steeringwheel_zenoh.py (dirty; manual hardware)",
+    "examples/manual_control_zenoh.py (emits only under an operator; may be re-selected by Phase 7 for an attended smoke case)",
+    "zenohd router (only the manual example needs it)"
+  ],
+  "gaps": {
+    "G1": "no CARLA Python client importable by CPython 3.13; none verified for 3.10; decision D4-1",
+    "G2": "bridge examples publish status only and apply no received actuation; camera/radar/ground-truth/actuation need the CARLA client API; decision D4-2",
+    "G3": "eclipse-zenoh 1.9.0 (3.13) and 1.3.4 (3.10) vs zenohd 1.10.1; compatibility not verified; Phase 6",
+    "G4": "xverse-compat spec 001 header lag (spec.md vs validation.md)",
+    "G5": "xverse-compat platform-api.lock.json pins platform tree 7d730f85 (22 files, commit 4ed17352b); accepted main 744b66f9c has 26 files def80396; content-lock test fails; re-pin at P4-T06"
+  },
+  "revision": "5 (full sha256 of the selected bridge example added for contract evidence)",
+  "decisions": {
+    "D4-1": "CARLA client runtime (3.7 env / 3.10 pip / build for 3.13 / newer release)",
+    "D4-2": "owned adapters on CARLA RPC vs author-authorized bridge change",
+    "D4-4": "accept status-path-only delivery as Phase 4, or wait for D4-1"
+  },
+  "selected_smallest_set": [
+    "carla-server-0.9.15",
+    "carla-simulator-bridge eef3f717: examples/automatic_control_zenoh.py (publishes ego_vehicle/speed; default peer session; no router)"
+  ]
+}
