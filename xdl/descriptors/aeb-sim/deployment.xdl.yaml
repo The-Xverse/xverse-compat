@@ -74,10 +74,11 @@ spec:
     - id: carla-python-client
       artifactKind: python-wheel
       version: 0.9.15
-      sourceRef: https://tiny.carla.org/carla-0-9-15-linux
+      digest: "sha256:61449e33260f6a0cfd2f88d56f2463a5797a0b51bc46618beec07365422d4ad6"
+      sourceRef: https://files.pythonhosted.org/packages/86/5a/74cf6657e5bb4b8ffe790ef92a01d7f44592a992d758c7053cd6bc75bd96/carla-0.9.15-cp310-cp310-manylinux_2_27_x86_64.whl
       maturity: architectural-target
       limitations:
-        - NOT_AVAILABLE for the admitted CPython 3.13 toolchain; only cp27/cp37 wheels and eggs are present (gap G1, decision D4-1).
+        - Pinned cp310 wheel in an out-of-process CPython 3.10.12 environment (decision DLG-1); CPython 3.13 has no client.
         - Not bound by any binding; listed so the dependency is visible.
   bindings:
     - id: carla-server-binding
@@ -205,13 +206,13 @@ spec:
             inheritedHandles: closed
             implicitShell: false
           planningBlockers:
-            - XVERSE-PLAN-THESIS-G1
             - XVERSE-PLAN-THESIS-G3
+            - XVERSE-PLAN-THESIS-G6
             - XVERSE-PLAN-THESIS-UNEXECUTED
           evidence:
             maturity: architectural-target
             limitations:
-              - The interpreter /usr/bin/python3.10 is where the bridge recipe's `python3` resolves on this host (an inference, not recipe text) and is a candidate pending decision D4-1; the CARLA client is NOT_AVAILABLE for it until verified.
+              - The interpreter /usr/bin/python3.10 is where the bridge recipe's `python3` resolves on this host (an inference, not recipe text); without -s it loads unpinned user-site carla, pygame, eclipse-zenoh and numpy (gap G6).
               - Timeouts are proposed ceilings and have not been measured.
               - Valid catalog derivation does not authorize or establish runtime compatibility.
   readiness:

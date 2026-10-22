@@ -13,25 +13,15 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
-from decimal import ROUND_HALF_EVEN, Decimal
 import math
 from typing import Any
+
+from xverse_compat_carla.timeconv import seconds_to_ns  # the single compat copy (Phase 4b re-derivation item 7)
 
 from .bridge_samples import DECLARED_KEYS, BridgeSampleDecoder, DecoderPolicy, SampleDiagnostic
 
 ORIGIN_MISSING = "XVERSE-FLOW-ORIGIN-MISSING"
 SENDER_DOMAIN = "bridge-recorder-monotonic"
-
-
-def seconds_to_ns(seconds: Any) -> int:
-    """Convert non-negative finite seconds to integer ns with round-half-even (platform rule).
-
-    @raises ValueError for a bool, a non-finite or a negative value.
-    """
-
-    if type(seconds) not in (int, float) or not math.isfinite(seconds) or seconds < 0:
-        raise ValueError("seconds must be a finite, non-negative int or float")
-    return int((Decimal(repr(seconds)) * 10**9).to_integral_value(ROUND_HALF_EVEN))
 
 
 @dataclass(frozen=True)

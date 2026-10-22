@@ -27,7 +27,7 @@ dependencies = [
 Repository = "https://github.com/The-Xverse/xverse-compat"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/xverse_compat"]
+packages = ["src/xverse_compat", "src/xverse_compat_carla"]
 
 [tool.hatch.build.targets.sdist]
 include = [

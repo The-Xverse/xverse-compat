@@ -109,3 +109,25 @@ log edit is committed immediately.
 
    The admission record is then rebuilt (`admit_phase4.py --platform-main 8b3d8c8e8`) and the suite
    re-run.
+
+6. P4b-T05 re-derivation applied (2026-10-22), items 1–8 as recorded in finding 5.
+   - **Inventory revision 7** in both copies (thesis and compat).
+   - **Selection.** Client pin `present`, PyPI release, digest `61449e33…`, `localPath` on loop10.
+     G1 dropped from five adapter streams; G6 note on `vehicleSpeed`; D4-1 decided.
+   - **Contracts.** C-04 and C-05 verified, G1 removed, G6 added with blocker row C-16.
+   - **Descriptors.** The bridge binding's blockers are now G3/G6/UNEXECUTED; limitation texts
+     updated; `carla-simulation` time domain added.
+   - **Admission.** The `sensorDescriptors` binding is validated at build and checked by
+     `verify_admission_record`.
+   - **Packaging.** `xverse_compat_carla` packaged; `bridge_route` re-exports `timeconv.seconds_to_ns`.
+   - **Tests.** U-ADM-03, U-CON-02 and U-DSC-02 updated; tamper anchors moved to G3/G6; U-DSC-04c
+     (a synthetic NOT_AVAILABLE pin keeps the G1 rule covered); U-ADM-05 (sensor descriptors
+     binding and tampering).
+
+   The admission record was rebuilt (`admit_phase4.py --platform-main 8b3d8c8e8`):
+   - pins `carla-server`, `bridge-auto` and `carla-python-client` all `match`;
+   - blockers RESOURCE-LIMITS-UNAPPROVED, G2–G6 and UNEXECUTED (G1 absent);
+   - execution authority absent; platform lock unchanged.
+
+   Suite: 112 passed (log `verification-20261022-a.log`), and 112 again on the final record.
+   Next: independent implementation review.

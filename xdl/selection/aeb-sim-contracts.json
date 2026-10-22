@@ -2,11 +2,11 @@
   "tableVersion": "0.1.0",
   "inventory": "xdl/selection/artifact-inventory-20261022.json",
   "gaps": [
-    "G1",
     "G2",
     "G3",
     "G4",
-    "G5"
+    "G5",
+    "G6"
   ],
   "statements": [
     {
@@ -38,21 +38,21 @@
     {
       "id": "C-04",
       "artifact": "carla-python-client",
-      "statement": "A CARLA 0.9.15 client is importable by the admitted CPython 3.13 toolchain.",
-      "status": "mismatch",
+      "statement": "CPython 3.13 has no CARLA 0.9.15 client; the client runs out of process on CPython 3.10.12 with the pinned cp310 wheel (import 0.9.15 with HOME set).",
+      "status": "verified",
       "evidence": [
-        "sha256:8782039dfa9ee6796b20c9193940d9a089b972d161c19fe64d33ab8184a0cf20"
-      ],
-      "blocker": "only cp27/cp37 wheels and eggs exist in PythonAPI/carla/dist; decision D4-1",
-      "gap": "G1"
+        "sha256:61449e33260f6a0cfd2f88d56f2463a5797a0b51bc46618beec07365422d4ad6",
+        "sha256:b63a490ea7526046ef0ede6f810e0f488ab78f0cc9387b47e2b4bb9857acbe0c"
+      ]
     },
     {
       "id": "C-05",
       "artifact": "carla-python-client",
       "statement": "PyPI provides a carla==0.9.15 wheel for the system CPython 3.10 (bridge recipe pip install).",
-      "status": "NOT_VERIFIED",
-      "evidence": [],
-      "blocker": "offline; needs network and the author's go-ahead (D4-1 option b)"
+      "status": "verified",
+      "evidence": [
+        "sha256:61449e33260f6a0cfd2f88d56f2463a5797a0b51bc46618beec07365422d4ad6"
+      ]
     },
     {
       "id": "C-06",
@@ -149,6 +149,17 @@
       ],
       "blocker": "lock tree 7d730f85 (22 files, commit 4ed17352b) vs main def80396 (26 files) on the main checkout; repaired in this candidate by the admission re-pin; closes when the candidate is accepted and merged",
       "gap": "G5"
+    },
+    {
+      "id": "C-16",
+      "artifact": "bridge-auto",
+      "statement": "The bridge binding runs /usr/bin/python3.10 without -s and therefore loads unpinned user-site carla, pygame, eclipse-zenoh, numpy, shapely and networkx.",
+      "status": "mismatch",
+      "evidence": [
+        "sha256:06425f9774e1becb7ec4855663c4e6f76b20afa9c674900128713db72ee3697e"
+      ],
+      "blocker": "bridge runtime unpinned; pinning or retargeting the bridge is a Phase 7 live-gate prerequisite",
+      "gap": "G6"
     }
   ]
 }

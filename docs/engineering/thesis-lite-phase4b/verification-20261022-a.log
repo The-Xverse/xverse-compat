@@ -1,0 +1,4 @@
+# command: env -u PYTHONPATH PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python -m pytest tests -q -p no:cacheprovider
+............................................................................................................ [ 96%]
+....                                                                  [100%]
+112 passed, 39 subtests passed in 9.93s
