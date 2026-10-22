@@ -146,6 +146,8 @@ def run(source, descriptors, stdin, stdout, stderr, *, carla_version=None, groun
         for line in stdin:
             try:
                 message = parse_inbound(line)
+                if message["type"] == "start":  # only the handshake may carry start (review M1)
+                    raise UnknownInbound("start after the handshake")
             except UnknownInbound as error:
                 print(f"{C.COMMAND}: {error}", file=stderr)
                 out.send({"type": "refusal", "code": C.COMMAND, "flowId": None, "frame": None})
@@ -163,27 +165,36 @@ def run(source, descriptors, stdin, stdout, stderr, *, carla_version=None, groun
                 source.apply(commands)
                 fd = source.tick()
             except C.CarlaRefusal as refusal:
+                tracker.restore(commands)  # review M2: acked unacknowledged by done()
                 out.send(refusal.to_message())
                 return done(3)
             except Exception as error:  # noqa: BLE001 - any client failure ends the run (SOURCE)
+                tracker.restore(commands)
                 print(f"{C.SOURCE}: {type(error).__name__}: {error}", file=stderr)
                 out.send({"type": "refusal", "code": C.SOURCE, "flowId": None, "frame": frame})
                 return done(3)
             if fd is None:
+                tracker.restore(commands)
                 break
             frame = fd.frame
             tracker.opened(commands, frame)
             try:
                 accel = _frame_items(fd, descriptors, builder, out)
+                if exporter is not None and isinstance(fd.elapsed_seconds, (int, float)) and math.isfinite(fd.elapsed_seconds) and fd.elapsed_seconds >= 0:
+                    exporter.write(frame, seconds_to_ns(fd.elapsed_seconds), fd.actors)
             except C.CarlaRefusal as refusal:
                 out.send(refusal.to_message())
                 return done(3)
-            if exporter is not None and isinstance(fd.elapsed_seconds, (int, float)) and math.isfinite(fd.elapsed_seconds) and fd.elapsed_seconds >= 0:
-                exporter.write(frame, seconds_to_ns(fd.elapsed_seconds), fd.actors)
+            except ProtocolViolation:
+                raise
+            except Exception as error:  # noqa: BLE001 - review L2: e.g. a non-finite ground-truth value
+                print(f"{C.SOURCE}: {type(error).__name__}: {error}", file=stderr)
+                out.send({"type": "refusal", "code": C.SOURCE, "flowId": None, "frame": frame})
+                return done(3)
             for ack in tracker.observe(frame, fd.echo_brake, accel):
                 out.send(ack)
             out.send({"type": "status", "state": "ticked", "frame": frame})
         return done(0)
-    except ProtocolViolation as error:
+    except (ProtocolViolation, UnicodeDecodeError) as error:  # invalid UTF-8 on stdin is a protocol violation (L2)
         print(f"{C.PROTOCOL}: {error}", file=stderr)
         return 2

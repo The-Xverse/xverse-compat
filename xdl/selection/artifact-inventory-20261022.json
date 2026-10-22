@@ -179,7 +179,7 @@
   },
   "revision": "7 (Phase 4b: pinned cp310 CARLA client, environment record, user-site distributions; decision DLG-1)",
   "decisions": {
-    "D4-1": "CARLA client runtime (3.7 env / 3.10 pip / build for 3.13 / newer release)",
+    "D4-1": "DECIDED 2026-10-22 (DLG-1): pinned carla 0.9.15 cp310 wheel (61449e33...) on system CPython 3.10.12, out of process",
     "D4-2": "owned adapters on CARLA RPC vs author-authorized bridge change",
     "D4-4": "accept status-path-only delivery as Phase 4, or wait for D4-1"
   },

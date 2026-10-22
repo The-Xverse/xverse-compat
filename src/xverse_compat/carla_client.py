@@ -53,7 +53,10 @@ def parse_outbound(line: str) -> dict:
         raise CarlaProtocolError(f"outbound line is not JSON: {error}") from error
     kind = message.get("type") if isinstance(message, dict) else None
     if kind == "hello":
-        ok = message.get("protocol") == PROTOCOL_ID and isinstance(message.get("flows"), list) and message.get("source") in ("live", "fake")
+        ok = (set(message) == {"type", "protocol", "carlaVersion", "python", "source", "flows"} and message["protocol"] == PROTOCOL_ID
+              and isinstance(message["flows"], list) and all(isinstance(f, str) for f in message["flows"])
+              and message["source"] in ("live", "fake") and isinstance(message["python"], str)
+              and (message["carlaVersion"] is None or isinstance(message["carlaVersion"], str)))
     elif kind == "item":
         ok = (set(message) == {"type", "flowId", "sequence", "originNs", "frame", "value"} and isinstance(message["flowId"], str)
               and _is_int(message["sequence"]) and message["sequence"] >= 0 and _is_int(message["originNs"]) and message["originNs"] >= 0
@@ -66,7 +69,11 @@ def parse_outbound(line: str) -> dict:
         ok = (set(message) == {"type", "commandId", "result", "echoFrame", "responded"} and message["result"] in ("echoed", "unacknowledged")
               and (message["echoFrame"] is None or _is_int(message["echoFrame"])) and message["responded"] in (True, False, None))
     elif kind == "status":
-        ok = message.get("state") in STATUS and (message.get("frame") is None or _is_int(message.get("frame")))
+        state = message.get("state")
+        members = {"type", "state", "frame", "forbiddenModulesLoaded"} if state == "done" else {"type", "state", "frame"}
+        ok = (state in STATUS and set(message) == members and (message["frame"] is None or _is_int(message["frame"]))
+              and (state != "done" or (isinstance(message["forbiddenModulesLoaded"], list)
+                                       and all(isinstance(m, str) for m in message["forbiddenModulesLoaded"]))))
     else:
         ok = False
     if not ok:
@@ -89,20 +96,22 @@ class CarlaAdapterProcess:
     """Run one adapter process for one episode."""
 
     def __init__(self, python: str | os.PathLike, descriptors: str | os.PathLike, source: str, *,
-                 ground_truth: str | os.PathLike | None = None, timeout_s: float = 5.0) -> None:
+                 ground_truth: str | os.PathLike | None = None, timeout_s: float | None = None) -> None:
         """Create (not start) the process.
 
         @param python The pinned 3.10 environment's interpreter.
         @param descriptors Path of ``carla-sensors.json``.
         @param source ``fake:<fixture>`` (live sources are gated to Phase 7).
         @param ground_truth Optional evaluation-only export path.
-        @param timeout_s Per-tick read timeout added to the descriptor's sensor wait.
+        @param timeout_s Per-tick read timeout; default ``sensorWaitMs/1000 + 5`` from the descriptors (design §9.7).
         """
 
         self.argv = ["env", "-i", "PATH=/usr/bin", "HOME=/nonexistent-carla-home", str(python), "-s", "-m",
                      "xverse_compat_carla.main", "--source", source, "--descriptors", str(Path(descriptors).resolve())]
         if ground_truth is not None:
             self.argv += ["--ground-truth", str(Path(ground_truth).resolve())]
+        if timeout_s is None:
+            timeout_s = json.loads(Path(descriptors).read_text(encoding="utf-8"))["sensorWaitMs"] / 1000.0 + 5.0
         self.timeout_s = timeout_s
         self.hello: dict | None = None
         self.stderr: deque[str] = deque(maxlen=200)
@@ -165,6 +174,7 @@ class CarlaAdapterProcess:
 
     def _collect(self, result: TickResult, until: tuple[str, ...]) -> TickResult:
         last_frame = None
+        acks_started = False
         while True:
             message = self._read()
             if message is None:
@@ -172,14 +182,20 @@ class CarlaAdapterProcess:
             kind = message["type"]
             if kind in ("item", "refusal"):
                 frame = message.get("frame")
+                if acks_started and not (kind == "refusal" and frame is None):  # rule 6: items/refusals, then acks (L7)
+                    raise CarlaProtocolError("item or framed refusal after an ack")
                 if frame is not None and last_frame is not None and frame < last_frame:
                     raise CarlaProtocolError("frames decrease within a tick")
                 last_frame = frame if frame is not None else last_frame
                 (result.items if kind == "item" else result.refusals).append(message)
             elif kind == "ack":
+                acks_started = True
                 result.acks.append(message)
             elif kind == "status" and message["state"] in until:
                 if message["state"] == "done":
+                    if message["forbiddenModulesLoaded"]:  # review M3: the adapter loaded a forbidden module
+                        self.kill()
+                        raise CarlaProtocolError(f"forbidden modules loaded: {message['forbiddenModulesLoaded']}")
                     result.done = message
                 result.frame = message.get("frame")
                 return result

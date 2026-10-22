@@ -172,3 +172,21 @@ log edit is committed immediately.
    silent sensor drops the others. Repair: after the deadline, drain already-queued data without
    blocking (`get_nowait`). Only the waiting is bounded per tick; data that has already arrived is
    not discarded.
+
+9. Repairs for review 1 applied (2026-10-22), as planned in findings 7 and 8:
+   - **M1:** after the handshake, `start` is a `COMMAND` refusal and the stream continues.
+   - **M2:** `tracker.restore()` returns the commands taken at an empty or failed tick to pending,
+     so `done` acknowledges them `unacknowledged`.
+   - **M3:** `parse_outbound` requires `forbiddenModulesLoaded` on `done`; the client fails on a
+     non-empty list.
+   - **M4:** `LiveSource` tests against a fake `carla` module (`tests/carla/test_review1.py`).
+   - **Finding 8:** `LiveSource._wait` drains queued data with `get_nowait` after the deadline.
+   - **L1–L9:** applied as listed in finding 7.
+   - **L9 addendum:** `env-record-addendum.json` binds `env-record.json` (`b63a490e…`) and
+     records `py_compile` return code 0 for `src/xverse_compat_carla` on the pinned 3.10
+     interpreter.
+
+   Verification: the full suite gives 126 passed, 39 subtests
+   (`verification-20261022-b.log`). The admission record was rebuilt against platform
+   `8b3d8c8e8` (`f1981d9946d2…`), and the suite was re-run after the rebuild: 126 passed. Inventory
+   `0b784c71bca6…`. Next: independent review 2.

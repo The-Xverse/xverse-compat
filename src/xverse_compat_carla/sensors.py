@@ -21,12 +21,12 @@ def _finite(value) -> bool:
 def sensor_origin(data, tick_frame: int, flow_id: str):
     """Return ``(frame, timestamp)`` of sensor ``data``; the frame must equal the tick frame."""
 
+    stamp = getattr(data, "timestamp", None)  # TIMESTAMP before FRAME (design §9.10, review L4)
+    if not _finite(stamp) or stamp < 0:
+        raise CarlaRefusal(TIMESTAMP, "sensor timestamp missing or invalid", flow_id, tick_frame)
     frame = getattr(data, "frame", None)
     if frame != tick_frame:
         raise CarlaRefusal(FRAME, "sensor frame differs from the tick frame", flow_id, tick_frame)
-    stamp = getattr(data, "timestamp", None)
-    if not _finite(stamp) or stamp < 0:
-        raise CarlaRefusal(TIMESTAMP, "sensor timestamp missing or invalid", flow_id, tick_frame)
     return frame, stamp
 
 

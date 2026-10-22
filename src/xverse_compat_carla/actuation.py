@@ -70,13 +70,21 @@ class CommandTracker:
         self._open = still
         return acks
 
+    def restore(self, commands: list[dict]) -> None:
+        """Return commands taken for a tick that produced no frame to the pending list (review M2)."""
+
+        self._pending = list(commands) + self._pending
+
     def close(self) -> list[dict]:
-        """Acknowledge every open or pending command as of stop/EOF."""
+        """Acknowledge every open or pending command at termination (design §9.11).
+
+        An open window keeps its observed echo (truncated window); a window without an echo and a command
+        never applied are ``unacknowledged``."""
 
         acks = [self._ack(w) for w in self._open]
         acks += [self._ack(dict(c, echoFrame=None, responded=None)) for c in self._pending]
         self._open, self._pending = [], []
-        return [dict(a, result="unacknowledged" if a["echoFrame"] is None else a["result"]) for a in acks]
+        return acks
 
     @staticmethod
     def _ack(w: dict) -> dict:

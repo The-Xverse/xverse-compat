@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-10-22T21:42:03.493125+00:00",
+  "recordedAt": "2026-10-22T21:49:28.905514+00:00",
   "platform": {
     "revision": "8b3d8c8e8ff73425787bb3bf958b3e2346eb1fb5",
     "sourceSurfaceFileCount": 26,
@@ -105,7 +105,7 @@
   },
   "inventory": {
     "path": "xdl/selection/artifact-inventory-20261022.json",
-    "sha256": "a2f5dca08feb2a773810b870bfc1b3401cdda64ce4dd00ad40a514dff2941727"
+    "sha256": "0b784c71bca68bfa3e01eb32058724bfa8c406c80c739f6470d5fad4c8f08eba"
   },
   "sensorDescriptors": {
     "path": "xdl/descriptors/aeb-sim/carla-sensors.json",
@@ -120,10 +120,10 @@
   "verification": {
     "suite": "xverse-compat tests",
     "command": "env -u PYTHONPATH PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python -m pytest tests -q -p no:cacheprovider",
-    "passed": 112,
+    "passed": 126,
     "failed": 0,
-    "logSha256": "3f4247a4e7980f473e5d7f0fb68cdf6e41e519b9d213a03496defcb19bad6efd",
-    "logPath": "docs/engineering/thesis-lite-phase4b/verification-20261022-a.log"
+    "logSha256": "e01920cc99d112e43cdc4cc12bd59760174edc04d3108c75418bd373bfca4ff7",
+    "logPath": "docs/engineering/thesis-lite-phase4b/verification-20261022-b.log"
   },
   "executionAuthority": "absent",
   "blockers": [

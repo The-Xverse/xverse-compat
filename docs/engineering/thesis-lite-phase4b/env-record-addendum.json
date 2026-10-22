@@ -1,0 +1,8 @@
+{
+  "schema": "xverse-compat.carla-env-record-addendum/1",
+  "envRecordSha256": "b63a490ea7526046ef0ede6f810e0f488ab78f0cc9387b47e2b4bb9857acbe0c",
+  "pyCompileReturnCode": 0,
+  "package": "src/xverse_compat_carla",
+  "reason": "the original record ran before the package existed (review 1 L9)",
+  "recordedAt": "2026-10-22"
+}

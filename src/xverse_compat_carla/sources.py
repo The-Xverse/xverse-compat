@@ -30,11 +30,11 @@ class FrameData:
     actors: list = field(default_factory=list)
 
 
-class _Timestamp(SimpleNamespace):
-    """Snapshot timestamp whose ``platform_timestamp`` must never be read."""
+class _Canary(SimpleNamespace):
+    """Fake CARLA object whose ``platform_timestamp`` must never be read (review L5)."""
 
     @property
-    def platform_timestamp(self):  # pragma: no cover - reaching it is the defect the canary detects
+    def platform_timestamp(self):
         raise AssertionError("platform_timestamp must never be read")
 
 
@@ -78,7 +78,7 @@ class FakeSource:
         self._index += 1
         frame = raw["frame"]
         cam = raw.get("camera")
-        camera = None if cam is None else SimpleNamespace(
+        camera = None if cam is None else _Canary(
             frame=cam.get("frame", frame), timestamp=cam.get("timestamp"), width=cam["width"], height=cam["height"],
             fov=cam["fov"], raw_data=bytes([cam.get("rawFill", 0)]) * cam["rawLength"])
         rad = raw.get("radar")
@@ -88,7 +88,7 @@ class FakeSource:
                           else SimpleNamespace(**d) for d in rad.get("detections", [])]
             radar = _Measurement(detections, rad.get("frame", frame), rad.get("timestamp"))
         mot = raw.get("motion")
-        motion = None if mot is None else SimpleNamespace(
+        motion = None if mot is None else _Canary(
             get_velocity=lambda m=mot: _vec(m["velocity"]), get_acceleration=lambda m=mot: _vec(m["acceleration"]),
             get_transform=lambda m=mot: SimpleNamespace(get_forward_vector=lambda: _vec(m["forward"])))
         echo = raw.get("controlEcho", "follow")
@@ -108,6 +108,10 @@ class _Measurement(list):
         self.frame = frame
         self.timestamp = timestamp
 
+    @property
+    def platform_timestamp(self):
+        raise AssertionError("platform_timestamp must never be read")
+
 
 class LiveSource:
     """Declared-unverified live source (design §9.4); never run against a server in this phase."""
@@ -126,10 +130,17 @@ class LiveSource:
         settings.synchronous_mode = True
         settings.fixed_delta_seconds = d.fixed_delta_seconds
         self._world.apply_settings(settings)
-        self._queues = {"camera": queue.Queue(), "radar": queue.Queue()}
-        for name, actor_id in (("camera", camera_id), ("radar", radar_id)):
-            self._world.get_actor(actor_id).listen(self._queues[name].put)
-        self._vehicle = self._world.get_actor(ego_id)
+        self._sensors = []
+        try:
+            self._queues = {"camera": queue.Queue(), "radar": queue.Queue()}
+            for name, actor_id in (("camera", camera_id), ("radar", radar_id)):
+                sensor = self._world.get_actor(actor_id)
+                sensor.listen(self._queues[name].put)
+                self._sensors.append(sensor)
+            self._vehicle = self._world.get_actor(ego_id)
+        except Exception:
+            self.close()  # review L3: never leave the world in synchronous mode after a failed bind
+            raise
 
     def settings(self):
         """Return the applied world settings."""
@@ -147,10 +158,9 @@ class LiveSource:
 
         while True:
             remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                return None
             try:
-                data = self._queues[name].get(timeout=remaining)
+                # after the shared deadline only already-queued data is taken (finding 8)
+                data = self._queues[name].get(timeout=remaining) if remaining > 0 else self._queues[name].get_nowait()
             except queue.Empty:
                 return None
             if data.frame == frame:
@@ -169,6 +179,9 @@ class LiveSource:
                          radar=self._wait("radar", frame, deadline), motion=motion, echo_brake=self._vehicle.get_control().brake)
 
     def close(self) -> None:
-        """Restore the saved world settings."""
+        """Stop the sensor callbacks and restore the saved world settings (live ground-truth actors are not
+        collected in this phase: a stated limit)."""
 
+        for sensor in getattr(self, "_sensors", []):
+            sensor.stop()
         self._world.apply_settings(self._saved)

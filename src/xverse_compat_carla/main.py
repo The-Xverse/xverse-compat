@@ -25,13 +25,17 @@ def main(argv=None) -> int:
     if args.source.startswith("fake:"):
         source = FakeSource(args.source[len("fake:"):])
     elif args.source.startswith("live:"):  # pragma: no cover - live execution is gated to Phase 7
-        import carla  # noqa: PLC0415
-        import importlib.metadata  # noqa: PLC0415
+        try:
+            import carla  # noqa: PLC0415
+            import importlib.metadata  # noqa: PLC0415
 
-        host, port, ego, camera, radar = args.source[len("live:"):].split(":")
-        client = carla.Client(host, int(port))
-        source = LiveSource(client, int(ego), int(camera), int(radar), descriptors)
-        carla_version = importlib.metadata.version("carla")
+            host, port, ego, camera, radar = args.source[len("live:"):].split(":")
+            client = carla.Client(host, int(port))
+            source = LiveSource(client, int(ego), int(camera), int(radar), descriptors)
+            carla_version = importlib.metadata.version("carla")
+        except Exception as error:  # noqa: BLE001 - review L2: construction failure exits 3 before any protocol
+            print(f"XVERSE-COMPAT-CARLA-SOURCE: {type(error).__name__}: {error}", file=sys.stderr)
+            return 3
     else:
         parser.error("--source must be fake:<fixture> or live:<host>:<port>:<ego>:<camera>:<radar>")
     try:
