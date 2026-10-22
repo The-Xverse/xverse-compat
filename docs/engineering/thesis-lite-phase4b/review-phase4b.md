@@ -39,3 +39,40 @@ log edit is committed immediately.
    - **User-site comparison** (`user-site-comparison.json`, plan item 1): all 9 payload files of the
      user-site `carla 0.9.15` cp310 are byte-identical to the pinned wheel. G6 is unchanged: the
      bridge runtime also loads unpinned `pygame`, `eclipse-zenoh` and `numpy` from the user site.
+
+4. P4b-T02–T04 implemented (2026-10-22) against thesis detailed design rev 4, which is READY FOR
+   IMPLEMENTATION after design reviews 1 (G1–G10), 2 (N1–N4) and 3 (PASS).
+
+   **`src/xverse_compat_carla/`** (Python 3.10, standard library only): `codes`, `timeconv`,
+   `descriptors`, `settings`, `items`, `sensors`, `actuation`, `groundtruth`, `sources`
+   (`FakeSource`; `LiveSource`, a declared-unverified skeleton), `protocol` and `main`.
+
+   **`src/xverse_compat/carla_client.py`**: `CarlaAdapterProcess` and `parse_outbound`.
+
+   **Descriptors and fixtures.** `xdl/descriptors/aeb-sim/carla-sensors.json`. Fake fixtures
+   `tests/carla/fixtures/{nominal,faults,episode,asynchronous,actuation}.json`.
+
+   **Tests** in `tests/carla/`:
+   - `test_units.py` (9): descriptors, settings, camera, radar (including the 500-detection line
+     bound), motion, origins, counters, the command window, the fake mapping.
+   - `test_protocol_subprocess.py` (6): runs the 3.10 adapter process through the client.
+     - V06: nominal items through `xverse.flows.FlowReceiver`, all delivered with age 5 ms; no
+       child process survives.
+     - V03: refusals continue the stream without consuming sequence numbers.
+     - `EPISODE`: exit 3, with the earlier flows of that frame standing.
+     - Asynchronous settings: refused, exit 3.
+     - V05: echo, `responded`, mismatch and pending acks; `COMMAND` refusals for a bad command and
+       an unknown type.
+     - V04: ground truth as a file only, and the client refuses a ground-truth message or NaN.
+   - `test_env.py` (3): V01 env record, a live import 0.9.15 in the pinned env, and V01b: compile
+     and import under 3.10 with no forbidden module loaded.
+
+   **Results.** `tests/carla` gives 18 passed, three times in a row. The full owner suite gives 110
+   passed.
+
+   **Test-design correction (not a product defect).** The asynchronous test first expected
+   `start()` to raise. The adapter correctly ends right after `hello`, so the test now uses
+   `read_until_done()`, and `_send` tolerates an adapter that has already exited (BrokenPipe). The
+   adapter's own output is unchanged.
+
+   **Next:** P4b-T05, the re-derivation items 1–8.

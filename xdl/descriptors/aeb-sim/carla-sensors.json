@@ -1,0 +1,9 @@
+{
+  "schema": "xverse-compat.carla-sensors/1",
+  "settings": {"synchronous": true, "fixedDeltaSeconds": 0.05},
+  "camera": {"blueprint": "sensor.camera.rgb", "width": 800, "height": 600, "fovDeg": 90.0},
+  "radar": {"blueprint": "sensor.other.radar", "rangeM": 100.0, "horizontalFovDeg": 30.0, "verticalFovDeg": 10.0,
+            "maxVelocityMps": 100.0, "maxDetections": 500},
+  "actuation": {"echoTolerance": 0.001, "deadlineFrames": 2, "responseAccelMps2": -0.5},
+  "sensorWaitMs": 200
+}
