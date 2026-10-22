@@ -27,3 +27,22 @@ read-only throughout; no selected artifact is executed in this phase.
     is finding 2. The conformance test locates the platform as `ROOT.parent / "xverse-platform"`,
     so the worktrees directory carries a symlink `xverse-platform -> /home/jefferson/xverse-platform`
     (read-only use; not part of the delivery). Host load at the run: 4.4.
+
+4. Planning review 1 (2026-10-22, independent read-only): NOT READY. HIGH: (H1) the selection had
+    been derived from `examples/zenoh_vehicle.py`, which no example imports at `eef3f717`; the
+    running examples publish `ego_vehicle/speed` (int km/h text, default session) and
+    `vehicle/status/{throttle,steering,braking}_status` (float text, peer session to a router at
+    `:7447`) and the only subscriber (`adas/cruise_control/engage`) prints; no example applies a
+    received actuation. (H2) the package required `inheritedHandles: false` while Profile 0.2 has
+    the constant `"closed"`; also five actions exactly, `XVERSE-PLAN-…` blocker codes, no
+    NOT_AVAILABLE maturity. (H3) eclipse-zenoh Python is 1.9.0 on the 3.13 toolchain and 1.3.4 on
+    the system 3.10 user site, not 1.3.4 alone. MEDIUM: G4 overstated (spec 001 has T001–T011
+    ticked; only a header lag), `/usr/bin/python3.10` omitted from D4-1, partial delivery
+    presented as settled (now decision D4-4), D4-3 engineer-resolvable (now a limitation),
+    descriptor dependencies and the router descriptor missing. LOW: `is_plannable`/
+    `execution_eligible` are properties; the CLI takes resource files; the digest rejection is a
+    catalog-derivation diagnostic; scenario control is derived, not a Note 21 element; chassis
+    acknowledgements missing. All verified against the artifacts before repair; every item
+    repaired in the thesis package (research.md rewritten; spec, plan, data model, contract,
+    quickstart, tasks and inventory patched; revision 2). Brake actuation is now `adapter`
+    (blocked until D4-1); only speed and brake status are `supplied`. Second review requested.
