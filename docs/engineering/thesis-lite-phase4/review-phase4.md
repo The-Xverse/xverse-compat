@@ -52,3 +52,9 @@ read-only throughout; no selected artifact is executed in this phase.
     Deployment text), M6 (inventory/quickstart strings), M7 (pygame display and operator-input
     dependencies of the selected examples). All verified and repaired in the thesis package
     (revision 3); brake status is now `blocked (unattended)`. Review 3 requested for confirmation.
+
+6. Planning review 3 (2026-10-22): M5–M7 and LOW confirmed resolved; M8 (self-consistency) repaired
+    by dropping `manual_control_zenoh.py` and the router from the smallest set; the selected set is
+    the CARLA 0.9.15 server and `automatic_control_zenoh.py` (speed feed only). Reviewer verdict
+    on M8's repair: READY FOR DETAILED DESIGN; DRAFT; NOT READY FOR IMPLEMENTATION. Detailed
+    design and the P4-T01/T02 records start here; T03 code follows the owner-side unit specs.
