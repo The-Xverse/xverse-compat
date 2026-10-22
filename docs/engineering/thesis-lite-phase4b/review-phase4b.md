@@ -131,3 +131,37 @@ log edit is committed immediately.
 
    Suite: 112 passed (log `verification-20261022-a.log`), and 112 again on the final record.
    Next: independent implementation review.
+
+7. Independent implementation review 1 (2026-10-22, on `624e6ff`): **FAIL**, with no HIGH and
+   four MEDIUM findings (recorded before any repair). The reviewer confirmed:
+   - the suite (112 passed) and `verify_admission_record` against `8b3d8c8e8`;
+   - identical inventory copies;
+   - the Python 3.10 / standard-library-only constraint;
+   - re-derivation items 1–8;
+   - the gates.
+
+   | # | Sev | Finding | Planned repair |
+   | --- | --- | --- | --- |
+   | M1 | MEDIUM | A second `start` after the handshake is processed as a `tick`. | After the handshake, `start` is an unknown inbound message: `COMMAND` refusal, the stream continues. Add a test. |
+   | M2 | MEDIUM | Commands taken by `take_pending()` are lost when `tick()` returns None or fails, so they get no ack. | Restore them to pending before any early exit, so `done` acks them `unacknowledged`. Add tests. |
+   | M3 | MEDIUM | The client does not check `forbiddenModulesLoaded`. | `parse_outbound` requires the field on `done`; the client fails on a non-empty list. |
+   | M4 | MEDIUM | There is no `LiveSource` test against a fake `carla` module. | Add one: settings applied and restored, shared per-tick deadline, stale snapshot means no motion, frame filtering, sensors stopped at close. |
+
+   Repairs for the LOW findings:
+   - **L1:** design amendment (thesis 028 §4/§9.10, under the author's delegation): at termination
+     an already-echoed open window keeps `echoed` (truncated window); only commands never applied
+     get `unacknowledged`. The no-op code is removed.
+   - **L2:** non-refusal exceptions in the tick path and in ground-truth export take the `SOURCE`
+     exit-3 path; invalid UTF-8 on stdin exits 2; a source construction failure exits 3 with a
+     stderr line.
+   - **L3:** the constructor restores settings on failure; `close()` stops the sensors; empty live
+     `actors` is recorded as a limit.
+   - **L4:** `TIMESTAMP` is checked before `FRAME` in `sensor_origin`.
+   - **L5:** the fake image, measurement and motion objects raise on `platform_timestamp`; a canary
+     test is added.
+   - **L6:** the per-tick timeout is `sensorWaitMs/1000 + 5`, read from the descriptors.
+   - **L7:** rule 6 phase tracking inside a tick; exact `hello` and `status` schemas.
+   - **L8:** tests for the exit-2 paths, partial-motion `responded`, exit-3 termination acks, and
+     V01 against the selection pin.
+   - **L9:** inventory D4-1 text updated; an environment addendum records the current `py_compile`
+     result.
