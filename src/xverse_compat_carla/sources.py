@@ -16,6 +16,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+from .codes import SETTINGS, CarlaRefusal
+
 
 @dataclass
 class FrameData:
@@ -113,6 +115,29 @@ class _Measurement(list):
         raise AssertionError("platform_timestamp must never be read")
 
 
+def _check_sensor(name: str, sensor, d) -> None:
+    """Refuse (``SETTINGS``) a sensor whose blueprint or attributes differ from the descriptors (review 2 L-i).
+
+    CARLA reports ``type_id`` and string-valued ``attributes`` of a spawned sensor.
+    """
+
+    if name == "camera":
+        expected = (d.camera_blueprint, {"image_size_x": d.width, "image_size_y": d.height, "fov": d.fov_deg})
+    else:
+        expected = (d.radar_blueprint, {"range": d.range_m, "horizontal_fov": d.horizontal_fov_deg, "vertical_fov": d.vertical_fov_deg})
+    blueprint, attributes = expected
+    if sensor is None or getattr(sensor, "type_id", None) != blueprint:
+        raise CarlaRefusal(SETTINGS, f"{name} sensor is missing or is not {blueprint}")
+    actual = getattr(sensor, "attributes", {}) or {}
+    for key, value in attributes.items():
+        try:
+            matches = abs(float(actual[key]) - float(value)) <= 1e-6
+        except (KeyError, TypeError, ValueError):
+            matches = False
+        if not matches:
+            raise CarlaRefusal(SETTINGS, f"{name} attribute {key} differs from the descriptor")
+
+
 class LiveSource:
     """Declared-unverified live source (design §9.4); never run against a server in this phase."""
 
@@ -132,12 +157,15 @@ class LiveSource:
         self._world.apply_settings(settings)
         self._sensors = []
         try:
+            self._vehicle = self._world.get_actor(ego_id)
+            if self._vehicle is None or not str(getattr(self._vehicle, "type_id", "")).startswith("vehicle."):
+                raise CarlaRefusal(SETTINGS, f"actor {ego_id} is not a vehicle")  # review 2 L-i
             self._queues = {"camera": queue.Queue(), "radar": queue.Queue()}
             for name, actor_id in (("camera", camera_id), ("radar", radar_id)):
                 sensor = self._world.get_actor(actor_id)
+                _check_sensor(name, sensor, d)
                 sensor.listen(self._queues[name].put)
                 self._sensors.append(sensor)
-            self._vehicle = self._world.get_actor(ego_id)
         except Exception:
             self.close()  # review L3: never leave the world in synchronous mode after a failed bind
             raise
@@ -182,6 +210,8 @@ class LiveSource:
         """Stop the sensor callbacks and restore the saved world settings (live ground-truth actors are not
         collected in this phase: a stated limit)."""
 
-        for sensor in getattr(self, "_sensors", []):
-            sensor.stop()
-        self._world.apply_settings(self._saved)
+        try:
+            for sensor in getattr(self, "_sensors", []):
+                sensor.stop()
+        finally:  # review 2 L-d: the saved settings are restored even if a stop fails
+            self._world.apply_settings(self._saved)

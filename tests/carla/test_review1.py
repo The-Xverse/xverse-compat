@@ -89,8 +89,10 @@ class _FakeWorld:
     def __init__(self):
         self.settings = SimpleNamespace(synchronous_mode=False, fixed_delta_seconds=None)
         self.applied, self.frame = [], 41
-        self.sensors = {2: _FakeSensor(), 3: _FakeSensor()}
-        self.vehicle = SimpleNamespace(get_control=lambda: SimpleNamespace(brake=0.25), apply_control=lambda c: self.applied.append(c.brake))
+        self.sensors = {2: _FakeSensor("sensor.camera.rgb", {"image_size_x": "800", "image_size_y": "600", "fov": "90.0"}),
+                        3: _FakeSensor("sensor.other.radar", {"range": "100", "horizontal_fov": "30", "vertical_fov": "10"})}
+        self.vehicle = SimpleNamespace(type_id="vehicle.tesla.model3", get_control=lambda: SimpleNamespace(brake=0.25),
+                                       apply_control=lambda c: self.applied.append(c.brake))
         self.snapshot_lag = False
 
     def get_settings(self):
@@ -100,7 +102,7 @@ class _FakeWorld:
         self.settings = SimpleNamespace(**vars(settings))
 
     def get_actor(self, actor_id):
-        return self.vehicle if actor_id == 1 else self.sensors[actor_id]
+        return self.vehicle if actor_id == 1 else self.sensors.get(actor_id)  # CARLA returns None for an unknown id
 
     def tick(self):
         self.frame += 1
@@ -115,8 +117,9 @@ class _FakeWorld:
 
 
 class _FakeSensor:
-    def __init__(self):
+    def __init__(self, type_id="", attributes=None):
         self.callback, self.stopped = None, False
+        self.type_id, self.attributes = type_id, dict(attributes or {})
 
     def listen(self, cb):
         self.callback = cb
@@ -152,7 +155,7 @@ def test_m4_live_source_restores_settings_when_binding_fails():
     world = _FakeWorld()
     world.sensors = {}
     client = SimpleNamespace(get_world=lambda: world)
-    with pytest.raises(KeyError):
+    with pytest.raises(C.CarlaRefusal):
         LiveSource(client, 1, 2, 3, D, carla_module=SimpleNamespace())
     assert world.settings.synchronous_mode is False
 
@@ -175,7 +178,8 @@ def test_l7_items_after_an_ack_are_refused():
     proc = CarlaAdapterProcess(require_env(), DESCRIPTORS, f"fake:{FIXTURES / 'nominal.json'}")
     proc.start()
     for line in ({"type": "ack", "commandId": "x", "result": "echoed", "echoFrame": 1, "responded": None},
-                 {"type": "item", "flowId": "camera", "sequence": 0, "originNs": 0, "frame": 1, "value": {}}):
+                 {"type": "item", "flowId": "vehicle-motion", "sequence": 0, "originNs": 0, "frame": 1,
+                  "value": {"speedMps": 1.0, "accelForwardMps2": 0.0}}):
         proc._lines.put(json.dumps(line) + "\n")
     proc._lines.queue.rotate(2)
     from xverse_compat.carla_client import CarlaProtocolError

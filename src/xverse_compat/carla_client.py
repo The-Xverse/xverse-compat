@@ -24,6 +24,12 @@ MAX_LINE = 65536
 PROTOCOL_ID = "xverse-compat.carla-items/1"
 SRC = Path(__file__).resolve().parents[1]
 STATUS = ("running", "ticked", "draining", "done")
+FLOWS = ("camera", "radar-adas", "radar-vc", "vehicle-motion")
+CODES = frozenset("XVERSE-COMPAT-CARLA-" + c for c in ("FRAME", "EPISODE", "SETTINGS", "RANGE", "SIZE", "TIMESTAMP", "COMMAND", "PROTOCOL", "SOURCE"))
+PYTHON = "3.10.12"
+CARLA_VERSION = "0.9.15"
+MAX_DETECTIONS = 500
+SHA256 = frozenset("0123456789abcdef")
 
 
 class CarlaProtocolError(RuntimeError):
@@ -42,8 +48,32 @@ def _is_number(value) -> bool:
     return type(value) in (int, float) and math.isfinite(value)
 
 
-def parse_outbound(line: str) -> dict:
-    """Validate one adapter -> platform line (contract rules 1-3; ground truth is not a type)."""
+def _value_ok(flow: str, value) -> bool:
+    """Closed value schema of each flow (data model "Values"; review 2 N1)."""
+
+    if not isinstance(value, dict):
+        return False
+    if flow == "camera":
+        return (set(value) == {"width", "height", "fovDeg", "rawSha256", "rawLength"} and _is_int(value["width"]) and value["width"] > 0
+                and _is_int(value["height"]) and value["height"] > 0 and _is_number(value["fovDeg"]) and value["fovDeg"] > 0
+                and isinstance(value["rawSha256"], str) and len(value["rawSha256"]) == 64 and set(value["rawSha256"]) <= SHA256
+                and _is_int(value["rawLength"]) and value["rawLength"] == 4 * value["width"] * value["height"])
+    if flow in ("radar-adas", "radar-vc"):
+        rows = value.get("detections")
+        return (set(value) == {"detections", "count"} and isinstance(rows, list) and len(rows) <= MAX_DETECTIONS
+                and all(isinstance(r, list) and len(r) == 4 and all(_is_number(c) for c in r) for r in rows)
+                and _is_int(value["count"]) and value["count"] == len(rows))
+    if flow == "vehicle-motion":
+        return (set(value) == {"speedMps", "accelForwardMps2"} and _is_number(value["speedMps"]) and value["speedMps"] >= 0
+                and _is_number(value["accelForwardMps2"]))
+    return False
+
+
+def parse_outbound(line: str, flows: tuple[str, ...] = FLOWS) -> dict:
+    """Validate one adapter -> platform line (contract rules 1-3; ground truth is not a type).
+
+    @param flows The flows announced in ``hello``; an item or refusal of any other flow is a violation.
+    """
 
     if len(line.encode("utf-8")) > MAX_LINE:
         raise CarlaProtocolError("outbound line exceeds the limit")
@@ -54,19 +84,20 @@ def parse_outbound(line: str) -> dict:
     kind = message.get("type") if isinstance(message, dict) else None
     if kind == "hello":
         ok = (set(message) == {"type", "protocol", "carlaVersion", "python", "source", "flows"} and message["protocol"] == PROTOCOL_ID
-              and isinstance(message["flows"], list) and all(isinstance(f, str) for f in message["flows"])
-              and message["source"] in ("live", "fake") and isinstance(message["python"], str)
-              and (message["carlaVersion"] is None or isinstance(message["carlaVersion"], str)))
+              and message["flows"] == list(FLOWS) and message["python"] == PYTHON
+              and ((message["source"] == "fake" and message["carlaVersion"] is None)
+                   or (message["source"] == "live" and message["carlaVersion"] == CARLA_VERSION)))
     elif kind == "item":
-        ok = (set(message) == {"type", "flowId", "sequence", "originNs", "frame", "value"} and isinstance(message["flowId"], str)
+        ok = (set(message) == {"type", "flowId", "sequence", "originNs", "frame", "value"} and message["flowId"] in flows
               and _is_int(message["sequence"]) and message["sequence"] >= 0 and _is_int(message["originNs"]) and message["originNs"] >= 0
-              and _is_int(message["frame"]) and isinstance(message["value"], dict))
+              and _is_int(message["frame"]) and message["frame"] >= 0 and _value_ok(message["flowId"], message["value"]))
     elif kind == "refusal":
-        ok = (set(message) == {"type", "code", "flowId", "frame"} and isinstance(message["code"], str)
-              and message["code"].startswith("XVERSE-COMPAT-CARLA-") and (message["flowId"] is None or isinstance(message["flowId"], str))
+        ok = (set(message) == {"type", "code", "flowId", "frame"} and message["code"] in CODES
+              and (message["flowId"] is None or message["flowId"] in flows)
               and (message["frame"] is None or _is_int(message["frame"])))
     elif kind == "ack":
-        ok = (set(message) == {"type", "commandId", "result", "echoFrame", "responded"} and message["result"] in ("echoed", "unacknowledged")
+        ok = (set(message) == {"type", "commandId", "result", "echoFrame", "responded"} and isinstance(message["commandId"], str)
+              and message["commandId"] != "" and message["result"] in ("echoed", "unacknowledged")
               and (message["echoFrame"] is None or _is_int(message["echoFrame"])) and message["responded"] in (True, False, None))
     elif kind == "status":
         state = message.get("state")
@@ -126,7 +157,7 @@ class CarlaAdapterProcess:
         threading.Thread(target=self._pump, args=(self._proc.stdout, self._lines), daemon=True).start()
         threading.Thread(target=self._drain_stderr, daemon=True).start()
         self.hello = self._read()
-        if self.hello.get("type") != "hello":
+        if self.hello is None or self.hello.get("type") != "hello":  # review 2 L-h: an adapter that ended before hello
             self.kill()
             raise CarlaProtocolError("first message is not hello")
         self._send({"type": "start"})
@@ -157,7 +188,7 @@ class CarlaAdapterProcess:
         if line is None:
             return None
         try:
-            return parse_outbound(line.rstrip("\n"))
+            return parse_outbound(line.rstrip("\n"), tuple(self.hello["flows"]) if self.hello else FLOWS)
         except CarlaProtocolError:
             self.kill()
             raise
@@ -223,7 +254,10 @@ class CarlaAdapterProcess:
         """Send ``stop``, collect acks and ``done``, and wait for the exit code."""
 
         self._send({"type": "stop"})
-        self._proc.stdin.close()
+        try:
+            self._proc.stdin.close()
+        except BrokenPipeError:  # review 2 L-h: the adapter already ended on its own
+            pass
         result = self._collect(TickResult(), ("done",))
         return self._proc.wait(timeout=self.timeout_s), result
 

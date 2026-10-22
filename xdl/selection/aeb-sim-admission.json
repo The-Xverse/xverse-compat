@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-10-22T21:49:28.905514+00:00",
+  "recordedAt": "2026-10-22T22:00:25.882330+00:00",
   "platform": {
     "revision": "8b3d8c8e8ff73425787bb3bf958b3e2346eb1fb5",
     "sourceSurfaceFileCount": 26,
@@ -22,7 +22,7 @@
   },
   "selectionRecord": {
     "path": "xdl/selection/aeb-sim-selection.json",
-    "sha256": "2b1f5db983a11d1f033274bdc0481132dc47e9d6c3a8bc2113336ca2d423c01f"
+    "sha256": "06f38edc29817e7f89b3d0b0e5eb0acfd8ce6817068dd73d8cc13ae81a218d72"
   },
   "pins": [
     {
@@ -120,10 +120,10 @@
   "verification": {
     "suite": "xverse-compat tests",
     "command": "env -u PYTHONPATH PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python -m pytest tests -q -p no:cacheprovider",
-    "passed": 126,
+    "passed": 157,
     "failed": 0,
-    "logSha256": "e01920cc99d112e43cdc4cc12bd59760174edc04d3108c75418bd373bfca4ff7",
-    "logPath": "docs/engineering/thesis-lite-phase4b/verification-20261022-b.log"
+    "logSha256": "aab65fe67b756265483bf79b2ce34bf1d1e40645df4d7b452f2c35cfac45f45c",
+    "logPath": "docs/engineering/thesis-lite-phase4b/verification-20261022-c.log"
   },
   "executionAuthority": "absent",
   "blockers": [

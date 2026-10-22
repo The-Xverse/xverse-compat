@@ -119,7 +119,7 @@
       "stream": "groundTruth",
       "disposition": "adapter",
       "supplier": "adapter-carla-rpc",
-      "interface": "actor transforms/velocities over the CARLA RPC port; offline export only (DYN-002)",
+      "interface": "actor transforms/velocities over the CARLA RPC port; offline export only (DYN-002); Phase 4b exports from fake sources only: live actor collection is not implemented and a live --ground-truth is refused (review 2 N2)",
       "dependsOn": [
         "carla-server",
         "carla-python-client"

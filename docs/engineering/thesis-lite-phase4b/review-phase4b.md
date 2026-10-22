@@ -221,3 +221,33 @@ log edit is committed immediately.
       `BrokenPipeError` at `stop()`.
     - **L-i:** at bind time, check the ego actor and each sensor's blueprint and attributes against
       `carla-sensors.json`.
+
+11. Repairs for review 2 applied (2026-10-22), as planned in finding 10:
+    - **N1:** `parse_outbound` admits only the declared flows, and only those announced in `hello`,
+      with closed value schemas per flow. It also requires a non-empty string `commandId`, a code
+      from the closed code set, and an exact `hello` (`python` 3.10.12, `carlaVersion` per
+      source).
+    - **N2:** a live `--ground-truth` exits 3 with `SOURCE` before binding. The selection record's
+      `groundTruth` interface states the limit. Thesis design §9.7 is amended, under the author's
+      delegation, for N1 and N2.
+    - **L-a:** `main` reads stdin through a strict UTF-8 `TextIOWrapper`. Invalid UTF-8 exits 2; it
+      is tested by a subprocess under `env -i`.
+    - **L-b:** descriptor, fixture and export-path failures exit 3 with one stderr line. A
+      non-integer source frame takes the `SOURCE` path.
+    - **L-c:** the carla version is read before binding.
+    - **L-d:** `close()` restores the settings in a `finally`.
+    - **L-e:** `accel` is set only after the motion item is emitted.
+    - **L-f:** `builder.check` runs before the value readers.
+    - **L-g:** the 3.10 compile test compiles in memory.
+    - **L-h:** the client raises when there is no `hello` and tolerates `BrokenPipeError` at
+      `stop()`.
+    - **L-i:** the ego vehicle and the sensors' blueprints and attributes are checked at bind time;
+      the fake world carries `type_id` and `attributes`.
+
+    `tests/carla/test_review2.py` adds 31 tests. The review-1 tests were adapted: the review-1
+    item fixture now carries a valid value, and an unknown actor gives `None`, which is refused
+    with `SETTINGS`.
+
+    Verification: the full suite gives 157 passed, 39 subtests (`verification-20261022-c.log`).
+    The admission record was rebuilt against `8b3d8c8e8` (`3dea9416…`), and the selection record
+    is `06f38edc…`. The suite was re-run after the rebuild: 157 passed. Next: independent review 3.

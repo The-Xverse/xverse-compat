@@ -24,8 +24,10 @@ def test_v01_live_import_in_the_pinned_environment():
 
 def test_v01b_package_compiles_and_imports_under_310_without_forbidden_modules():
     python = require_env()
-    script = ("import sys, compileall; ok = compileall.compile_dir('xverse_compat_carla', quiet=1, legacy=False, force=True, "
-              "ddir='xverse_compat_carla'); import xverse_compat_carla.main, xverse_compat_carla.protocol as p; "
+    # compiled in memory: compileall would write bytecode despite -B (review 2 L-g)
+    script = ("import sys, pathlib; ok = all(compile(f.read_text(encoding='utf-8'), str(f), 'exec') is not None "
+              "for f in sorted(pathlib.Path('xverse_compat_carla').glob('*.py'))); "
+              "import xverse_compat_carla.main, xverse_compat_carla.protocol as p; "
               "print(ok, sys.version_info[:2], p.forbidden_modules_loaded())")
     out = subprocess.run(["env", "-i", "PATH=/usr/bin", "HOME=/nonexistent-carla-home", "PYTHONDONTWRITEBYTECODE=1", str(python), "-s", "-B", "-c", script],
                          cwd=ROOT / "src", capture_output=True, text=True, timeout=60)

@@ -86,23 +86,28 @@ def _frame_items(fd, d, builder: ItemBuilder, out: _Out) -> float | None:
     accel = None
     for flow in FLOWS:
         try:
+            # time and identity are checked before the value for every stream (review 2 L-f)
             if flow == "camera":
                 if fd.camera is None:
                     continue
                 frame, origin = sensor_origin(fd.camera, fd.frame, flow)
+                builder.check(flow, frame, origin)
                 value = camera_value(fd.camera, d, flow, frame)
             elif flow.startswith("radar"):
                 if fd.radar is None:
                     continue
                 frame, origin = sensor_origin(fd.radar, fd.frame, flow)
+                builder.check(flow, frame, origin)
                 value = radar_value(fd.radar, d, flow, frame)
             else:
                 if fd.motion is None:
                     continue
                 frame, origin = fd.frame, fd.elapsed_seconds
+                builder.check(flow, frame, origin)
                 value = motion_value(fd.motion, flow, frame)
-                accel = value["accelForwardMps2"]
             out.send(builder.emit(flow, frame, origin, value))
+            if flow == "vehicle-motion":
+                accel = value["accelForwardMps2"]  # only an emitted sample feeds ``responded`` (review 2 L-e)
         except C.CarlaRefusal as refusal:
             if refusal.code in C.EXIT_3:
                 raise
@@ -116,7 +121,11 @@ def run(source, descriptors, stdin, stdout, stderr, *, carla_version=None, groun
     out = _Out(stdout)
     builder = ItemBuilder(FLOWS)
     tracker = CommandTracker(descriptors)
-    exporter = GroundTruthExporter(ground_truth) if ground_truth else None
+    try:
+        exporter = GroundTruthExporter(ground_truth) if ground_truth else None
+    except OSError as error:  # review 2 L-b: an unwritable export path ends the run before any protocol
+        print(f"{C.SOURCE}: {type(error).__name__}: {error}", file=stderr)
+        return 3
     frame = None
 
     def done(code: int) -> int:
@@ -164,6 +173,8 @@ def run(source, descriptors, stdin, stdout, stderr, *, carla_version=None, groun
             try:
                 source.apply(commands)
                 fd = source.tick()
+                if fd is not None and (type(fd.frame) is not int or fd.frame < 0):  # review 2 L-b
+                    raise ValueError(f"source frame {fd.frame!r} is not a non-negative integer")
             except C.CarlaRefusal as refusal:
                 tracker.restore(commands)  # review M2: acked unacknowledged by done()
                 out.send(refusal.to_message())
@@ -195,6 +206,6 @@ def run(source, descriptors, stdin, stdout, stderr, *, carla_version=None, groun
                 out.send(ack)
             out.send({"type": "status", "state": "ticked", "frame": frame})
         return done(0)
-    except (ProtocolViolation, UnicodeDecodeError) as error:  # invalid UTF-8 on stdin is a protocol violation (L2)
+    except (ProtocolViolation, UnicodeError) as error:  # invalid UTF-8 on stdin is a protocol violation (L2, review 2 L-a)
         print(f"{C.PROTOCOL}: {error}", file=stderr)
         return 2
