@@ -151,3 +151,16 @@ read-only throughout; no selected artifact is executed in this phase.
     owned samples and descriptors). Result after repair: run A (original lock) 75 passed /
     1 failed (content lock), run B (re-pinned) 76 passed; record verified with expected revision.
     Second implementation review requested.
+
+12. Implementation review 2 (2026-10-22, same reviewer): PASS, no open HIGH or MEDIUM; M1–M4
+    confirmed resolved with file:line; the rebuilt record checked (superseded pin kept, run B
+    cited, blockers listed, vendored inventory equal to the thesis copy, all seven cited-file
+    hashes recomputed by the reviewer). Two LOW residuals, both repaired here: the descriptor's
+    interpreter note now says `/usr/bin/python3.10` is where the recipe's `python3` resolves on
+    this host (inference); `contracts.py` recomputes a cited file's hash at load when the file is
+    present (`-DRIFT`). The record was rebuilt (run C, 76 passed) with the review verdict in its
+    `review` field; `acceptance` stays null. The reviewer's note that the thesis-side
+    `specs/003-…` package is untracked in the thesis repository is carried to the acceptance
+    package (thesis commits happen only on the author's request). Candidate state for P4-T07: the
+    acceptance package is presented to the author; no merge into `xverse-compat` main, no
+    canonical-note change, and no execution of any selected artifact follow from this record.

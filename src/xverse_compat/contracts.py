@@ -15,6 +15,8 @@ from pathlib import Path
 import re
 from typing import Any
 
+from .selection import sha256_of
+
 STATUSES: frozenset[str] = frozenset({"verified", "NOT_VERIFIED", "mismatch"})
 _LINE_REF = re.compile(r"^/[^\s:]+:[0-9]+(?:-[0-9]+)?(?:,[0-9]+(?:-[0-9]+)?)*$")
 _HASH_REF = re.compile(r"^(?:sha256|md5):[0-9a-f]{16,64}$")
@@ -58,9 +60,16 @@ def _check_evidence(reference: str, inventory_text: str, cited_files: Mapping[st
         raise ContractError("XVERSE-COMPAT-CONTRACT-EVIDENCE", f"statement {statement_id} cites a hash absent from the inventory")
     if _LINE_REF.match(reference):
         path = reference.rsplit(":", 1)[0]
-        if path in cited_files:
-            return
-        raise ContractError("XVERSE-COMPAT-CONTRACT-EVIDENCE", f"statement {statement_id} cites a file the inventory does not hash")
+        if path not in cited_files:
+            raise ContractError("XVERSE-COMPAT-CONTRACT-EVIDENCE", f"statement {statement_id} cites a file the inventory does not hash")
+        if Path(path).is_file():  # present on this host: its content must still be the hashed one
+            try:
+                actual = sha256_of(Path(path)).split(":", 1)[1]
+            except OSError as error:
+                raise ContractError("XVERSE-COMPAT-CONTRACT-DRIFT", f"statement {statement_id} cites an unreadable file") from error
+            if actual != cited_files[path]:
+                raise ContractError("XVERSE-COMPAT-CONTRACT-DRIFT", f"statement {statement_id} cites a file whose content drifted from the inventory hash")
+        return
     raise ContractError("XVERSE-COMPAT-CONTRACT-EVIDENCE", f"statement {statement_id} evidence is neither an absolute path:line nor an inventory hash")
 
 

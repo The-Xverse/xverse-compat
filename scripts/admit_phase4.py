@@ -40,6 +40,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--failed", required=True, type=int)
     parser.add_argument("--command", default="PYTHONPATH=src python -m pytest tests -q -p no:cacheprovider")
     parser.add_argument("--output", type=Path, default=Path(__file__).resolve().parents[1] / "xdl" / "selection" / "aeb-sim-admission.json")
+    parser.add_argument("--review-verdict", default=None, help="verdict of the separate read-only review, if done")
+    parser.add_argument("--review-reference", default=None, help="where the review is recorded")
     arguments = parser.parse_args(argv)
     root = arguments.platform_root
     head = _rev(root, "HEAD")
@@ -65,6 +67,7 @@ def main(argv: list[str] | None = None) -> int:
         verification_summary={"suite": "xverse-compat tests", "command": arguments.command,
                               "passed": arguments.passed, "failed": arguments.failed},
         output=arguments.output,
+        review=None if arguments.review_verdict is None else {"verdict": arguments.review_verdict, "reference": arguments.review_reference},
     )
     print(arguments.output)
     return 0

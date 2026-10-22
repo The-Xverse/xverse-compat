@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-10-22T09:44:27.118779+00:00",
+  "recordedAt": "2026-10-22T09:47:07.231188+00:00",
   "platform": {
     "revision": "744b66f9c3b964f8ec0105a08ddb905a5e24d2b5",
     "sourceSurfaceFileCount": 26,
@@ -57,7 +57,7 @@
     },
     {
       "path": "xdl/descriptors/aeb-sim/deployment.xdl.yaml",
-      "sha256": "d517cb5000e3c189efcfe3d6e9b86eceaee78651e7cb0ec374dafa4823369c0f",
+      "sha256": "92b810c66f763a3dbf77bc806a72596aca367622d2314e114ec86a40eefab440",
       "catalogEntryIds": [
         "xdl://io.xverse.thesis.aebsim/deployment/aeb-sim-descriptors#binding/bridge-auto-binding",
         "xdl://io.xverse.thesis.aebsim/deployment/aeb-sim-descriptors#binding/carla-server-binding"
@@ -118,8 +118,8 @@
     "command": "PYTHONPATH=src python -m pytest tests -q -p no:cacheprovider",
     "passed": 76,
     "failed": 0,
-    "logSha256": "44f6b3abf38abf0c1af111320f171d7945c724116dcea269af3d204d87a7488a",
-    "logPath": "docs/engineering/thesis-lite-phase4/verification-20261022-b.log"
+    "logSha256": "780ee3a978455802b7816d968168fd3ebd7212b4863b308319dd25c81a2084ad",
+    "logPath": "docs/engineering/thesis-lite-phase4/verification-20261022-c.log"
   },
   "executionAuthority": "absent",
   "blockers": [
@@ -145,7 +145,10 @@
     "sourceKind": "reviewed-sibling-tree",
     "treeSha256": "7d730f85d71defd974dcba20e6d7e08591aa2113c886306caf64ee2f1d0bbb14"
   },
-  "review": null,
+  "review": {
+    "verdict": "PASS (implementation review 2; review 1 FAIL repaired)",
+    "reference": "docs/engineering/thesis-lite-phase4/review-phase4.md findings 11-12"
+  },
   "acceptance": null,
   "platformLock": {
     "path": "platform-api.lock.json",
