@@ -90,3 +90,9 @@ Specification (thesis `specs/027-lite-flow-runtime`): contract rule 16 (rev 8b),
    - **Limits:** recorded samples only, no network session, and CARLA, the bridge and zenohd are
      never executed. The bridge age excludes publication latency (D6-3). G1–G6 are unchanged
      except where Phase 4b changes them.
+
+8. Admission record rebuilt (2026-10-22) per finding 7. It records verification 92 passed, 0
+   failed (log b, `59c3468f…`); platform `8b3d8c8e8`, surface `2696645d…`; previous lock
+   `def80396…`; execution authority absent; and the Phase 6 review and acceptance fields. The
+   suite was rerun once on the final record: 92 passed. Log a, the pre-re-pin run, is kept as
+   history and is not cited by the record.
