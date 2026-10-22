@@ -79,12 +79,41 @@ class AdmissionTests(unittest.TestCase):
 
         data = self._build()
         self.assertEqual(data["executionAuthority"], "absent")
-        for gap in ("G1", "G2", "G3", "G4", "G5"):
+        for gap in ("G2", "G3", "G4", "G5", "G6"):
             self.assertIn(f"XVERSE-PLAN-THESIS-{gap}", data["blockers"])
+        self.assertNotIn("XVERSE-PLAN-THESIS-G1", data["blockers"])  # closed for the adapter runtime (Phase 4b)
+        self.assertEqual(data["sensorDescriptors"]["path"], "xdl/descriptors/aeb-sim/carla-sensors.json")
         self.assertIn("XVERSE-PLAN-THESIS-UNEXECUTED", data["blockers"])
         self.assertIsNone(data["review"]) and self.assertIsNone(data["acceptance"])
         for plan in data["plans"]:
             self.assertFalse(plan["executionEligible"]) and self.assertFalse(plan["isPlannable"])
+
+    def test_u_adm_05_sensor_descriptors_binding_and_tampering(self) -> None:
+        """Phase 4b re-derivation item 5: carla-sensors.json validated at build and hash-bound."""
+
+        import json as _json
+        from unittest import mock
+
+        from xverse_compat import admission
+
+        data = self._build()
+        self.assertEqual(len(data["sensorDescriptors"]["sha256"]), 64)
+        record = _json.loads(self.output.read_text())
+        record["sensorDescriptors"]["sha256"] = "0" * 64
+        self.output.write_text(_json.dumps(record))
+        with self.assertRaises(admission.AdmissionError) as caught:
+            verify_admission_record(self.output, PLATFORM)
+        self.assertEqual(caught.exception.code, "XVERSE-COMPAT-ADMISSION-FILE")
+        del record["sensorDescriptors"]
+        self.output.write_text(_json.dumps(record))
+        with self.assertRaises(admission.AdmissionError) as caught:
+            verify_admission_record(self.output, PLATFORM)
+        self.assertEqual(caught.exception.code, "XVERSE-COMPAT-ADMISSION-FILE")
+        bad = self.output.parent / "carla-sensors-bad.json"
+        bad.write_text(_json.dumps({"schema": "xverse-compat.carla-sensors/1", "settings": {"synchronous": False}}))
+        with mock.patch.object(admission, "SENSORS", bad), self.assertRaises(admission.AdmissionError) as caught:
+            self._build()
+        self.assertEqual(caught.exception.code, "XVERSE-COMPAT-ADMISSION-SENSORS")
 
     def test_u_adm_04_negatives(self) -> None:
         """U-ADM-04."""
@@ -141,3 +170,4 @@ class AdmissionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

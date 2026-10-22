@@ -23,12 +23,15 @@ from .contracts import load_contract_table
 from .descriptors import ROOT, admit_descriptors, descriptor_paths
 from .platform_pin import platform_tree_digest
 from .selection import load_selection_record, sha256_of, verify_pins
+from xverse_compat_carla.codes import CarlaRefusal
+from xverse_compat_carla.descriptors import load_descriptors as load_sensor_descriptors
 
 SELECTION = ROOT / "xdl" / "selection" / "aeb-sim-selection.json"
 CONTRACTS = ROOT / "xdl" / "selection" / "aeb-sim-contracts.json"
 INVENTORY = ROOT / "xdl" / "selection" / "artifact-inventory-20261022.json"
 FIXTURES = ROOT / "tests" / "fixtures" / "bridge-samples"
 LOCK = ROOT / "platform-api.lock.json"
+SENSORS = ROOT / "xdl" / "descriptors" / "aeb-sim" / "carla-sensors.json"
 _TREE_ROOTS = ("xdl/schemas", "xdl/profiles")
 
 
@@ -117,6 +120,10 @@ def build_admission_record(
         if pin.availability == "present" and pin_results.get(pin.id) != "match":
             raise AdmissionError(f"{code}-PIN", f"pin {pin.id!r} digest does not match the host artifact ({pin_results.get(pin.id)})")
     descriptors = admit_descriptors(record, platform_root=platform_root)
+    try:
+        load_sensor_descriptors(SENSORS)
+    except CarlaRefusal as error:
+        raise AdmissionError(f"{code}-SENSORS", f"carla-sensors.json is not admissible: {error.code}") from error
     statements = load_contract_table(CONTRACTS, INVENTORY)
     try:
         file_count, surface = platform_tree_digest(Path(platform_root))
@@ -162,6 +169,7 @@ def build_admission_record(
         "contracts": {**_file_entry(CONTRACTS), "statements": len(statements),
                       "verified": sum(1 for s in statements if s.status == "verified")},
         "inventory": _file_entry(INVENTORY),
+        "sensorDescriptors": _file_entry(SENSORS),
         "fixtures": [_file_entry(path) for path in sorted(FIXTURES.glob("*.jsonl"))],
         "verification": {
             "suite": str(verification_summary.get("suite", "")),
@@ -230,7 +238,10 @@ def verify_admission_record(record_path: Path, platform_root: Path, *, expected_
             raise AdmissionError(f"{code}-PLATFORM", f"{relative} tree differs from the admitted one")
     if expected_revision is not None and platform.get("revision") != expected_revision:
         raise AdmissionError(f"{code}-REVISION", "admitted platform revision differs from the expected one")
-    entries: list[Mapping[str, Any]] = [data.get("selectionRecord", {}), data.get("contracts", {}), data.get("inventory", {})]
+    if not isinstance(data.get("sensorDescriptors"), Mapping):
+        raise AdmissionError(f"{code}-FILE", "admission record lacks the sensorDescriptors binding")
+    entries: list[Mapping[str, Any]] = [data.get("selectionRecord", {}), data.get("contracts", {}), data.get("inventory", {}),
+                                        data["sensorDescriptors"]]
     entries += list(data.get("descriptors", ())) + list(data.get("fixtures", ()))
     verification = data.get("verification", {})
     entries.append({"path": verification.get("logPath", ""), "sha256": verification.get("logSha256")})

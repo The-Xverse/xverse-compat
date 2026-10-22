@@ -69,7 +69,8 @@ class DescriptorTests(unittest.TestCase):
             self.assertIsNotNone(plan.process_action)
             self.assertTrue(plan.digest.startswith("sha256:"))
         bridge = next(plan for plan in admission.plans if plan.catalog_identity.endswith("bridge-auto-binding"))
-        self.assertIn("XVERSE-PLAN-THESIS-G1", bridge.blockers)
+        self.assertIn("XVERSE-PLAN-THESIS-G6", bridge.blockers)
+        self.assertNotIn("XVERSE-PLAN-THESIS-G1", bridge.blockers)
         self.assertIn("XVERSE-PLAN-THESIS-UNEXECUTED", bridge.blockers)
 
     def test_u_dsc_03_artifact_digests_equal_pins(self) -> None:
@@ -89,17 +90,16 @@ class DescriptorTests(unittest.TestCase):
             ("owned readiness duration", "deployment.xdl.yaml", "condition: a sample is published on the zenoh key ego_vehicle/speed", "condition: wait 10 s", "XVERSE-COMPAT-DESCRIPTOR-READINESS-DURATION"),
             ("owned readiness duration words", "deployment.xdl.yaml", "condition: a sample is published on the zenoh key ego_vehicle/speed", "condition: ready after one second", "XVERSE-COMPAT-DESCRIPTOR-READINESS-DURATION"),
             ("owned readiness timer", "deployment.xdl.yaml", "condition: CARLA RPC server answers a version query on tcp port 2000", "condition: the startup timer expires", "XVERSE-COMPAT-DESCRIPTOR-READINESS-DURATION"),
-            ("owned missing UNEXECUTED", "deployment.xdl.yaml", "            - XVERSE-PLAN-THESIS-G3\n            - XVERSE-PLAN-THESIS-UNEXECUTED\n", "            - XVERSE-PLAN-THESIS-G3\n", "XVERSE-COMPAT-DESCRIPTOR-BLOCKER"),
+            ("owned missing UNEXECUTED", "deployment.xdl.yaml", "            - XVERSE-PLAN-THESIS-G6\n            - XVERSE-PLAN-THESIS-UNEXECUTED\n", "            - XVERSE-PLAN-THESIS-G6\n", "XVERSE-COMPAT-DESCRIPTOR-BLOCKER"),
             ("owned artifact sourceRef differs from pin", "deployment.xdl.yaml", "      sourceRef: https://github.com/The-Xverse/carla-simulator-bridge.git@eef3f71747220d150c0b99c30194ca197fe339f9\n      maturity: observed", "      sourceRef: https://github.com/The-Xverse/carla-simulator-bridge.git@main\n      maturity: observed", "XVERSE-COMPAT-DESCRIPTOR-ARTIFACT-SOURCE"),
             ("owned release:latest revision", "component-carla-server.xdl.yaml", "revision: release:0.9.15", "revision: release:latest", "XVERSE-COMPAT-DESCRIPTOR-REVISION"),
             ("owned dependency", "deployment.xdl.yaml", "          - carla-server-binding\n", "          - zenoh-router-binding\n", "XVERSE-COMPAT-DESCRIPTOR-DEPENDENCY"),
-            ("owned blocker", "deployment.xdl.yaml", "            - XVERSE-PLAN-THESIS-G1\n", "", "XVERSE-COMPAT-DESCRIPTOR-BLOCKER"),
             ("owned stream trace", "deployment.xdl.yaml", "          - vehicleSpeed\n", "          - camera\n", "XVERSE-COMPAT-DESCRIPTOR-STREAM-TRACE"),
             ("platform binding gate missing digest", "deployment.xdl.yaml", "      digest: sha256:37b6b6be6ac843475bcddd9f2139d6f265e42aaa30d7f295f8d586022bce62ed\n", "", "XVERSE-COMPAT-DESCRIPTOR-VALIDATION"),
             ("platform schema relative executable", "deployment.xdl.yaml", "executable: /home/jefferson/carla-simulator/CarlaUE4.sh", "executable: CarlaUE4.sh", "XVERSE-COMPAT-DESCRIPTOR-VALIDATION"),
             ("platform schema inherited handles", "deployment.xdl.yaml", "            environmentNames: []\n            inheritedHandles: closed", "            environmentNames: []\n            inheritedHandles: false", "XVERSE-COMPAT-DESCRIPTOR-VALIDATION"),
             ("platform schema undeclared env name", "deployment.xdl.yaml", "              - SDL_VIDEODRIVER\n", "              - sdl-video-driver\n", "XVERSE-COMPAT-DESCRIPTOR-VALIDATION"),
-            ("platform schema implicit shell", "deployment.xdl.yaml", "            inheritedHandles: closed\n            implicitShell: false\n          planningBlockers:\n            - XVERSE-PLAN-THESIS-G1", "            inheritedHandles: closed\n            implicitShell: true\n          planningBlockers:\n            - XVERSE-PLAN-THESIS-G1", "XVERSE-COMPAT-DESCRIPTOR-VALIDATION"),
+            ("platform schema implicit shell", "deployment.xdl.yaml", "            inheritedHandles: closed\n            implicitShell: false\n          planningBlockers:\n            - XVERSE-PLAN-THESIS-G3", "            inheritedHandles: closed\n            implicitShell: true\n          planningBlockers:\n            - XVERSE-PLAN-THESIS-G3", "XVERSE-COMPAT-DESCRIPTOR-VALIDATION"),
             ("owned no blocker", "deployment.xdl.yaml", "          planningBlockers:\n            - XVERSE-PLAN-RESOURCE-LIMITS-UNAPPROVED\n            - XVERSE-PLAN-THESIS-UNEXECUTED\n", "", "XVERSE-COMPAT-DESCRIPTOR-BLOCKER"),
         )
         for name, filename, old, new, expected in cases:
@@ -110,6 +110,20 @@ class DescriptorTests(unittest.TestCase):
                 with self.assertRaises(DescriptorError) as caught:
                     admit_descriptors(self.record, paths=paths)
                 self.assertEqual(caught.exception.code, expected)
+
+    def test_u_dsc_04c_not_available_pin_requires_the_g1_blocker(self) -> None:
+        """U-DSC-04 (Phase 4b re-anchoring): a supplied stream through a NOT_AVAILABLE pin needs the G1 blocker.
+
+        The real client pin is present since Phase 4b, so a synthetic NOT_AVAILABLE copy of the record keeps the rule
+        covered: the bridge binding (now G3/G6/UNEXECUTED) supplies vehicleSpeed through carla-python-client."""
+
+        import dataclasses
+
+        pins = tuple(dataclasses.replace(pin, availability="NOT_AVAILABLE", digest=None) if pin.id == "carla-python-client" else pin
+                     for pin in self.record.pins)
+        with self.assertRaises(DescriptorError) as caught:
+            admit_descriptors(dataclasses.replace(self.record, pins=pins))
+        self.assertEqual(caught.exception.code, "XVERSE-COMPAT-DESCRIPTOR-BLOCKER")
 
     def test_u_dsc_04b_missing_digest_is_rejected_by_the_platform_binding_gate(self) -> None:
         """U-DSC-04: a digest-less bound artifact fails the platform binding gate before catalog derivation."""

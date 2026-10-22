@@ -170,15 +170,16 @@
     "zenohd router (only the manual example needs it)"
   ],
   "gaps": {
-    "G1": "no CARLA Python client importable by CPython 3.13; none verified for 3.10; decision D4-1",
+    "G1": "CLOSED for the adapter runtime by DLG-1/P4b-T01 (pinned cp310 client, out of process); bridge runtime moved to G6",
     "G2": "bridge examples publish status only and apply no received actuation; camera/radar/ground-truth/actuation need the CARLA client API; decision D4-2",
     "G3": "eclipse-zenoh 1.9.0 (3.13) and 1.3.4 (3.10) vs zenohd 1.10.1; compatibility not verified; Phase 6",
     "G4": "xverse-compat spec 001 header lag (spec.md vs validation.md)",
-    "G5": "xverse-compat platform-api.lock.json pins platform tree 7d730f85 (22 files, commit 4ed17352b); accepted main 744b66f9c has 26 files def80396; content-lock test fails; re-pin at P4-T06"
+    "G5": "xverse-compat platform-api.lock.json pins platform tree 7d730f85 (22 files, commit 4ed17352b); accepted main 744b66f9c has 26 files def80396; content-lock test fails; re-pin at P4-T06",
+    "G6": "the bridge binding's interpreter /usr/bin/python3.10 (no -s) loads unpinned user-site carla/pygame/eclipse-zenoh/numpy/shapely/networkx; bridge runtime unpinned (Phase 7 live-gate prerequisite)"
   },
-  "revision": "6 (implementation review 1: bridge example license corrected to MIT; cited_files hashes added for contract evidence)",
+  "revision": "7 (Phase 4b: pinned cp310 CARLA client, environment record, user-site distributions; decision DLG-1)",
   "decisions": {
-    "D4-1": "CARLA client runtime (3.7 env / 3.10 pip / build for 3.13 / newer release)",
+    "D4-1": "DECIDED 2026-10-22 (DLG-1): pinned carla 0.9.15 cp310 wheel (61449e33...) on system CPython 3.10.12, out of process",
     "D4-2": "owned adapters on CARLA RPC vs author-authorized bridge change",
     "D4-4": "accept status-path-only delivery as Phase 4, or wait for D4-1"
   },
@@ -193,6 +194,32 @@
     "/home/jefferson/carla-simulator-bridge/examples/manual_control_zenoh.py": "4025370407f4249a937da0e4431fd037fcb1469914f62180cf92993319e0c598",
     "/home/jefferson/carla-simulator-bridge/examples/zenoh_vehicle.py": "f53ee2468807cb8b454e51ad9f8001b80f52d92f9d801560a32b571c2854e2b8",
     "/home/jefferson/xverse-compat/specs/001-compatibility-provider-boundary/validation.md": "a797458d1ae0561893948c4178c7f18efe62720060361095271e285f1876f071",
-    "/home/jefferson/xverse-compat/platform-api.lock.json": "63432d325e9ac626d957a8df208ca7c5920641f7f3e9c2b9e01632df512714aa"
+    "/home/jefferson/xverse-compat/platform-api.lock.json": "63432d325e9ac626d957a8df208ca7c5920641f7f3e9c2b9e01632df512714aa",
+    "docs/engineering/thesis-lite-phase4b/env-record.json": "b63a490ea7526046ef0ede6f810e0f488ab78f0cc9387b47e2b4bb9857acbe0c",
+    "docs/engineering/thesis-lite-phase4b/user-site-comparison.json": "06425f9774e1becb7ec4855663c4e6f76b20afa9c674900128713db72ee3697e"
+  },
+  "carla_client_cp310": {
+    "wheel": "carla-0.9.15-cp310-cp310-manylinux_2_27_x86_64.whl",
+    "sha256": "61449e33260f6a0cfd2f88d56f2463a5797a0b51bc46618beec07365422d4ad6",
+    "size": 31895950,
+    "sourceRef": "https://files.pythonhosted.org/packages/86/5a/74cf6657e5bb4b8ffe790ef92a01d7f44592a992d758c7053cd6bc75bd96/carla-0.9.15-cp310-cp310-manylinux_2_27_x86_64.whl",
+    "localPath": "/media/jefferson/11c42dee-73a3-4c2b-ab42-a0440011d9e0/.x-verse-build/cache/xverse-compat-wheels/carla-0.9.15-cp310-cp310-manylinux_2_27_x86_64.whl",
+    "environment": "/media/jefferson/11c42dee-73a3-4c2b-ab42-a0440011d9e0/.x-verse-build/cache/xverse-compat-carla-0.9.15-cp310",
+    "interpreter": "/usr/bin/python3.10 (3.10.12)",
+    "importCheck": "0.9.15 with HOME set (compat finding 2)"
+  },
+  "user_site_python310": {
+    "path": "/home/jefferson/.local/lib/python3.10/site-packages",
+    "recordSha256": {
+      "carla-0.9.15": "b48723470d7c57e98c6067defd624c3d45561c8f6a8587e315a3d135c456803c",
+      "pygame-2.6.1": "9a3c3a6225e0860b8a4205dd8675f81b871b986ea3cc2d918bdf5bec956b17d2",
+      "eclipse_zenoh-1.3.4": "cc4fd56e0d1a8bdf86d1c6529f7040b59de0217522c3ebb56ffe5868eb408a76",
+      "numpy-2.2.6": "34d3d779e5e182295674d90eaf9ef05e3416839fe6e2513d4eddae8a46893a23",
+      "shapely-2.1.2": "aabfbc3318856ab4e9121c5f0f7235b0783a56a99772a344f1339b69bed41163",
+      "networkx-3.4.2": "6003a78ba33b75717f8fd2faa7050497b264999d230b3e065e0221fff306b59e",
+      "zenoh_cli-0.6.8": "415c7a231744516bfa996e60e8a8b18fccd0c1738e04db67843d261cf3dc128a"
+    },
+    "carlaComparison": "all 9 payload files identical to the pinned wheel (user-site-comparison.json)",
+    "note": "loaded by the bridge's /usr/bin/python3.10 without -s: gap G6"
   }
 }

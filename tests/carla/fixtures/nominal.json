@@ -1,0 +1,244 @@
+{
+ "settings": {
+  "synchronous": true,
+  "fixedDeltaSeconds": 0.05
+ },
+ "frames": [
+  {
+   "frame": 100,
+   "elapsedSeconds": 10.0,
+   "camera": {
+    "timestamp": 10.0,
+    "width": 800,
+    "height": 600,
+    "fov": 90.0,
+    "rawLength": 1920000,
+    "rawFill": 0
+   },
+   "radar": {
+    "timestamp": 10.0,
+    "detections": [
+     [
+      0.01,
+      -0.1,
+      42.5,
+      -3.25
+     ],
+     [
+      0.0,
+      0.2,
+      80.0,
+      1.5
+     ]
+    ]
+   },
+   "motion": {
+    "velocity": [
+     10.0,
+     0.0,
+     0.0
+    ],
+    "acceleration": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "forward": [
+     1.0,
+     0.0,
+     0.0
+    ]
+   },
+   "controlEcho": "follow",
+   "actors": [
+    {
+     "id": 1,
+     "type": "vehicle.ego",
+     "x": 0.0,
+     "y": 0.0,
+     "z": 0.0,
+     "vx": 10.0,
+     "vy": 0.0,
+     "vz": 0.0
+    }
+   ]
+  },
+  {
+   "frame": 101,
+   "elapsedSeconds": 10.05,
+   "camera": {
+    "timestamp": 10.05,
+    "width": 800,
+    "height": 600,
+    "fov": 90.0,
+    "rawLength": 1920000,
+    "rawFill": 1
+   },
+   "radar": {
+    "timestamp": 10.05,
+    "detections": [
+     [
+      0.01,
+      -0.1,
+      42.5,
+      -3.25
+     ],
+     [
+      0.0,
+      0.2,
+      80.0,
+      1.5
+     ]
+    ]
+   },
+   "motion": {
+    "velocity": [
+     10.0,
+     0.0,
+     0.0
+    ],
+    "acceleration": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "forward": [
+     1.0,
+     0.0,
+     0.0
+    ]
+   },
+   "controlEcho": "follow",
+   "actors": [
+    {
+     "id": 1,
+     "type": "vehicle.ego",
+     "x": 1.0,
+     "y": 0.0,
+     "z": 0.0,
+     "vx": 10.0,
+     "vy": 0.0,
+     "vz": 0.0
+    }
+   ]
+  },
+  {
+   "frame": 102,
+   "elapsedSeconds": 10.1,
+   "camera": {
+    "timestamp": 10.1,
+    "width": 800,
+    "height": 600,
+    "fov": 90.0,
+    "rawLength": 1920000,
+    "rawFill": 2
+   },
+   "radar": {
+    "timestamp": 10.1,
+    "detections": [
+     [
+      0.01,
+      -0.1,
+      42.5,
+      -3.25
+     ],
+     [
+      0.0,
+      0.2,
+      80.0,
+      1.5
+     ]
+    ]
+   },
+   "motion": {
+    "velocity": [
+     10.0,
+     0.0,
+     0.0
+    ],
+    "acceleration": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "forward": [
+     1.0,
+     0.0,
+     0.0
+    ]
+   },
+   "controlEcho": "follow",
+   "actors": [
+    {
+     "id": 1,
+     "type": "vehicle.ego",
+     "x": 2.0,
+     "y": 0.0,
+     "z": 0.0,
+     "vx": 10.0,
+     "vy": 0.0,
+     "vz": 0.0
+    }
+   ]
+  },
+  {
+   "frame": 103,
+   "elapsedSeconds": 10.15,
+   "camera": {
+    "timestamp": 10.15,
+    "width": 800,
+    "height": 600,
+    "fov": 90.0,
+    "rawLength": 1920000,
+    "rawFill": 3
+   },
+   "radar": {
+    "timestamp": 10.15,
+    "detections": [
+     [
+      0.01,
+      -0.1,
+      42.5,
+      -3.25
+     ],
+     [
+      0.0,
+      0.2,
+      80.0,
+      1.5
+     ]
+    ]
+   },
+   "motion": {
+    "velocity": [
+     10.0,
+     0.0,
+     0.0
+    ],
+    "acceleration": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "forward": [
+     1.0,
+     0.0,
+     0.0
+    ]
+   },
+   "controlEcho": "follow",
+   "actors": [
+    {
+     "id": 1,
+     "type": "vehicle.ego",
+     "x": 3.0,
+     "y": 0.0,
+     "z": 0.0,
+     "vx": 10.0,
+     "vy": 0.0,
+     "vz": 0.0
+    }
+   ]
+  }
+ ]
+}

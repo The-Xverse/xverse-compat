@@ -11,7 +11,7 @@ metadata:
     maturity: observed
     limitations:
       - Drives the ego vehicle with its own behavior agent; it accepts no actuation and publishes speed only.
-      - Needs the CARLA Python client, which is NOT_AVAILABLE for the admitted toolchain (gap G1).
+      - Needs the CARLA Python client; on this host it loads an unpinned user-site copy (gap G6).
       - Needs a display or SDL_VIDEODRIVER=dummy (pygame.display.set_mode at line 738).
 spec:
   capabilities:

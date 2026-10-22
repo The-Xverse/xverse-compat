@@ -71,4 +71,9 @@ spec:
       epoch: process-start
       rate: wall-rate
       monotonic: true
+    - id: carla-simulation
+      clockClass: simulation
+      epoch: episode-start
+      rate: simulated
+      monotonic: true
   defaultTimeDomainId: host-monotonic

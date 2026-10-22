@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-10-22T21:26:04.704577+00:00",
+  "recordedAt": "2026-10-22T22:29:20.382626+00:00",
   "platform": {
     "revision": "8b3d8c8e8ff73425787bb3bf958b3e2346eb1fb5",
     "sourceSurfaceFileCount": 26,
@@ -22,7 +22,7 @@
   },
   "selectionRecord": {
     "path": "xdl/selection/aeb-sim-selection.json",
-    "sha256": "f0ca78a986958fd6f46db6ede91521277d214f62e8f1a16ea97970cdd2879700"
+    "sha256": "06f38edc29817e7f89b3d0b0e5eb0acfd8ce6817068dd73d8cc13ae81a218d72"
   },
   "pins": [
     {
@@ -39,15 +39,15 @@
     },
     {
       "id": "carla-python-client",
-      "availability": "NOT_AVAILABLE",
-      "digest": null,
-      "recomputed": "unpinned"
+      "availability": "present",
+      "digest": "sha256:61449e33260f6a0cfd2f88d56f2463a5797a0b51bc46618beec07365422d4ad6",
+      "recomputed": "match"
     }
   ],
   "descriptors": [
     {
       "path": "xdl/descriptors/aeb-sim/component-bridge-auto.xdl.yaml",
-      "sha256": "6f5b70365e1c4d4ebf21c5f3b3c941f1d89b8be5d8eea3124a7968d83179a6a1",
+      "sha256": "e90557a4370c7cc6f911f661831ea53e732390e31a0d5d071d4d7051b4225b49",
       "catalogEntryIds": []
     },
     {
@@ -57,7 +57,7 @@
     },
     {
       "path": "xdl/descriptors/aeb-sim/deployment.xdl.yaml",
-      "sha256": "92b810c66f763a3dbf77bc806a72596aca367622d2314e114ec86a40eefab440",
+      "sha256": "ea8e70e71b422f92f1719855ea102b52416c55d306d22ff92f6d28f0a0ca04ff",
       "catalogEntryIds": [
         "xdl://io.xverse.thesis.aebsim/deployment/aeb-sim-descriptors#binding/bridge-auto-binding",
         "xdl://io.xverse.thesis.aebsim/deployment/aeb-sim-descriptors#binding/carla-server-binding"
@@ -70,17 +70,17 @@
     },
     {
       "path": "xdl/descriptors/aeb-sim/system.xdl.yaml",
-      "sha256": "8d558fc19847b00a79b4b719871a7d44df8c8b8710fb8234aecb6db32fa3641a",
+      "sha256": "5b7691b492e77f2c05bb7f1121b44108b6a6c8544788be44bc3bd534181eb398",
       "catalogEntryIds": []
     }
   ],
   "plans": [
     {
       "catalogIdentity": "xdl://io.xverse.thesis.aebsim/deployment/aeb-sim-descriptors#binding/bridge-auto-binding",
-      "digest": "sha256:5aa4dd0e5bf610e9ca3fb3d86899035dda4eacbf3d4504b483a63c6797a46375",
+      "digest": "sha256:014595e626bcf24d0ae13462139a936000210f11d3a73e246f756d326089824b",
       "blockers": [
-        "XVERSE-PLAN-THESIS-G1",
         "XVERSE-PLAN-THESIS-G3",
+        "XVERSE-PLAN-THESIS-G6",
         "XVERSE-PLAN-THESIS-UNEXECUTED"
       ],
       "isPlannable": false,
@@ -88,7 +88,7 @@
     },
     {
       "catalogIdentity": "xdl://io.xverse.thesis.aebsim/deployment/aeb-sim-descriptors#binding/carla-server-binding",
-      "digest": "sha256:9a6388c6a825fccf45e765f808e83f09b2a26fd856d16d30a4443e70c6d95e92",
+      "digest": "sha256:f973f6579d27a0c81cd0e426be9f05160486a9be817b9adea166171580e3c94f",
       "blockers": [
         "XVERSE-PLAN-RESOURCE-LIMITS-UNAPPROVED",
         "XVERSE-PLAN-THESIS-UNEXECUTED"
@@ -99,13 +99,17 @@
   ],
   "contracts": {
     "path": "xdl/selection/aeb-sim-contracts.json",
-    "sha256": "303a5ea870eb382fc7a8a919c825015602eed413ed0a93d962f2edf1b97ef6e3",
-    "statements": 15,
-    "verified": 9
+    "sha256": "7f896a40f9a2b9a5e2b0393e0ff55184cb08189c1b08483004e182a17c65a5ae",
+    "statements": 16,
+    "verified": 11
   },
   "inventory": {
     "path": "xdl/selection/artifact-inventory-20261022.json",
-    "sha256": "67e579f18697cebb6fe296293b3f44b3b10dd460a5ebe04e6b1f0fc034e325c4"
+    "sha256": "0b784c71bca68bfa3e01eb32058724bfa8c406c80c739f6470d5fad4c8f08eba"
+  },
+  "sensorDescriptors": {
+    "path": "xdl/descriptors/aeb-sim/carla-sensors.json",
+    "sha256": "55d07ad322a9696275afd661d8387ad60131ae4c915db0233f785dd64ca9c850"
   },
   "fixtures": [
     {
@@ -115,20 +119,20 @@
   ],
   "verification": {
     "suite": "xverse-compat tests",
-    "command": "env -u PYTHONPATH PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src python -m pytest tests -q -p no:cacheprovider",
-    "passed": 92,
+    "command": "env -u PYTHONPATH PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python -m pytest tests -q -p no:cacheprovider",
+    "passed": 181,
     "failed": 0,
-    "logSha256": "59c3468f27bad8693543b654377edac2bac314faa5baa2dc005c718522dc52ef",
-    "logPath": "docs/engineering/thesis-lite-phase6/verification-20261022-b.log"
+    "logSha256": "4c46490a7affa9d76d6c5cef01874a66bb76537fcbef13653f85ff07b44fbe81",
+    "logPath": "docs/engineering/thesis-lite-phase4b/verification-20261022-h.log"
   },
   "executionAuthority": "absent",
   "blockers": [
     "XVERSE-PLAN-RESOURCE-LIMITS-UNAPPROVED",
-    "XVERSE-PLAN-THESIS-G1",
     "XVERSE-PLAN-THESIS-G2",
     "XVERSE-PLAN-THESIS-G3",
     "XVERSE-PLAN-THESIS-G4",
     "XVERSE-PLAN-THESIS-G5",
+    "XVERSE-PLAN-THESIS-G6",
     "XVERSE-PLAN-THESIS-UNEXECUTED"
   ],
   "previousPlatformLock": {
@@ -147,12 +151,12 @@
     "platformRevision": "744b66f9c3b964f8ec0105a08ddb905a5e24d2b5"
   },
   "review": {
-    "verdict": "PASS (Phase 6: platform implementation reviews 1 FAIL repaired, 2 PASS; re-pin review PASS)",
-    "reference": "docs/engineering/thesis-lite-phase6/review-phase6.md findings 3-6; platform review-flows-lite.md findings 8-10"
+    "verdict": "PASS",
+    "reference": "docs/engineering/thesis-lite-phase4b/review-phase4b.md findings 14, 16, 20"
   },
   "acceptance": {
-    "decision": "accepted as the Phase 6 xverse-compat delivery (P6-T04 bridge route adapter; platform lock re-pinned to 8b3d8c8e8)",
-    "basis": "author goal 2026-10-22 and delegation (DLG-5/DLG-6); recorded as finding 7",
+    "decision": "accepted: Phase 4b CARLA client adapters (finding 21)",
+    "basis": "author goal 2026-10-22 and delegated decisions DLG-1/DLG-2 (thesis specs/021-thesis-lite-program/review/delegated-decisions-20261022.md)",
     "date": "2026-10-22"
   },
   "platformLock": {

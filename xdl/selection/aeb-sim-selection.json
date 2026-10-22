@@ -2,7 +2,7 @@
   "recordVersion": "0.1.0",
   "aebSource": "distributed_safety_critical_thesis notes/dynamic_thesis_notes.md Note 21, AEB-EXPERIMENT-2026-08-30-v2",
   "platformRevision": "744b66f9c",
-  "inventory": "distributed_safety_critical_thesis/specs/003-thesis-lite-artifact-adapters/review/artifact-inventory-20261022.json (revision 6)",
+  "inventory": "distributed_safety_critical_thesis/specs/003-thesis-lite-artifact-adapters/review/artifact-inventory-20261022.json (revision 7)",
   "pins": [
     {
       "id": "carla-server",
@@ -44,16 +44,18 @@
       "id": "carla-python-client",
       "artifactKind": "python-wheel",
       "version": "0.9.15",
-      "sourceRef": "https://tiny.carla.org/carla-0-9-15-linux",
+      "sourceRef": "https://files.pythonhosted.org/packages/86/5a/74cf6657e5bb4b8ffe790ef92a01d7f44592a992d758c7053cd6bc75bd96/carla-0.9.15-cp310-cp310-manylinux_2_27_x86_64.whl",
       "releaseArtifact": true,
-      "availability": "NOT_AVAILABLE",
-      "reason": "only CPython 2.7 and 3.7 wheels/eggs are present (cp37 wheel sha256 8782039dfa9ee6796b20c9193940d9a089b972d161c19fe64d33ab8184a0cf20); the admitted toolchain is CPython 3.13 and no 3.10 wheel was verified (gap G1, decision D4-1)",
+      "availability": "present",
       "license": "MIT (CARLA)",
       "classification": "public-safe",
-      "toolchain": "CPython 3.7 only",
+      "toolchain": "system CPython 3.10.12, out of process (pinned venv on loop10; DLG-1)",
       "limitations": [
-        "required by the bridge example and by every owned adapter on CARLA RPC"
-      ]
+        "used by the owned adapters (xverse_compat_carla) only through the pinned environment; the bridge loads an unpinned user-site copy (gap G6)"
+      ],
+      "digest": "sha256:61449e33260f6a0cfd2f88d56f2463a5797a0b51bc46618beec07365422d4ad6",
+      "digestCommand": "sha256sum /media/jefferson/11c42dee-73a3-4c2b-ab42-a0440011d9e0/.x-verse-build/cache/xverse-compat-wheels/carla-0.9.15-cp310-cp310-manylinux_2_27_x86_64.whl",
+      "localPath": "/media/jefferson/11c42dee-73a3-4c2b-ab42-a0440011d9e0/.x-verse-build/cache/xverse-compat-wheels/carla-0.9.15-cp310-cp310-manylinux_2_27_x86_64.whl"
     }
   ],
   "adapters": [
@@ -68,7 +70,8 @@
       "dependsOn": [
         "carla-server",
         "carla-python-client"
-      ]
+      ],
+      "note": "dependsOn carla-python-client: the bridge loads the unpinned user-site copy (content-identical to the pinned wheel), not the pinned environment (gap G6)"
     },
     {
       "stream": "brakeStatus",
@@ -80,7 +83,6 @@
       "stream": "brakeActuation",
       "disposition": "adapter",
       "supplier": "adapter-carla-rpc",
-      "blocker": "G1",
       "interface": "carla.Vehicle.apply_control over the CARLA RPC port",
       "dependsOn": [
         "carla-server",
@@ -97,7 +99,6 @@
       "stream": "camera",
       "disposition": "adapter",
       "supplier": "adapter-carla-rpc",
-      "blocker": "G1",
       "interface": "sensor.camera.rgb over the CARLA RPC port",
       "dependsOn": [
         "carla-server",
@@ -108,7 +109,6 @@
       "stream": "radar",
       "disposition": "adapter",
       "supplier": "adapter-carla-rpc",
-      "blocker": "G1",
       "interface": "sensor.other.radar over the CARLA RPC port",
       "dependsOn": [
         "carla-server",
@@ -119,8 +119,7 @@
       "stream": "groundTruth",
       "disposition": "adapter",
       "supplier": "adapter-carla-rpc",
-      "blocker": "G1",
-      "interface": "actor transforms/velocities over the CARLA RPC port; offline export only (DYN-002)",
+      "interface": "actor transforms/velocities over the CARLA RPC port; offline export only (DYN-002); Phase 4b exports from fake sources only: live actor collection is not implemented and a live --ground-truth is refused (review 2 N2)",
       "dependsOn": [
         "carla-server",
         "carla-python-client"
@@ -130,7 +129,6 @@
       "stream": "scenarioControl",
       "disposition": "adapter",
       "supplier": "adapter-carla-rpc",
-      "blocker": "G1",
       "interface": "world settings (synchronous mode, fixed delta), map, spawn, seed over the CARLA RPC port",
       "dependsOn": [
         "carla-server",
@@ -148,7 +146,7 @@
     "CARLA 0.9.16 maps cache (no server or client)"
   ],
   "decisions": [
-    "D4-1 CARLA client runtime (3.7 environment / pip on system 3.10 / build for 3.13 / newer release)",
+    "D4-1 decided 2026-10-22 (DLG-1): pinned carla 0.9.15 cp310 wheel on system CPython 3.10.12, out of process",
     "D4-2 owned adapters on CARLA RPC versus an author-authorized bridge change",
     "D4-4 accept a speed-only delivery as Phase 4, or wait for D4-1"
   ]

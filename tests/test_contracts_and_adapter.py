@@ -42,7 +42,7 @@ class ContractTableTests(unittest.TestCase):
 
         statements = load_contract_table(TABLE, INVENTORY)
         gaps = {item.gap for item in statements if item.gap}
-        self.assertEqual(gaps, {"G1", "G2", "G3", "G4", "G5"})
+        self.assertEqual(gaps, {"G2", "G3", "G4", "G5", "G6"})
         for item in statements:
             if item.gap:
                 self.assertTrue(item.blocker, item.id)
