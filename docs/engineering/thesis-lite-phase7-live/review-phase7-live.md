@@ -65,3 +65,52 @@ The work is an engineering integration only: not AEB validation, not a scientifi
 12. **Live finding 05.** Two fresh server starts reported synchronous mode with 0.05 s until a client set
     the world asynchronous. The origin was not determined. The guard always leaves the world asynchronous and
     records the before and after state.
+13. **Independent review 1 (2026-10-23 about 00:58, on compat `43abc9a` and blueprints `af43b3b`): NOT READY.**
+    The findings are recorded before any repair. The full table is in the reviewer report, summarized here:
+    - **R-1 HIGH.** The final runs (00:41–00:45) recorded dirty trees: compat `bb577a1` with 3 dirty files and
+      blueprints `288c800` with 1. The commits came afterwards, so the evidence is not bound to the reviewed
+      code.
+    - **R-2 HIGH.** Flow receivers were activated with the clock at 0. All 224 of the 224 Argus flow events are
+      spurious deadline misses stamped at tick 0. Freshness is circular, because the receiver clock is the
+      item's own origin, so the age is always 0.
+    - **R-3 HIGH.** The baseline input is not comparable:
+      - legacy `virtual_vehicle.py` divides throttle by 1.2, so 0.6 is applied as 0.5;
+      - the legacy `clock_status` lags world time, so the stimulus held throttle for 6.06 s of simulation time,
+        against 3.50 s in Lite;
+      - the legacy `velocity_status` lags as well.
+
+      None of this was declared.
+    - **R-4 MED.** The bridge reconciliation claims the driver reproduces the b10e6d8 semantics. It does not
+      reproduce the throttle damping, and the file is not referenced from the log or the README.
+    - **R-5 MED.** The XDL is the platform sample fixture with names changed. The runtime flows and the
+      `carla-simulation` domain are not planned, and the flow bindings are hard-coded.
+    - **R-6 MED.** After the cancel, Maestro's closure is incomplete: `cleanupComplete` and
+      `normalUnitRecordsComplete` are false, and the Argus manifest shows 0 events, unassessed. A health
+      deadline during the pause was not exercised, because the pause was 2.08 s against a 5 s cadence.
+    - **R-7 MED.** Control release in cleanup:
+      - the guard un-pauses with the last throttle still applied (0.6 at 14.9 km/h);
+      - the observer is stopped before the guard runs;
+      - in bound mode, `close()` leaves the last throttle on a vehicle the adapter does not own;
+      - there is no trap, and the residue check runs after the guard.
+    - **R-8 MED.** The guard always forces asynchronous mode, against the author's "restore original world
+      settings". The conflict was not raised.
+    - **R-9 MED.** The stop at ticks 77–80 is not wall-paced, so the margin is about 2 s at 0.17 s per tick.
+    - **R-10 MED.** The tick-owner check is a process-name grep only; established connections to :2000 and
+      :2001 are not recorded.
+    - **R-11 MED.** Finding 11's claim "fails before Maestro's observe step" is contradicted: the observe probe
+      passed, and the failure surfaced as a child exit at tick 53.
+    - **R-12 to R-17 LOW:**
+      - R-12: brake onset is defined from the cached control, and the −25 m/s² peak is not annotated;
+      - R-13: the freeze timing relative to the profile is not stated;
+      - R-14: there is no carla-items/2 contract note;
+      - R-15: the numbers in the documents disagree, the guard record has no timestamp, the placeholders are
+        unlabelled, and there is no run index;
+      - R-16: the driver's link and session sit outside its error handling, and the socket permission is set
+        after bind;
+      - R-17: the observer and the runtime read the same snapshot velocity.
+
+    Confirmed by the reviewer:
+    - nothing constructs `RuntimeReadiness` or `execution_approved`;
+    - oracle separation holds;
+    - the nominal, baseline, freeze, cancel and no-carla numbers were recomputed from the raw files;
+    - the suite: 192 passed.
