@@ -165,3 +165,10 @@ log edit is committed immediately.
      V01 against the selection pin.
    - **L9:** inventory D4-1 text updated; an environment addendum records the current `py_compile`
      result.
+
+8. Defect found by the new M4 test (2026-10-22), recorded before repair. In `LiveSource._wait`,
+   once the shared per-tick deadline has expired (here because the camera was silent), the radar
+   wait returns None immediately, even though that frame's radar data is already queued. So one
+   silent sensor drops the others. Repair: after the deadline, drain already-queued data without
+   blocking (`get_nowait`). Only the waiting is bounded per tick; data that has already arrived is
+   not discarded.
