@@ -593,3 +593,23 @@ engineering stabilization candidate: not M1, not AEB evidence.
       - LOW-2 (thesis): correct DR-6's basis. State that P4 requires `failed`, and make the no-carla assertion
         `failed` only.
       - Then one verifying freeze-vcu run, and one no-carla run.
+25. **Verification of the finding-24 repairs on blueprints `8aa57ca` (runs 18:11–18:17, CARLA instance 13; written
+    at 18:17:43 2026-10-23).** Compat main `25e4e1f`, platform main `b28a2aacf`. Every run has dirty=0, residue 0
+    and the world restored.
+
+    | Run | Load | Result |
+    | --- | --- | --- |
+    | freeze-vcu `181112` | 4.3 | succeeded; Maestro root closed and complete; freeze inside the throttle segment |
+    | nominal `181350` | 8.0 | succeeded; Maestro root closed and complete |
+    | cancel-paused `181632` | 6.7 | `ML-SCHEDULE-CANCELLED`, every assertion met |
+    | no-carla `181700` | — | `ML-RUN-CHILD-EXIT`, cleanup complete, writer `failed` with WRITER-STATE only |
+
+    - **freeze-vcu detail.**
+      - The freeze lies inside the throttle segment, with a start margin of 1.271 s and an end margin of 1.73 s.
+      - At tick 60, `observe-legacy-vcu` made a real health query (host 725.313) before its probe (725.338). The
+        freeze applied at tick 61 (725.420) and cleared at tick 71 (725.919).
+      - The thaw came 0.61 s after that health success.
+    - **cancel-paused.** It met every assertion, with no persistence failure. The platform race rate is now 1 of
+      9 on the last three heads.
+    - **Checksums.** `SHA256SUMS` was refreshed: 1627 files.
+    - **DR-6.** Its basis is corrected in the thesis record (review 8, LOW-2).
