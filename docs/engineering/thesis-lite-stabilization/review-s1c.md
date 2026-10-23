@@ -690,3 +690,26 @@ engineering stabilization candidate: not M1, not AEB evidence.
       (`verification-20261023-s1c2-b.log`: 208 passed, 39 subtests). Its review and acceptance fields are empty
       until S1c-2's review and acceptance.
     - **A rerun on the final record** gave 208 passed.
+31. **S1c-2 part 1 development runs, and an audit metric defect (runs 20:27–20:33, CARLA instance 15; written at
+    20:33:32 2026-10-23, before the repair).**
+    - **Revisions.** Blueprints `5c7bfad`, compat `02474ba`, platform main `b28a2aacf`.
+
+      | Case | Result | Ticks (mean cycle) | Persistence round trip (p99 / max / last-decile increase, s) | Load |
+      | --- | --- | --- | --- | --- |
+      | long-run | succeeded | 601 (0.056 s) | 0.046 / 0.105 / 0.005 (1401 calls) | 6.3 |
+      | nominal | succeeded | 401 | 0.073 / 0.132 / 0.019 | 8.5 |
+      | cancel-paused | `ML-SCHEDULE-CANCELLED` | — | — | 8.0 |
+
+    - **Long-run.** Its start-up scope was 4.75 s. The persistence round trips meet the FR-002 metric.
+    - **Broker cancel result.** `native_epoch_confirmed: true` in all three runs. In nominal and long-run this is the
+      terminal fence's cancel.
+    - **Audit.** nominal and cancel-paused PASS. long-run FAILs only `P6.closureWithin2s`.
+    - **Defect.** `audit.py` measures "closure" as the start-return time minus the last tick: 2.05 s for long-run,
+      2.59 s for nominal and 1.56 s for cancel. That span includes the reverse teardown of all four units, the
+      collection and the terminal reports. The P6 criterion (plan.md; FR-002 "closure and abort must fit the
+      terminal budget (≤ 2 s; `run_closure.py:126`)") means the terminal persistence calls. The longest of those
+      was `terminal-report` at 0.80 s in long-run. The criterion was applied to the wrong span.
+    - **Repair.**
+      - The harness records every terminal persistence call (kind, duration).
+      - P6 requires each `terminal-report`, `closure` and `abort` call to be ≤ 2 s.
+      - The span after the last tick stays reported as an observation.
