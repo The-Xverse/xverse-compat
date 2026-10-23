@@ -189,10 +189,22 @@ def _term(proc: subprocess.Popen) -> float:
     return time.monotonic() - began
 
 
+_SOCKETS = []
+
+
 def _socket_path() -> str:
     path = f"/run/user/{os.getuid()}/xverse-lite/test-ready-{os.getpid()}-{time.monotonic_ns()}.sock"
     Path(path).parent.mkdir(parents=True, exist_ok=True)
+    _SOCKETS.append(path)
     return path
+
+
+@pytest.fixture(autouse=True)
+def _remove_sockets():
+    """The shared xverse-lite socket directory is part of the live residue check: leave nothing there (S1c finding 42)."""
+    yield
+    while _SOCKETS:
+        Path(_SOCKETS.pop()).unlink(missing_ok=True)
 
 
 def _unit_env(*paths) -> dict:
