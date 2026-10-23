@@ -328,3 +328,28 @@ The work is an engineering integration only: not AEB validation, not a scientifi
     | `lite-…013916-no-carla` | Maestro `ML-RUN-CHILD-EXIT`; adapter marker `{code: 3}`; cleanup complete; no residue |
 
     End state: CARLA stopped (by this session), GPU free, `zenohd` running, no unit processes, no sockets.
+24. **Independent review 3 (2026-10-23 about 01:47, on compat `8657e5f` and blueprints `1c6cfa5`): READY FOR
+    AUTHOR REVIEW**, with no HIGH or MEDIUM finding.
+    - N-1 to N-8 are repaired; N-3 and N-6 leave LOW residue.
+    - Item 23 was confirmed against the raw evidence.
+    - Suite: 197 passed.
+
+    LOW findings and dispositions (engineer decision):
+    - **Fixed (documentation and report only; no run code changed):**
+      - M-1: README behaviour sections;
+      - M-6: the report's throttle label follows the run kind;
+      - M-7: item 22 and item 23 corrections, below;
+      - M-8: the cancel-hold limit is disclosed, below.
+    - **Left open for the author.** Each would change run code after the final evidence was recorded:
+      - M-2: the `restore.py` docstrings are stale, and the retry stops on a synchronous-mode match only;
+      - M-3: the baseline does not check the `world_settings` result;
+      - M-4: the baseline's `ego_vehicle` check runs before normalization;
+      - M-5: the baseline's leftover destroy is unverified, and its exit status is incomplete.
+
+    Corrections:
+    - **Item 22:** the Lite runs `…013430-nominal`, `…013509-freeze-vcu` and `…013549-cancel-paused` also ran
+      with leftover actor 24 in the world, and are superseded for that reason, as the run index records.
+    - **Item 23:** the baseline's asynchronous step range is 4.8–31.5 ms over all frames, and 5.2–11.9 ms while
+      the ego exists (not "4–14 ms").
+    - **Item 23, cancel row (M-8):** the guard destroyed the ego about 0.25 s of simulation time after the hold,
+      at 8.49 km/h. The hold is shown as deceleration (−4.6, −7.0 and −6.0 m/s²), not as standstill.
