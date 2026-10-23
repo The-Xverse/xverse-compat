@@ -120,3 +120,28 @@ engineering stabilization candidate: not M1, not AEB evidence.
    - **Traceability (R1-9).** Finding 1 was recorded with its repair (`076b25f`), and the blueprint
      findings after the blueprint commit. Both are noted here. Review-1 findings were recorded before these
      repairs (`e77d655`).
+7. **Independent implementation review 2 (2026-10-23 about 11:55): FAIL, one MEDIUM. Recorded before repair.**
+   - **MEDIUM S1c-R2-1 (verified on a reduced copy).** A process-group SIGINT, such as Ctrl-C, also kills
+     the `tee` of `exec > >(tee …)`.
+     - In `run-baseline.sh`, `on_exit` then writes to a closed pipe, and bash dies of SIGPIPE before it
+       writes `baseline-exit.txt`, before `kill -KILL` and before the observer is stopped. The legacy
+       children run in the background with SIGINT ignored, so they can survive the cleanup's `kill -INT`
+       and leak.
+     - `trap - EXIT INT TERM` at the start of `on_exit` lets a second signal during the 3 s cleanup kill
+       bash.
+     - The same output-before-guard pattern exists in `run-live.sh` `cleanup()`, which predates S1c. There
+       it can skip the restore guard. This is a hypothesis; it was not run.
+   - **LOW S1c-R2-2.** `diagnostics`, `steps` and `workArtifacts` are still computed unguarded in the
+     `finally` block. One bad receipt turns the whole `closureTerminalReports` list into one error. `_fact`
+     has no unit test.
+   - **LOW S1c-R2-3.** An ego already gone before the guard is still silent in the control and destroy
+     results. The `absent` branch is untested. The error path records `timedOut` as bare IDs.
+   - **LOW S1c-R2-4.** `unpauseMonotonicNs` is set even when the commit tick raised. The docstring omits
+     `holdMonotonicNs` and `unpauseReason`.
+   - **LOW S1c-R2-5.** README:
+     - the trap cleanup skips TERM;
+     - the standstill wait applies only to an asynchronous target;
+     - a missing `XVERSE_COMPAT_SRC` exits 4 without `baseline-exit.txt`.
+   - **Verified by the reviewer:**
+     - R1-1, R1-2 (`_fact` on the real platform classes), R1-4, R1-5, R1-6, R1-8 and R1-9.
+     - R1-3 for TERM, `finish`, `set -u` and the blocked preflight.
