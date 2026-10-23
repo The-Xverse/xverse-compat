@@ -713,3 +713,27 @@ engineering stabilization candidate: not M1, not AEB evidence.
       - The harness records every terminal persistence call (kind, duration).
       - P6 requires each `terminal-report`, `closure` and `abort` call to be ≤ 2 s.
       - The span after the last tick stays reported as an observation.
+32. **The long-run terminal report exceeds its 2 s budget under load (run dev-s1c2p1-20261023T203658-long-run; written at 20:38:41
+    2026-10-23, before any repair or decision).**
+    - **Revisions.** Blueprints `b1c43b0`; load 8.4 at the start.
+    - **Result.**
+      - 601 ticks, and the units succeeded with every marker.
+      - `persistenceFailure: ML-PERSIST-TIMEOUT`, kind `terminal-report`, stage `receive`: the call ran 1.981 s
+        against its 2 s deadline.
+      - `dispatchDiagnostic: ML-SCHEDULE-EVIDENCE-INCOMPLETE`, closure `ML-CLOSURE-REPORT-INCOMPLETE`.
+      - The Maestro root stayed `open` with CORRUPT and MUTATED reasons. The harness failed visibly.
+    - **The first long-run at load 6.3** took 0.80 s for the same call.
+    - **Cause, from the code.** The terminal publish (`persistence_worker` → `terminal_runtime.WorkerTerminal.publish`)
+      builds the lifecycle coverage report and the `retained-inputs.json` snapshot over every event. At long-run
+      size that snapshot is about 2 MB, about 2.2 KB per event. So its cost grows with the run, unlike the
+      incremental per-event path that S1a repaired.
+    - **Measurements.** The S1a bench measured 0.71–0.99 s at 800 ticks, at low load. Live, at load 8.4, it is 1.98 s.
+    - **Effect.** P6 ("closure ≤ 2 s at the S-D1 long-run size") and P1 for long-run fail at loads around 8 or
+      above. The soak admits loads up to 10.
+    - **FR-002 sets the rule.** "If closure or abort does not fit, abort must use the verified-prefix path, or an
+      author decision is raised."
+    - **Options.** Recorded for the thesis decision record, not chosen here:
+      - (a) a platform repair that makes the terminal snapshot and coverage incremental, a verified-prefix path
+        (platform successor work);
+      - (b) a shorter S-D1 long-run horizon (an author decision);
+      - (c) a larger terminal budget (a frozen 2 s bound; an author decision).
