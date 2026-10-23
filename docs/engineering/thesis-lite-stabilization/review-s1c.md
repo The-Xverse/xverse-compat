@@ -168,3 +168,19 @@ engineering stabilization candidate: not M1, not AEB evidence.
      3 s), the asynchronous-only standstill wait, and that a missing `XVERSE_COMPAT_SRC` exits 4
      before any run directory exists.
    - Compat suite: 206 passed, 39 subtests.
+9. **Independent implementation review 3 (2026-10-23 about 12:05): FAIL, one MEDIUM. Recorded before repair.**
+   - **Resolved:** R2-1 to R2-5. The reviewer checked, on reduced copies under a process-group SIGINT plus a
+     second INT and a TERM during the cleanup, that the baseline wrote `130` and left no children, and that
+     the Lite guard step completed.
+   - **MEDIUM S1c-R3-1 (verified on a reduced copy).**
+     - **Cause.** `run-live.sh:40` is `trap cleanup EXIT INT TERM`, and `cleanup` never exits.
+     - **Effect.** An INT or TERM before the Maestro run cleans up, and then the script *continues* into the
+       run. With S1c's `trap '' INT TERM` that run is unprotected: no further signal stops it, and no guard
+       or residue check follows. This breaks FR-021 "on every stop and cancel path".
+   - **LOW:**
+     - **S1c-R3-2.** The interrupted log shows `maestro-harness exit=1`, the initial value of `$PYTEST`.
+     - **S1c-R3-3.** `commitTickRaised` is set by any attempt, but the un-pause time belongs to the first.
+     - **S1c-R3-4 (pre-existing).** The marker loop catches only `ValueError`. An `OSError`, or a non-object
+       marker, could lose the record.
+     - **S1c-R3-5.** A signal between the baseline's `mkdir` and the EXIT trap leaves no exit file, which
+       contradicts the README.
