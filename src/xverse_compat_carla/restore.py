@@ -1,13 +1,16 @@
-"""Restore guard (Phase 7, DLG-10): put a CARLA world back to asynchronous mode and remove owned actors.
+"""Restore guard (Phase 7, DLG-10/11/11a): restore a CARLA world's settings and remove owned actors.
 
 Maestro stops units with SIGKILL, so an adapter that was killed cannot restore the world settings or
 destroy the actors it spawned. The run command executes this guard after every run. It changes only
-actors whose ``role_name`` begins with ``xverse-lite-`` and the synchronous-mode settings. It prints one
-JSON line, ``{before, after, destroyed}``.
+actors whose ``role_name`` begins with ``xverse-lite-`` (listed, or read from the adapter's owned-actor
+registry) and the world's synchronous-mode settings. It prints one JSON line:
+``{before, target, after, applyAttempts, held, destroyed, remaining, restored, wallNs, monotonicNs}``.
 
-Order (review 1 R-7, DLG-11): hold every owned ego (throttle 0, brake 1, hand brake) while the world is still
-paused; restore the pre-run settings recorded by the run command (``--settings-from``; asynchronous when
-absent) and commit them with one tick; destroy owned actors; verify none remain.
+Order (review 1 R-7, DLG-11, findings 06 and 21): hold every owned ego (throttle 0, brake 1, hand brake) by id
+while the world is still paused; restore the pre-run settings recorded by the run command
+(``--settings-from``; asynchronous when absent, or when the recorded synchronous state had no tick owner,
+DLG-11a), retrying apply-and-commit-tick up to 3 times until mode and step match; destroy owned actors; verify
+none remain.
 
 Usage: ``python -s -m xverse_compat_carla.restore --host H --port P [--carla-site DIR] [--settings-from JSON]``.
 """
@@ -31,6 +34,10 @@ def _settings(world) -> dict:
 
 def _owned(world) -> list:
     return [a for a in world.get_actors() if getattr(a, "attributes", {}).get("role_name", "").startswith(ROLE_PREFIX)]
+
+
+def _same_delta(a, b) -> bool:
+    return (a is None and b is None) or (a is not None and b is not None and abs(a - b) < 1e-6)
 
 
 def restore(world, carla=None, settings_to=None, client=None, registry=None) -> dict:
@@ -68,8 +75,9 @@ def restore(world, carla=None, settings_to=None, client=None, registry=None) -> 
                     world.tick(5.0)  # a synchronous world applies new settings on the next tick (live finding 02)
                 except RuntimeError:
                     pass
-            if _settings(world)["synchronousMode"] == bool(target["synchronousMode"]):
-                break
+            now = _settings(world)
+            if now["synchronousMode"] == bool(target["synchronousMode"]) and _same_delta(now["fixedDeltaSeconds"], target["fixedDeltaSeconds"]):
+                break  # mode and step both match (review 3 M-2)
     destroyed = []
     if carla is not None and client is not None and registered:
         for entry, response in zip(registered, client.apply_batch_sync([carla.command.DestroyActor(a["id"]) for a in registered], False)):
