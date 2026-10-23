@@ -5,7 +5,11 @@ destroy the actors it spawned. The run command executes this guard after every r
 actors whose ``role_name`` begins with ``xverse-lite-`` and the synchronous-mode settings. It prints one
 JSON line, ``{before, after, destroyed}``.
 
-Usage: ``python -s -m xverse_compat_carla.restore --host H --port P [--carla-site DIR]``.
+Order (review 1 R-7, DLG-11): hold every owned ego (throttle 0, brake 1, hand brake) while the world is still
+paused; restore the pre-run settings recorded by the run command (``--settings-from``; asynchronous when
+absent) and commit them with one tick; destroy owned actors; verify none remain.
+
+Usage: ``python -s -m xverse_compat_carla.restore --host H --port P [--carla-site DIR] [--settings-from JSON]``.
 """
 
 from __future__ import annotations
@@ -15,6 +19,7 @@ import json
 import os
 import site
 import sys
+import time
 
 from .scenario import ROLE_PREFIX
 
@@ -28,7 +33,7 @@ def _owned(world) -> list:
     return [a for a in world.get_actors() if getattr(a, "attributes", {}).get("role_name", "").startswith(ROLE_PREFIX)]
 
 
-def restore(world) -> dict:
+def restore(world, carla=None, settings_to=None) -> dict:
     """Restore world (duck-typed) and return the record.
 
     The settings are restored and committed first: in a synchronous world new settings take effect on the
@@ -37,15 +42,23 @@ def restore(world) -> dict:
     """
 
     before = _settings(world)
-    if before["synchronousMode"]:
+    held = []
+    if carla is not None:
+        for actor in _owned(world):  # hold before un-pausing: a killed adapter leaves its last throttle applied
+            if str(getattr(actor, "type_id", "")).startswith("vehicle."):
+                actor.apply_control(carla.VehicleControl(throttle=0.0, brake=1.0, steer=0.0, hand_brake=True))
+                held.append(actor.id)
+    target = settings_to or {"synchronousMode": False, "fixedDeltaSeconds": None}
+    if before != target:
         settings = world.get_settings()
-        settings.synchronous_mode = False
-        settings.fixed_delta_seconds = None
+        settings.synchronous_mode = bool(target["synchronousMode"])
+        settings.fixed_delta_seconds = target["fixedDeltaSeconds"]
         world.apply_settings(settings)
-        try:
-            world.tick(2.0)  # a synchronous world applies new settings on the next tick (live finding 02)
-        except RuntimeError:
-            pass
+        if before["synchronousMode"]:
+            try:
+                world.tick(2.0)  # a synchronous world applies new settings on the next tick (live finding 02)
+            except RuntimeError:
+                pass
     destroyed = []
     for actor in _owned(world):
         destroyed.append({"id": actor.id, "typeId": actor.type_id, "roleName": actor.attributes.get("role_name")})
@@ -56,8 +69,9 @@ def restore(world) -> dict:
         pass
     after = _settings(world)
     remaining = [a.id for a in _owned(world)]
-    return {"before": before, "after": after, "destroyed": destroyed, "remaining": remaining,
-            "restored": after["synchronousMode"] is False and not remaining}
+    matches = after["synchronousMode"] == bool(target["synchronousMode"])
+    return {"before": before, "target": target, "after": after, "held": held, "destroyed": destroyed, "remaining": remaining,
+            "restored": matches and not remaining}
 
 
 def main(argv=None) -> int:
@@ -65,7 +79,12 @@ def main(argv=None) -> int:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=2000)
     parser.add_argument("--carla-site", default=None)
+    parser.add_argument("--settings-from", default=None, help="JSON with synchronousMode/fixedDeltaSeconds recorded before the run")
     args = parser.parse_args(argv)
+    target = None
+    if args.settings_from:
+        recorded = json.loads(open(args.settings_from, encoding="utf-8").read())
+        target = {"synchronousMode": recorded["synchronousMode"], "fixedDeltaSeconds": recorded["fixedDeltaSeconds"]}
     if args.carla_site:
         site.addsitedir(args.carla_site)
     os.environ.setdefault("HOME", "/nonexistent-carla-home")
@@ -74,7 +93,8 @@ def main(argv=None) -> int:
 
         client = carla.Client(args.host, args.port)
         client.set_timeout(10.0)
-        record = restore(client.get_world())
+        record = restore(client.get_world(), carla, target)
+        record.update(wallNs=time.time_ns(), monotonicNs=time.monotonic_ns())
     except Exception as error:  # noqa: BLE001
         print(json.dumps({"error": f"{type(error).__name__}: {error}"}), flush=True)
         return 3

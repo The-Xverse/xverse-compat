@@ -1,9 +1,9 @@
 """Declared driver stimulus (Phase 7): publishes accelerator and brake pedal values on the legacy topics.
 
 It replaces the human at ``vehicle_manual_control.py`` in both the baseline and the Lite run, so both runs
-receive the same declared input. Segments are keyed on simulation time since the first
-``vehicle/status/clock_status`` sample received (the legacy virtual vehicle and the Lite gateway both
-publish ``elapsed_seconds`` there), so the profile follows the simulation, not the wall clock. It
+receive the same declared input. Segments are keyed (DLG-12, review 1 R-3) on host-monotonic
+time since the first ``vehicle/status/clock_status`` sample, because the legacy virtual vehicle's
+clock_status lags world time; ``--time-base sim`` keys on the published simulation time instead. It
 publishes at a fixed host-monotonic period. Stimulus values are owned inputs, declared here.
 
 Usage: ``python -m xverse_compat.live.stimulus --router tcp/127.0.0.1:7447 --out FILE [--linger] [--marker PATH]``
@@ -43,6 +43,7 @@ def main(argv=None) -> int:
     parser.add_argument("--wait-clock-s", type=float, default=60.0, help="host-monotonic bound for the first clock sample")
     parser.add_argument("--linger", action="store_true", help="stay alive after the profile until stopped (Maestro unit)")
     parser.add_argument("--marker", default=None, help="write this marker file when the profile is complete")
+    parser.add_argument("--time-base", choices=("wall", "sim"), default="wall")
     argv = list(sys.argv[1:] if argv is None else argv)
     redirect_stderr(argv)
     args = parser.parse_args(argv)
@@ -62,18 +63,19 @@ def main(argv=None) -> int:
                 outcome = "no-clock" if not stop else stop[0]
                 break
             time.sleep(0.05)
-        origin = clock.read()[0]
-        next_at = time.monotonic()
+        origin, wall_origin = clock.read()[0], time.monotonic()
+        next_at = wall_origin
         while outcome == "profile-complete" and not stop:
             sim, _, _ = clock.read()
-            t = sim - origin
+            t = time.monotonic() - wall_origin if args.time_base == "wall" else sim - origin
             acc, brake, segment = pedals(t)
             if segment >= len(PROFILE):
                 break
             pubs["acc"].put(str(acc))
             pubs["brake"].put(str(brake))
             pubs["steer"].put(str(0.0))
-            out.write(json.dumps({"monotonicNs": time.monotonic_ns(), "simS": round(t, 4), "segment": segment, "acc": acc, "brake": brake,
+            out.write(json.dumps({"monotonicNs": time.monotonic_ns(), "profileS": round(t, 4), "timeBase": args.time_base,
+                                  "publishedSimS": round(sim - origin, 4), "segment": segment, "acc": acc, "brake": brake,
                                   "speedKmh": speed.read()[0]}) + "\n")
             next_at += args.period_s
             time.sleep(max(0.0, next_at - time.monotonic()))

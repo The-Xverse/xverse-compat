@@ -114,3 +114,55 @@ The work is an engineering integration only: not AEB validation, not a scientifi
     - oracle separation holds;
     - the nominal, baseline, freeze, cancel and no-carla numbers were recomputed from the raw files;
     - the suite: 192 passed.
+14. **Repairs for review 1 (2026-10-23 about 01:10), with decisions DLG-11 to DLG-13 recorded in the thesis
+    authorization record before the repairs:**
+    - **R-1.** `run-live.sh` and `run-baseline.sh` refuse dirty candidate trees unless
+      `XVERSE_LIVE_ALLOW_DIRTY=1`, and record the HEAD revision and a diff SHA-256. Every case is re-run from
+      clean commits.
+    - **R-2.**
+      - The receivers activate at the first frame, after the clock is seeded.
+      - `FlowEvidence` gets the Lite loop's tick index.
+      - The simulation-domain age is 0 by construction, because the adapter delivers same-frame samples only;
+        stale samples are caught by the adapter's `FRAME` rule. This is now disclosed.
+      - Delivery freshness is measured in the host-monotonic domain, as the tick round trip against a 200 ms
+        bound (`hostLatency`).
+      - The earlier Argus flow artefacts, with their spurious deadline-miss events, are disclosed as defective.
+    - **R-3 (DLG-12).** The stimulus is keyed on host time in both runs (`--time-base wall`). The legacy ÷1.2
+      throttle damping is declared, and the report shows the actuated and commanded throttle of each run.
+    - **R-4.** The reconciliation is corrected, with a throttle-mapping row, and copied to
+      `bridge-identity-reconciliation.md` here.
+    - **R-5.** The XDL elements are renamed to meaningful names and the fixture's declared text is replaced.
+      The remaining limits are recorded in `maestro-run.json` (`xdlLimits`): one schedule domain, and the runtime
+      flows and `carla-simulation` domain are bound in the loop, not planned.
+    - **R-6.**
+      - The cancel case now pauses for 6 s, beyond the 5 s probe freshness.
+      - **Platform finding:** after a cancel, Maestro reports `cleanupComplete` false and
+        `normalUnitRecordsComplete` false. The Argus manifest of the cancelled run shows 0 events, unassessed,
+        while `events.jsonl` has events. The cancellation is not recorded in Argus or the M3 journal.
+      - Not repaired (platform); the "Maestro closure after cancel" coverage is marked partial.
+    - **R-7.**
+      - `LiveSource.close()` holds an owned ego (throttle 0, brake 1, hand brake) before destroying it, and
+        releases a bound vehicle to neutral; this is best effort.
+      - The guard holds owned egos before un-pausing.
+      - The run command checks residue before the guard, keeps the observer running through the guard, and
+        runs its cleanup from a `trap` on EXIT, INT and TERM.
+    - **R-8 (DLG-11).** The guard restores the pre-run settings that the run command recorded
+      (`world-before.json`).
+    - **R-9 (DLG-13).** Success requires every owned completion marker, and each is written only after the
+      unit completes. The report checks completion per run.
+    - **R-10.** Established CARLA connections are recorded before and after the run. Any client other than
+      the session host's port detection (`moshi-hook`) blocks the run.
+    - **R-11.** Correction to finding 11: with the simulator missing, the adapter is still alive at the
+      observe probe, which checks liveness only. The failure surfaces as a child exit once the 5 s client
+      timeout expires (`ML-RUN-CHILD-EXIT`).
+    - **R-12.** Brake onset is measured from deceleration (below −2 m/s² after the peak), and the
+      brake-signal onset is reported separately. The −25 m/s² values are annotated as simulator physics.
+    - **R-13.** The report states where the freeze fell relative to the actuation.
+    - **R-14.** `carla-items-2.md` is added as a successor contract note.
+    - **R-15.** The numbers are reconciled (final: 80 ticks, 9.5 s). The guard record is timestamped. The
+      synthetic harness placeholders are labelled in `maestro-run.json`.
+    - **R-16.** The driver's link and session are inside its error handling, and the socket is created
+      under umask 0177.
+    - **R-17.** The shared snapshot source is stated in the report.
+
+    Tests: 3 new tests. Suite: 195 passed.

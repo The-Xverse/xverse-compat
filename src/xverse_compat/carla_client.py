@@ -326,8 +326,11 @@ class SocketAdapterLink(CarlaAdapterProcess):
         if self.path.is_socket():
             self.path.unlink()
         self._listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self._listener.bind(str(self.path))
-        os.chmod(self.path, 0o600)
+        previous = os.umask(0o177)  # the socket is created 0600, with no window of wider access (review 1 R-16)
+        try:
+            self._listener.bind(str(self.path))
+        finally:
+            os.umask(previous)
         self._listener.listen(1)
         self._conn = None
         self._writer = None

@@ -57,7 +57,7 @@ class VcuCommands:
         return min(max(throttle, 0.0), 1.0), self.held_brake, meta
 
 
-def _argus(run_dir: Path, plan_path: str | None, run_id: str):
+def _argus(run_dir: Path, plan_path: str | None, run_id: str, tick):
     if plan_path is None:
         return None, None
     from xverse.argus import EvidenceStore  # noqa: PLC0415
@@ -65,8 +65,9 @@ def _argus(run_dir: Path, plan_path: str | None, run_id: str):
 
     plan = json.loads(Path(plan_path).read_text(encoding="utf-8"))
     run = EvidenceStore.open_run(run_dir / "argus-flows", run_id=run_id, plan=plan)
-    clocks = lambda tick: {"simulation": {"domain": DOMAIN, "unit": "tick", "value": tick or 0}}  # noqa: E731
-    return run, FlowEvidence(run, run_id, clocks)
+    # the evidence clock is the Lite loop's tick index in the carla-simulation domain (review 1 R-2)
+    clocks = lambda t: {"simulation": {"domain": DOMAIN, "unit": "tick", "value": t if t is not None else 0}}  # noqa: E731
+    return run, FlowEvidence(run, run_id, clocks, tick)
 
 
 def main(argv=None) -> int:
@@ -97,13 +98,15 @@ def main(argv=None) -> int:
     started = time.monotonic()
     summary = {"unit": "lite-driver", "startedWallNs": time.time_ns(), "args": vars(args), "domains": {"items": DOMAIN, "pacing": "host-monotonic"}}
     code = 3
-    link = SocketAdapterLink(args.socket, args.descriptors)
-    session = open_session(args.router)
-    speed_pub, clock_pub = session.declare_publisher(STATUS["speed"]), session.declare_publisher(STATUS["clock"])
-    commands = VcuCommands(session, args.vcu_stale_ms)
+    link = session = None
     argus, evidence = None, None
-    try:
-        argus, evidence = _argus(run_dir, args.plan, args.run_id)
+    loop_ref = []
+    try:  # the link and the zenoh session are inside the guarded block (review 1 R-16)
+        link = SocketAdapterLink(args.socket, args.descriptors)
+        session = open_session(args.router)
+        speed_pub, clock_pub = session.declare_publisher(STATUS["speed"]), session.declare_publisher(STATUS["clock"])
+        commands = VcuCommands(session, args.vcu_stale_ms)
+        argus, evidence = _argus(run_dir, args.plan, args.run_id, lambda: loop_ref[0].tick_index if loop_ref else None)
 
         def on_motion(motion, sim_s):
             speed_pub.put(str(motion["value"]["speedMps"] * 3.6))
@@ -119,6 +122,7 @@ def main(argv=None) -> int:
             loop = LiteVehicleLoop(link, commands, record=record, on_motion=on_motion, tick_period_s=args.tick_period_s,
                                    max_ticks=int(args.episode_s / args.tick_period_s), wall_deadline=started + args.wall_bound_s,
                                    cancelled=cancelled, listener=evidence)
+            loop_ref.append(loop)
             result = loop.run()
         if args.pause_after_s is not None and not stop:
             summary.update(ticks=result.ticks, endReason="paused", pausedMonotonicNs=time.monotonic_ns())
@@ -126,7 +130,8 @@ def main(argv=None) -> int:
             while not stop:  # hold the world paused (synchronous, no tick) until Maestro stops the unit
                 time.sleep(0.2)
         summary.update(ticks=result.ticks, endReason=result.end_reason, flowVerdicts=result.verdicts, receivers=result.receivers,
-                       refusals=result.refusals, vcuStaleTicks=commands.stale_ticks)
+                       refusals=result.refusals, vcuStaleTicks=commands.stale_ticks, hostLatency=result.host_latency,
+                       freshnessNote="carla-simulation item age is 0 by construction (same-frame samples); delivery freshness is hostLatency")
         if result.done is None:
             _, final = link.stop()
             summary["done"] = final.done
@@ -135,7 +140,8 @@ def main(argv=None) -> int:
         code = 0 if summary["done"] and summary["done"].get("forbiddenModulesLoaded") == [] else 3
     except Exception as error:  # noqa: BLE001 - recorded; the adapter sees end-of-file and restores the world
         summary["error"] = f"{type(error).__name__}: {error}"
-        link.kill()
+        if link is not None:
+            link.kill()
     finally:
         if argus is not None:
             try:
@@ -148,7 +154,8 @@ def main(argv=None) -> int:
             Path(args.marker).write_text(json.dumps({"unit": "lite-driver", "code": code}) + "\n")
     while args.linger and code == 0 and not stop:
         time.sleep(0.2)
-    session.close()
+    if session is not None:
+        session.close()
     return code
 
 

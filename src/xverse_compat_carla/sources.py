@@ -225,6 +225,13 @@ class LiveSource:
         try:
             for sensor in getattr(self, "_sensors", []):
                 sensor.stop()
+            vehicle = getattr(self, "_vehicle", None)
+            if vehicle is not None:  # release the actuator (review 1 R-7): hold an owned ego, free a bound vehicle
+                owned = bool(getattr(self, "_spawned", []))
+                try:  # best effort: a failed release must not mask the original error or skip the restore
+                    vehicle.apply_control(self._carla.VehicleControl(throttle=0.0, brake=1.0 if owned else 0.0, steer=0.0, hand_brake=owned))
+                except Exception:  # noqa: BLE001 - the restore guard holds owned egos again after the run
+                    pass
         finally:  # review 2 L-d: the saved settings are restored even if a stop fails
             try:
                 for actor in reversed(getattr(self, "_spawned", [])):  # owned scenario actors: sensors before the ego

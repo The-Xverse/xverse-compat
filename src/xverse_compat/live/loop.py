@@ -7,6 +7,12 @@ Time domains:
 - ``host-monotonic``: pacing, deadlines and cancellation (``time.monotonic``), so they keep working while
   simulation time is paused.
 
+Freshness (review 1 R-2): the adapter delivers only samples of the ticked frame, so in the
+carla-simulation domain an item's age at the receiver is 0 by construction (stale-sample protection is
+the adapter's FRAME rule). The flow receivers therefore check ordering, duplicates and gaps; delivery
+freshness is measured in the host-monotonic domain as the tick round trip (command sent -> items
+received) against host_freshness_ns.
+
 Runtime decisions use only runtime items and commands; nothing here reads ground truth.
 """
 
@@ -42,6 +48,7 @@ class LoopResult:
     refusals: list = field(default_factory=list)
     verdicts: dict = field(default_factory=dict)
     receivers: dict = field(default_factory=dict)
+    host_latency: dict = field(default_factory=dict)
 
 
 class LiteVehicleLoop:
@@ -55,20 +62,23 @@ class LiteVehicleLoop:
 
     def __init__(self, link, command_source: Callable, *, record, on_motion: Callable | None = None, tick_period_s: float = 0.05,
                  max_ticks: int, wall_deadline: float, freshness_ns: int = 100_000_000, deadline_ns: int = 200_000_000,
-                 cancelled: Callable[[], bool] = lambda: False, deadline_frames: int = 1, listener: Any = None) -> None:
+                 cancelled: Callable[[], bool] = lambda: False, deadline_frames: int = 1, listener: Any = None,
+                 host_freshness_ns: int = 200_000_000) -> None:
         self.link, self.command_source, self.record, self.on_motion = link, command_source, record, on_motion
         self.tick_period_s, self.max_ticks, self.wall_deadline = tick_period_s, max_ticks, wall_deadline
         self.cancelled, self.deadline_frames = cancelled, deadline_frames
         self.clock = TickClock({})
         self.receivers = {f: FlowReceiver(motion_binding(f, freshness_ns, deadline_ns), self.clock, listener=listener) for f in RUNTIME_FLOWS}
-        for receiver in self.receivers.values():
-            receiver.activate()
+        self.activated = False  # receivers activate at the first frame, once the clock is seeded (review 1 R-2)
+        self.tick_index = None
+        self.host_freshness_ns = host_freshness_ns
 
     def _write(self, data: dict) -> None:
         self.record.write(json.dumps(data, sort_keys=True, separators=(",", ":")) + "\n")
 
     def run(self) -> LoopResult:
         result = LoopResult()
+        latencies = []
         sim_s, last_motion, episode_ns = 0.0, None, None  # sim_s: seconds since the first ticked frame of this episode
         start = time.monotonic()
         for tick in range(self.max_ticks):
@@ -79,6 +89,7 @@ class LiteVehicleLoop:
             if now >= self.wall_deadline:
                 result.end_reason = "wall-deadline"
                 break
+            self.tick_index = tick
             throttle, brake, meta = self.command_source(sim_s, last_motion)
             command_id = f"t{tick}"
             self.link.command(command_id, brake, self.deadline_frames, throttle)
@@ -95,6 +106,10 @@ class LiteVehicleLoop:
             verdicts = {}
             if frame_ns is not None:
                 self.clock.at(frame_ns)  # receiver clock: simulation time of the ticked frame
+                if not self.activated:
+                    for receiver in self.receivers.values():
+                        receiver.activate()
+                    self.activated = True
                 episode_ns = frame_ns if episode_ns is None else episode_ns
                 sim_s = (frame_ns - episode_ns) / 1e9
                 for item in step.items:
@@ -109,6 +124,7 @@ class LiteVehicleLoop:
                 if self.on_motion is not None:
                     self.on_motion(motion, sim_s)
             result.refusals += step.refusals
+            latencies.append(received - sent)
             self._write({"kind": "tick", "tick": tick, "frame": step.frame, "commandId": command_id, "throttle": throttle, "brake": brake,
                          "commandMeta": meta, "sentMonotonicNs": sent, "tickedMonotonicNs": received, "simS": sim_s,
                          "motion": motion["value"] if motion else None, "motionOriginNs": motion["originNs"] if motion else None,
@@ -119,7 +135,12 @@ class LiteVehicleLoop:
                 time.sleep(pause)
         else:
             result.end_reason = "max-ticks"
-        result.receivers = {f: r.summary() for f, r in self.receivers.items()}
+        result.receivers = {f: r.summary() for f, r in self.receivers.items()} if self.activated else {}
+        if latencies:
+            ordered = sorted(latencies)
+            result.host_latency = {"domain": "host-monotonic", "boundNs": self.host_freshness_ns, "ticks": len(ordered),
+                                   "p50Ns": ordered[len(ordered) // 2], "p95Ns": ordered[int(len(ordered) * 0.95) - 1 if len(ordered) > 1 else 0],
+                                   "maxNs": ordered[-1], "exceeded": sum(1 for x in ordered if x > self.host_freshness_ns)}
         return result
 
 

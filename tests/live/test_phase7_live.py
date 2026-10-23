@@ -266,3 +266,46 @@ def test_lite_loop_routes_items_through_flow_receivers_on_a_fake_adapter():
     assert [r["kind"] for r in rows] == ["tick"] * 4 + ["done"] and rows[0]["simS"] == 0.0 and motions[1] == pytest.approx(0.05)
     assert proc.wait(timeout=10) == 0
     link.kill()
+
+
+def test_review1_r7_guard_holds_owned_egos_then_restores_recorded_settings():
+    world = _World()
+    for role, kind in (("xverse-lite-ego", "vehicle.audi.etron"), ("xverse-lite-camera", "sensor.camera.rgb")):
+        bp = _Blueprint(kind)
+        bp.set_attribute("role_name", role)
+        world.spawn_actor(bp, None)
+    ego = world.actors[0]
+    world.settings = SimpleNamespace(synchronous_mode=True, fixed_delta_seconds=0.05)
+    record = restore(world, CARLA, {"synchronousMode": True, "fixedDeltaSeconds": 0.05})  # DLG-11: recorded pre-run state
+    assert record["held"] == [ego.id] and (ego.controls[-1].brake, ego.controls[-1].hand_brake, ego.controls[-1].throttle) == (1.0, True, 0.0)
+    assert record["after"]["synchronousMode"] is True and record["restored"] is True and record["remaining"] == []
+
+
+def test_review1_r2_receivers_activate_at_the_first_frame_without_spurious_deadline_events():
+    events = []
+
+    class Listener:
+        def __getattr__(self, name):
+            return lambda *args, **kwargs: events.append(name)
+
+    path = _socket_path()
+    link = SocketAdapterLink(path, DESCRIPTORS)
+    proc = _adapter(path)
+    link.start(accept_timeout_s=30)
+    loop = LiteVehicleLoop(link, profile_source([{"untilS": 10.0, "throttle": 0.5, "brake": 0.0}]), record=io.StringIO(), tick_period_s=0.0,
+                           max_ticks=10, wall_deadline=time.monotonic() + 30, listener=Listener())
+    result = loop.run()
+    assert loop.activated and "deadline" not in events and result.verdicts == {"delivered": 8}
+    assert result.host_latency["domain"] == "host-monotonic" and result.host_latency["ticks"] == 4
+    assert proc.wait(timeout=10) == 0
+    link.kill()
+
+
+def test_review1_r16_driver_without_router_still_writes_summary_and_marker(tmp_path):
+    from xverse_compat.live import driver
+
+    marker = tmp_path / "driver.marker"
+    code = driver.main(["--socket", _socket_path(), "--descriptors", str(DESCRIPTORS), "--router", "tcp/127.0.0.1:1",
+                        "--run-dir", str(tmp_path / "run"), "--marker", str(marker), "--accept-timeout-s", "0.2"])
+    summary = json.loads((tmp_path / "run" / "driver-summary.json").read_text())
+    assert code == 3 and "error" in summary and json.loads(marker.read_text())["code"] == 3
