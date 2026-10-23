@@ -166,3 +166,14 @@ The work is an engineering integration only: not AEB validation, not a scientifi
     - **R-17.** The shared snapshot source is stated in the report.
 
     Tests: 3 new tests. Suite: 195 passed.
+15. **Live finding 06, recorded before repair.** Re-verification of R-7(a) in run `lite-…010544-cancel-paused`
+    (clean commits). The guard's hold step reported `held: []`, although the killed adapter's ego, camera and
+    radar were present: the guard destroyed them after its commit tick. In a paused synchronous world a new
+    client's actor list is stale until a tick (compare finding 04), so the hold before un-pausing found
+    nothing. The ego therefore ran one commit frame with its last control.
+
+    Repair:
+    - The adapter writes an owned-actor registry (`--owned-registry FILE`) right after spawning.
+    - The guard reads it, holds owned vehicles with a server-side `ApplyVehicleControl` batch addressed by ID
+      before un-pausing, and destroys the registry actors by ID with `DestroyActor`.
+    - The list-based destroy and the verification stay as they are.
