@@ -229,3 +229,19 @@ engineering stabilization candidate: not M1, not AEB evidence.
       handled when the harness returns. The run never resumes after it. A process-group signal, as from
       Ctrl-C or `timeout` sent to the group, interrupts the harness at once. Forwarding signals to a
       background harness is left for a later successor.
+13. **Independent review 5 of the finding-12 repairs (2026-10-23 about 13:05): PASS, no HIGH or MEDIUM.**
+    - **Verified on reduced copies.**
+      - `setsid` does not fork: the observer's PID is `$OBS` and its parent is the script. The script runs
+        without job control, which is the default.
+      - After a process-group INT or TERM, the observer is alive at the guard step, the cleanup stops it,
+        and the script exits 130 or 143.
+      - `PYTEST=not-run` is only echoed.
+      - The new compat test would fail without the per-attempt record.
+    - **LOW residuals, accepted and documented:**
+      - (1) After a SIGKILL to the whole group, or a hangup, the observer is orphaned until its own time
+        limit: 120 s for the Lite run, 60 s for the baseline. This fails closed, because a remaining CARLA
+        client makes the next run's preflight BLOCK.
+      - (2) A one-command window before `OBS=$!`, and one before the baseline's `rm` of a stale exit file.
+      - R4-2 stays carried.
+    - **Verdict.** S1c-1 is complete for review. The live behaviour (FR-021, FR-022 timestamps, the
+      baseline T-5 paths) is verified in VS-09 and S1d after the author's acceptance (ES-1 approved).
