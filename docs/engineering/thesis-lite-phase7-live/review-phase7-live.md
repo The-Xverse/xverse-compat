@@ -353,3 +353,17 @@ The work is an engineering integration only: not AEB validation, not a scientifi
       the ego exists (not "4–14 ms").
     - **Item 23, cancel row (M-8):** the guard destroyed the ego about 0.25 s of simulation time after the hold,
       at 8.49 km/h. The hold is shown as deceleration (−4.6, −7.0 and −6.0 m/s²), not as standstill.
+25. **Decision (engineer, 2026-10-23 about 04:15, under the author's delegation): repair M-2 to M-5 now and
+    re-run the evidence set,** so that the author's AD-01 decision does not depend on a repair cycle.
+    Acceptance stays with the author.
+
+    Planned repairs, recorded before the edits:
+    - **M-2:** correct the `restore.py` docstrings (bounded retry; the record format). The retry stop
+      condition also compares `fixedDeltaSeconds`.
+    - **M-3:** the baseline blocks when `world_settings` fails or yields an empty record.
+    - **M-4:** after normalization the baseline lists the vehicles again, and blocks on an `ego_vehicle`
+      found then.
+    - **M-5:**
+      - the baseline verifies the leftover destroy by listing the world again;
+      - its exit status includes the virtual-vehicle, VCU and observer exit codes, any vehicles remaining
+        after the run, the stimulus outcome and residue.
