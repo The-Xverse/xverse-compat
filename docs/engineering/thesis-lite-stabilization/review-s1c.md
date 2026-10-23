@@ -1049,3 +1049,19 @@ engineering stabilization candidate: not M1, not AEB evidence.
       - P4's expected diagnostic changes from `ML-RUN-CHILD-EXIT` to `ML-PROBE-NOT-READY` once owned units declare
         readiness. That is an author decision, to be raised with the diagnosis.
       - The readiness test leaks sockets; it is repaired after this record.
+43. **no-carla on the repaired platform stack `b049585bf` (platform S1b findings 15–16, ADR S1a-5), with dev driver venv
+    `xverse-lite-live-s1stack-b`; two runs, load 4.1–4.2. Written at 23:50:34 2026-10-23, before any change to the P4 check.**
+    - **The repair holds live, in both runs:**
+      - `ML-PROBE-NOT-READY`;
+      - the broker cancel confirmed natively (`native_epoch_confirmed: true`, `issuer_dead: false`);
+      - no persistence failure;
+      - `cleanupComplete` true;
+      - the Maestro writer `failed`, with WRITER-STATE only;
+      - no residue.
+    - **The only remaining check failure** is `P4.childExit`: the harness and `audit.py` expect `ML-RUN-CHILD-EXIT`.
+      Now that the owned adapter declares `nonce-marker`, a missing simulator is detected as a readiness failure
+      within its 2 s window, before the adapter's own 5 s connection timeout ends it. `ML-PROBE-NOT-READY` is
+      therefore the correct and earlier diagnostic.
+    - **Proposed (thesis DR-14, flagged for the author).** P4 accepts `ML-PROBE-NOT-READY` or `ML-RUN-CHILD-EXIT` as
+      the start-failure diagnostic. Everything else in P4 is unchanged: cleanup complete, the writer `failed` with
+      WRITER-STATE only, and no residue. The harness assertion and `audit.py` follow.
