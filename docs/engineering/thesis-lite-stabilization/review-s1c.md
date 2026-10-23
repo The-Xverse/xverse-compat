@@ -748,3 +748,41 @@ engineering stabilization candidate: not M1, not AEB evidence.
     - **Start-up scope.** It is 4.75 s in every run, and the broker cancel was confirmed in every run.
     - **Evidence.** `runs/lite-stabilization-s1/s1c2-part1-dev-20261023` (`SHA256SUMS`).
     - **Next.** An independent review of S1c-2 part 1 (findings 28–33).
+34. **Independent review of S1c-2 part 1 (blueprints `b1c43b0`, compat `d7d5afa`; written at 20:55:05 2026-10-23):
+    FAIL, 2 HIGH, 4 MEDIUM, several LOW. Recorded before any repair. The harness changes and the compat re-pin
+    are correct.**
+    - **H1. P8 guard path.**
+      - `audit.py` windows the observer samples by the time each was received. The guard destroys the ego about
+        18 µs after its standstill reading, so the last ego frame arrives just after the destroy time.
+      - Example: `dev-s1c2a-…173336-cancel-paused` is a false reject. Frame 138252 shows 0.016 m/s and arrived
+        3.3 µs after the destroy.
+      - Repair: window by frame, up to the last frame that still shows the ego.
+    - **H2. P6 is blind to a timeout.**
+      - `noPersistTimeout` ignores `persistenceFailure.diagnostic` and `closureDiagnostics`.
+      - A terminal call is cut off at its own deadline (≤ 2 s), so `closureCallsWithin2s` cannot fail. The
+        finding-32 run passes P6 today.
+      - Repair: check `persistenceFailure` and `closureDiagnostics`, and fail a terminal call that reached its
+        deadline (at least 0.98 of 2 s, or any terminal persistence failure).
+    - **M1.** Repeats do not count server failures, do not restart the server, and do not queue a repeat that
+      passes at load above 10.
+    - **M2.** The result of a restart after an INVALID run is ignored and not recorded.
+    - **M3.** A health-check failure with the world left synchronous or paused is a P1 restore failure. It must
+      count as FAIL, not INVALID.
+    - **M4.** `scriptExit` is unused. The harness's own assertions are therefore not part of the verdict (for
+      example the freeze-in-throttle check, and cleanup).
+    - **LOW items.**
+      - P8 path counts, the flow roots and P2 are missing from the report.
+      - `--dispersion` includes failing runs. The long-run "throttle duration" is the first-to-last span.
+      - The no-carla gap realization and the "server failed to start twice" stop exist only in code. That stop
+        also lacks a `stop_server`.
+      - The pins are weak: the platform is identified only by an `.export-revision` file, and `audit` is loaded
+        from the runner's directory.
+      - The health check's subprocess timeout is not caught.
+      - A comment says "~1.8 MB".
+    - **Errata.**
+      - Finding 31: the runs were 20:21:46–20:33.
+      - Finding 32: the snapshot is 1,295,710 bytes (about 1.6 KB per event over 797 events), not "about 2 MB, 2.2
+        KB per event". The call's deadline was 1.980 s after it started.
+      - Finding 33: the runs were 20:42:41–20:44:07. "Passed at load 6.3" is not supported by the audit: no
+        long-run has an audit PASS under the final tooling.
+      - The thesis S-D9 record: the bench measured 445 and 507 ms at 600 ticks.
