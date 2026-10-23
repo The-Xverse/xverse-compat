@@ -533,3 +533,31 @@ engineering stabilization candidate: not M1, not AEB evidence.
       - LOW-5 and LOW-6: these items are the errata. The scope of "host clean" is the 4 unit command lines.
         The rate is 1 of 5 on `f19ae58` and 1 of 7 pooled. Runs `164544` and `170215` are manifest-only.
         The S1a statement is withdrawn. The timestamps are as listed above.
+23. **Verification of the finding-22 repairs on blueprints `588f84a` (2026-10-23 17:51–18:01, CARLA instance 12).**
+    Compat main `25e4e1f`, platform main `b28a2aacf`. Every run has dirty=0, residue 0 (the 4 unit command
+    lines and the run's sockets) and a successful guard.
+
+    | Run | Load | Result |
+    | --- | --- | --- |
+    | freeze-vcu `175156` | 4.7 | succeeded with all markers; Maestro root closed and complete; freeze overlaps the stimulus throttle by 0.72 s |
+    | nominal `175232` | 5.3 | succeeded; Maestro root closed and complete |
+    | cancel-paused `175513` | 6.7 | `ML-SCHEDULE-CANCELLED` |
+    | cancel-paused `175740` | 6.6 | `ML-SCHEDULE-CANCELLED` |
+    | cancel-paused `180007` | 7.3 | `ML-SCHEDULE-CANCELLED` |
+    | no-carla `180049` | — | `ML-RUN-CHILD-EXIT`, cleanup complete; Maestro writer failed, WRITER-STATE only |
+
+    - **All three cancel runs passed every assertion:**
+      - observe completed;
+      - the cancel came during the run;
+      - no persistence failure;
+      - cleanup complete;
+      - native units retired and reaped;
+      - Maestro writer `failed` with WRITER-STATE only.
+
+      The platform race did not recur. Its rate on `f19ae58` and `588f84a` together is 1 of 8.
+    - **Offline replay.** The new checks were replayed over every earlier `dev-s1c2a-*` run
+      (`REPLAY-S1c-finding22.md` in the evidence directory). They reject `164220`, `165012` and `172145` and
+      accept the others.
+    - **Checksums.** `SHA256SUMS` now covers `maestro-tmp/` too: 1400 files.
+    - **Open, for the author.** DR-6, the P3 and P4 Argus reading, is proposed in the thesis record. The
+      platform race is in platform findings 18–19.
