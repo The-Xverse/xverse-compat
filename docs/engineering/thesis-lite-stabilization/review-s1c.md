@@ -679,3 +679,14 @@ engineering stabilization candidate: not M1, not AEB evidence.
     - **Repair, as in Phase 6 (`c2557ed`).** Re-pin the lock to `b28a2aacf` and rebuild the admission record
       with `scripts/admit_phase4.py`, against a suite log taken after the re-pin. The review fields stay pending
       until S1c-2's own review and acceptance.
+30. **Re-pin to platform main `b28a2aacf` (written at 19:44:51 2026-10-23).**
+    - **Erratum to finding 29.** Log a shows 1 failed and 207 passed, not 208 passed.
+    - **The test venv** `/dev/shm/compat-p6-venv` now has the `b28a2aacf` platform wheel
+      (`.x-verse-build/cache/xverse-lite-live-20261022/wheels`). Its installed `xverse_xdl/lifecycle.py` equals the
+      platform main source.
+    - **The lock** `platform-api.lock.json` was re-pinned with `scripts/admit_phase4.py`: platform `b28a2aacf`,
+      surface `4586c2ed…`, 26 files.
+    - **The admission record** `xdl/selection/aeb-sim-admission.json` was rebuilt against log b
+      (`verification-20261023-s1c2-b.log`: 208 passed, 39 subtests). Its review and acceptance fields are empty
+      until S1c-2's review and acceptance.
+    - **A rerun on the final record** gave 208 passed.
