@@ -814,3 +814,25 @@ engineering stabilization candidate: not M1, not AEB evidence.
     - **Replay of `audit.py`** over the 31 recorded runs: the only rejections are the known failures and the runs
       without `argus-verify.txt`.
     - **Errata of finding 34** apply to findings 31–33 as listed there.
+36. **Independent re-review of the finding-34 repairs at blueprints `ca0ea5a` (written at 21:12:22 2026-10-23): FAIL, 2
+    MEDIUM and several LOW. H1, H2, M3 and M4 are resolved. Recorded before any repair.**
+    - **MEDIUM-1.** The DR-11 rule "a server that fails to start twice in a row stops the soak" is not implemented.
+      `_restart` retries until there are more than 3 failures; the condition at `run_soak.py:279` is always true.
+    - **MEDIUM-2.** The end-of-soak phase crashes (`FileNotFoundError` in `stop_server`) when every queued repeat
+      is a no-carla run. No report is written, and the manifest stays `running`.
+    - **LOW items.**
+      - `audit.py:138`: a `TypeError` when there are no ego frames after the un-pause but an ego sample's frame
+        is at or after the first post-un-pause frame.
+      - The P8 guard window is no longer bounded by the destroy time.
+      - The P6 threshold of 0.98 × 2 s tightens "within 2 s". A timed-out call is caught by
+        `persistenceFailure` anyway.
+      - The pins are only partly hashed: the platform source, the venv's `xverse` package and `health_check.py`
+        are not.
+      - A pin mismatch at start-up gives code 2, not a code-4 refusal.
+      - An `_audit` timeout, and the `_check_pins` `SystemExit`, leave the server running.
+      - The end-phase server start is not recorded as a server event.
+      - P2 is absent from `soak-report.json`.
+      - `--dispersion` ignores the harness exit.
+      - `p8Paths` counts non-PASS runs without saying so.
+      - Untested: the status classification (M3, M4), two failed starts in a row, a FAIL or INVALID in a repeat,
+        the end-of-soak repeats with no-carla only, and the stop codes.
