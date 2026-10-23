@@ -4,13 +4,15 @@ Maestro stops units with SIGKILL, so an adapter that was killed cannot restore t
 destroy the actors it spawned. The run command executes this guard after every run. It changes only
 actors whose ``role_name`` begins with ``xverse-lite-`` (listed, or read from the adapter's owned-actor
 registry) and the world's synchronous-mode settings. It prints one JSON line:
-``{before, target, after, applyAttempts, held, destroyed, remaining, restored, wallNs, monotonicNs}``.
+``{before, target, after, applyAttempts, held, standstill, unpauseMonotonicNs, destroyMonotonicNs, destroyed,
+remaining, restored, wallNs, monotonicNs}``.
 
 Order (review 1 R-7, DLG-11, findings 06 and 21): hold every owned ego (throttle 0, brake 1, hand brake) by id
 while the world is still paused; restore the pre-run settings recorded by the run command
 (``--settings-from``; asynchronous when absent, or when the recorded synchronous state had no tick owner,
-DLG-11a), retrying apply-and-commit-tick up to 3 times until mode and step match; destroy owned actors; verify
-none remain.
+DLG-11a), retrying apply-and-commit-tick up to 3 times until mode and step match; with an asynchronous target,
+keep holding every held ego until it is at standstill (< 0.05 m/s) or a 5 s timeout, recorded as a failure (S1
+FR-022); destroy owned actors; verify none remain. The un-pause time is the first apply-and-commit.
 
 Usage: ``python -s -m xverse_compat_carla.restore --host H --port P [--carla-site DIR] [--settings-from JSON]``.
 """
@@ -34,6 +36,40 @@ def _settings(world) -> dict:
 
 def _owned(world) -> list:
     return [a for a in world.get_actors() if getattr(a, "attributes", {}).get("role_name", "").startswith(ROLE_PREFIX)]
+
+
+STANDSTILL_MPS = 0.05
+STANDSTILL_TIMEOUT_S = 5.0
+
+
+def _speed(actor):
+    velocity = actor.get_velocity()
+    return (velocity.x ** 2 + velocity.y ** 2 + velocity.z ** 2) ** 0.5
+
+
+def _hold_to_standstill(world, held, timeout_s=STANDSTILL_TIMEOUT_S) -> dict:
+    """Wait, holding brake, until every held ego still in the world is at standstill (S1 FR-022)."""
+
+    vehicles, pending = [], [i for i in held if world.get_actor(i) is not None]
+    end = time.monotonic() + timeout_s
+    while pending:
+        for actor_id in list(pending):
+            actor = world.get_actor(actor_id)
+            speed = None if actor is None else _speed(actor)
+            if actor is None or speed < STANDSTILL_MPS:
+                vehicles.append({"id": actor_id, "speedMps": speed, "monotonicNs": time.monotonic_ns()})
+                pending.remove(actor_id)
+        if not pending or time.monotonic() >= end:
+            break
+        try:
+            world.wait_for_tick(1.0)
+        except RuntimeError:
+            time.sleep(0.05)
+    timed_out = []
+    for actor_id in pending:
+        actor = world.get_actor(actor_id)
+        timed_out.append({"id": actor_id, "speedMps": None if actor is None else _speed(actor)})
+    return {"ok": not timed_out, "thresholdMps": STANDSTILL_MPS, "timeoutS": timeout_s, "vehicles": vehicles, "timedOut": timed_out}
 
 
 def _same_delta(a, b) -> bool:
@@ -63,9 +99,12 @@ def restore(world, carla=None, settings_to=None, client=None, registry=None) -> 
                 held.append(actor.id)
     target = settings_to or {"synchronousMode": False, "fixedDeltaSeconds": None}
     attempts = 0
+    unpause_ns = None
     if before != {k: target[k] for k in ("synchronousMode", "fixedDeltaSeconds")}:
         # bounded retry: right after a server start a commit tick can time out and leave the settings (review log 21)
         for attempts in range(1, 4):
+            if unpause_ns is None:
+                unpause_ns = time.monotonic_ns()  # the first apply-and-commit (S1 FR-022)
             settings = world.get_settings()
             settings.synchronous_mode = bool(target["synchronousMode"])
             settings.fixed_delta_seconds = target["fixedDeltaSeconds"]
@@ -78,6 +117,12 @@ def restore(world, carla=None, settings_to=None, client=None, registry=None) -> 
             now = _settings(world)
             if now["synchronousMode"] == bool(target["synchronousMode"]) and _same_delta(now["fixedDeltaSeconds"], target["fixedDeltaSeconds"]):
                 break  # mode and step both match (review 3 M-2)
+    standstill = {"ok": True, "applicable": False, "vehicles": [], "timedOut": []}
+    if held and not target["synchronousMode"]:  # an asynchronous world advances: hold until standstill (S1 FR-022)
+        standstill = dict(_hold_to_standstill(world, held), applicable=True)
+    elif held:
+        standstill["reason"] = "synchronous restore target: nobody ticks, so standstill cannot be awaited"
+    destroy_ns = time.monotonic_ns()
     destroyed = []
     if carla is not None and client is not None and registered:
         for entry, response in zip(registered, client.apply_batch_sync([carla.command.DestroyActor(a["id"]) for a in registered], False)):
@@ -97,8 +142,9 @@ def restore(world, carla=None, settings_to=None, client=None, registry=None) -> 
         target["fixedDeltaSeconds"] is not None and after["fixedDeltaSeconds"] is not None
         and abs(after["fixedDeltaSeconds"] - target["fixedDeltaSeconds"]) < 1e-6)
     matches = after["synchronousMode"] == bool(target["synchronousMode"]) and delta_ok  # review 2 N-8: the step too
-    return {"before": before, "target": target, "after": after, "applyAttempts": attempts, "held": held, "destroyed": destroyed, "remaining": remaining,
-            "restored": matches and not remaining}
+    return {"before": before, "target": target, "after": after, "applyAttempts": attempts, "held": held, "standstill": standstill,
+            "unpauseMonotonicNs": unpause_ns, "destroyMonotonicNs": destroy_ns, "destroyed": destroyed, "remaining": remaining,
+            "restored": matches and not remaining and standstill["ok"]}
 
 
 def main(argv=None) -> int:
