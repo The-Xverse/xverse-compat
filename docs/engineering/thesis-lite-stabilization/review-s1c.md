@@ -260,3 +260,384 @@ engineering stabilization candidate: not M1, not AEB evidence.
     - **Unchanged.** Execution remains non-M1 (DLG-7). Command echo is not evidence of braking, and
       `brakeStatus` and `wheelSpeedEscStatus` stay blocked. Lane activation, M1 admission, factory runs and
       scientific claims stay closed.
+15. **VS-09 attempt 1 on the merged mains: the cancel was never issued (2026-10-23 16:25; recorded before any
+    repair).**
+    - **Run.** `runs/lite-stabilization-s1/vs09-20261023/lite-20261023T162536-cancel-paused` on loop10, from
+      clean worktrees of platform main `b28a2aacf`, compat main `25e4e1f` and blueprints main `126a80b`
+      (`VS09-RESULT.md`, `SHA256SUMS`).
+    - **Observed.** The harness exits 0, because the test asserts only the nominal case. Maestro reports
+      `ML-SCHEDULE-COLLECTION-INCOMPLETE`, not `ML-SCHEDULE-CANCELLED`, and `maestro-run.json` has no
+      `cancelEpoch`. The cleanup is complete and the guard is clean (held to standstill, 3 actors destroyed, no
+      residue).
+    - **Cause.** The canceller fires at the driver's pause plus 6.0 s, and its 0.2 s poll can add more. The
+      80-tick schedule's wall duration is not fixed: it ended 6.02 s after the pause, before the stop. The
+      Phase 7 verification run won the same race by about 60 ms. S1a made each tick cheaper, so the race is now
+      lost.
+    - **Defects.**
+      - (a) The cancel-paused case depends on the schedule outliving the cancel point. Nothing guarantees it.
+      - (b) The harness does not fail when the cancel is not issued, or when the outcome is not a cancel. The
+        miss was silent.
+    - **Related risk (observation, not a defect here).** The nominal case needs the 9.5 s episode plus about
+      2 s of start-up inside the 80 ticks. At the measured 0.165 s per tick its margin is about 1.7 s. FR-018
+      (S1c-2) re-derives the horizons; this item does not change the nominal or freeze-vcu horizon.
+    - **Repair plan (S1c-1a; blueprints only).**
+      - Give the cancel-paused case its own horizon of 160 ticks. At the fastest measured cycle that is about
+        26 s, more than 10 s past the cancel point. Under load the cycle is slower, which only adds margin.
+        The cancel still ends the schedule at about 13 s, so the event count does not grow.
+      - Record `cancelNotIssued` with the reason when the schedule ends first.
+      - Make the harness fail for cancel-paused unless the cancel was issued and returned, and the outcome is
+        `ML-SCHEDULE-CANCELLED`.
+16. **After S1a, the blueprint's tick horizons are too short (2026-10-23 16:30–16:34; recorded before any
+    repair). This supersedes the finding-15 repair plan.**
+    - **Development run 1.** `dev-s1c1a-20261023T163017-cancel-paused` on blueprints candidate `8743f91`
+      (finding-15 plan, 160 ticks) failed in the new assertion with `cancelNotIssued: run ended first`.
+    - **Tick timing, from the Argus host clock of each tick's events.**
+      - The cycle now runs at the 0.05 s `poll_seconds` floor. The mean is 0.057 s, with single cycles of
+        0.1–0.3 s at about every 30th tick.
+      - Tick 0 comes about 1.5–2 s after the run starts.
+      - So 80 ticks end about 7.4 s after start (VS-09 attempt 1), and 160 ticks about 12.1 s after start.
+      - Phase 7 measured 0.17–0.7 s per tick. Most of that was the growing persistence cost that S1a
+        removed.
+      - `poll_seconds` is capped at 0.05 s (`schedule_plan.py`, `POLL`), so a cycle cannot be lengthened.
+    - **Nominal on the merged mains.** `lite-20261023T163334-nominal` (load 6.7) fails with
+      `ML-SCHEDULE-COLLECTION-INCOMPLETE`. The schedule's last tick was at 9.15 s. The adapter was stopped
+      before the driver's 9.5 s episode completed (`adapter closed stdout without done`, driver marker code 3).
+      The Phase 7 scenario therefore no longer passes on the accepted mains. It is a defect of the blueprint's
+      tick-count assumptions, made visible by S1a; the platform behaves as designed.
+    - **Also affected.** freeze-vcu uses `at=16`, `duration=20` ticks to span the throttle phase. That is
+      now about 1 s, starting before the throttle. No run of it has been made.
+    - **Not affected.** no-carla ends at the adapter's child exit. The baseline does not use Maestro.
+    - **Repair plan (S1c-2a, the FR-018 horizon part; unblocked by ES-2).** Each tick value is derived from
+      the 0.05 s floor, and the upper bound is checked against the 55 s active window:
+      - one horizon of 400 ticks for nominal, freeze-vcu and cancel-paused. That is ≥ 20 s after tick 0 at the
+        floor, and about 23 s at the measured mean. It covers the driver episode end (about 11.5 s after tick
+        0) and the cancel (about 12.3 s after tick 0) with ≥ 7 s margin. The run fits the active window while
+        the mean cycle is ≤ 0.13 s.
+      - observe at tick 200;
+      - the freeze at tick 60 (about 3.4 s) for 80 ticks (about 4.6 s), inside the throttle phase;
+      - `retained-inputs.json` declared at 4 MiB: about 2.2 KB per event, and about 560 events at 400 ticks;
+      - the finding-15 assertions kept;
+      - the per-tick timing recorded in `maestro-run.json`.
+      - FR-018's long-run case (S-D1, 600 ticks) and its episode and stimulus extension stay in S1c-2.
+17. **Development runs 2–4 on blueprints `1de5dc2` (2026-10-23 16:39–16:46, load 5.8–7.9, CARLA instance 10;
+    recorded before any repair).** All runs use compat main `25e4e1f` and platform main `b28a2aacf`.
+    - **nominal** (`dev-s1c2a-…-nominal`): succeeded with all markers. 401 ticks, mean cycle 0.061 s, last
+      tick at 26.8 s.
+    - **cancel-paused** (`dev-s1c2a-…-cancel-paused`): meets P3 as revised by DR-2.
+      - `ML-SCHEDULE-CANCELLED`, with the cancel 6.0 s after the pause seen and the run ending 1.4 s later.
+      - Writer open → failed (abort completed), reader `ARGUS2-MISSING-ARTIFACT` only (the uncollected
+        markers), no CORRUPT, MUTATED or WRITER-STATE reason, persistence failure null.
+      - `cleanupComplete` true. The 4 native units are issued, retired and reaped, so DR-3 needs no
+        RunClosure STOP/RETIRE.
+      - The guard held the ego to standstill and destroyed the 3 owned actors, with none remaining. No
+        residue.
+    - **freeze-vcu** (`dev-s1c2a-…-freeze-vcu`): failed with `ML-SCHEDULE-SERVICE-DEADLINE` at the thaw tick
+      140.
+      - The VCU's last health success was at 5.20 s and the freeze applied at 6.64 s. Health scans ran about
+        every 1.6 s; the frozen VCU is not probed.
+      - The thaw came at 10.85 s, after the VCU's 5 s freshness had lapsed (10.20 s). The tick-140 step was
+        refused before dispatch.
+      - Phase 7's 20-tick freeze stayed inside that window. The 80-tick (4.2 s) freeze of finding 16 does not.
+    - **Defect.** The finding-16 freeze length ignores the constraint that a freeze plus the time since the
+      unit's last health success must stay under its 5 s freshness. The scan interval is up to about 1.6 s, so
+      a freeze must last ≤ about 3 s.
+    - **Repair.** `FREEZE_TICKS = 40`: about 2.4 s at the measured mean, and about 3.2 s at a 0.08 s cycle.
+      The freeze stays at tick 60.
+    - **Observation for the platform (not repaired here).** A thaw after the frozen unit's freshness has
+      lapsed ends the run as a service deadline, not as a health failure of that unit. This is recorded for
+      the S1b and Phase 8 fault planning.
+18. **Development run 5 (`dev-s1c2a-20261023T165012-freeze-vcu`, blueprints `093eada`, load 6.9): still
+    `ML-SCHEDULE-SERVICE-DEADLINE` at the thaw tick 100. This corrects the finding-17 analysis (recorded before
+    the repair).**
+    - **Mechanism (platform code, as designed).**
+      - The freeze suspends the unit's probing. `ProbeFacade.resume_health` restores it at the thaw, and
+        `next_health_deadline` is the unit's last observation plus its 5 s cadence.
+      - The dispatcher's `_end()` window closes `health_scan_seconds` earlier: 4 units × 0.38 s = 1.52 s
+        (`schedule_plan.py`).
+      - The fault-clear statement is therefore refused unless the thaw comes ≤ 3.48 s after the frozen unit's
+        last health success.
+    - **Measured** (thaw minus the VCU's last health success):
+
+      | Run | Interval | Result |
+      | --- | --- | --- |
+      | Phase 7 `lite-20261023T075151` | 2.84 s | passed |
+      | development run 2 | 5.65 s | failed |
+      | development run 5 | 3.62 s | failed |
+
+      Health scans run about every 1.6 s, so the last success can come up to about 1.6 s before the freeze.
+    - **Repair.** `FREEZE_TICKS = 20`, as in Phase 7. That is about 1.2 s at the measured mean and about 1.6 s
+      at a 0.08 s cycle, so the worst case is ≤ about 3.2 s. The freeze stays at tick 60, about 3.6 s after
+      tick 0, which is where Phase 7's freeze fell (7.46 s after start).
+    - **Observation for the S1b and Phase 8 fault planning (not repaired here).** The admissible freeze length
+      is bounded by about `cadence − health_scan_seconds −` (the time since the last success). A longer freeze
+      fails the run as a service deadline, not as a unit health failure.
+19. **Independent review 6, of S1c-2a at blueprints `0d69bd7` (2026-10-23 about 17:15): PASS with 3 MEDIUM and
+    6 LOW. Recorded before any repair.**
+    - **Verified evidence on `0d69bd7`** (all dirty=0, `SHA256SUMS` verifies):
+      - freeze-vcu `165447` and nominal `165835`: P1, writer closed and complete;
+      - cancel-paused `170215`: P3 (with DR-2);
+      - no-carla `170253`: P4.
+    - **Verified root causes.** The review confirmed findings 16–18 against the code: the cycle floor, the
+      thaw bound of cadence − `health_scan_seconds` = 3.48 s, and the 1.58 s scan spacing. The measured
+      retained sizes are ≤ 0.96 MB against the 4 MiB declaration.
+    - **MEDIUM-1.** freeze-vcu and no-carla still pass silently: only nominal and cancel-paused are asserted.
+      Development runs `164220` and `165012` exited 0 with `ML-SCHEDULE-SERVICE-DEADLINE`. This is the class of
+      finding 15(b), left unrepaired for those two cases.
+    - **MEDIUM-2.** The freeze margin is thin.
+      - The worst-case thaw interval is about 1.58 s + one cycle + 20 cycles, which must stay ≤ 3.48 s minus a
+        round trip. It fails at a mean cycle above about 0.09 s, and there is no post-S1a cycle data above
+        load 7.9.
+      - At about 0.078 s per cycle, tick 60 falls after the throttle segment ends (about 8.7 s after start).
+      - The host load is not in the run evidence.
+      - The horizon's upper bound is about 0.12 s per cycle, not 0.13 s.
+    - **MEDIUM-3.** The observe step at tick 200 falls inside the cancel window (about 14.0–14.4 s after start
+      at the floor). The two S1c-2a cancel runs cancelled observe; Phase 7 completed it. The case's path is
+      therefore not deterministic.
+    - **LOW-1 (erratum to finding 15 and `VS09-RESULT.md`).**
+      - The 13.22 s is `monotonicEndNs`, which includes the old canceller's 5 s join. The 80-tick schedule's
+        last tick was at 7.44 s, 0.25 s after the pause (7.20 s), not 6.02 s after it.
+      - In Phase 7 `075253` the cancel came at tick 59 of 80: that race was won by 2 s or more, not about
+        60 ms.
+    - **LOW-2 (errata to findings 16–18, the comments and the README).**
+      - Tick 80 of the nominal run on the mains was at 8.58 s; 9.15 s is its last event.
+      - Cycle spikes reach 0.57 s.
+      - Tick 0 comes 1.49–2.69 s after start.
+      - The freeze lands 4.4–4.7 s after tick 0 (the tick-0 start cycle is 1.3–1.7 s).
+      - The README states the 3.48 s thaw bound as a fact rather than as a bound.
+    - **LOW-3.** The cancel assertion compares against `monotonicEndNs`, which is taken after the join, not when
+      `entry.start` returned. `cancelNotIssued` is set by the join timeout even when the cancel was issued.
+      Thread writes made after `maestro-run.json` is written are lost from the file.
+    - **LOW-4.** `tickTiming` includes the tick-0 start cycle in `maxCycleS` and `meanCycleS`.
+    - **LOW-5.** This log does not record the verifying runs on `0d69bd7`, and no `xverse-argus verify` output
+      is recorded for P1.
+    - **LOW-6.** Findings 17 and 18 were committed only 27 ms and 115 ms before their repairs. The commit order
+      is met, but the repairs were already written. From this finding on, the finding is committed before
+      the repair is written.
+    - **Repair plan (S1c-2a, blueprints only).**
+      - MEDIUM-1: assert freeze-vcu as nominal, and no-carla as `ML-RUN-CHILD-EXIT` with cleanup complete.
+      - MEDIUM-2: a freeze of 10 ticks at tick 40, giving a worst-case thaw interval ≤ 3.48 s up to a mean
+        cycle of about 0.17 s, with the freeze start inside the throttle segment up to about 0.1 s per cycle.
+        The 1/5/15-minute load at start and end is recorded in `maestro-run.json`, and the horizon comment
+        is corrected.
+      - MEDIUM-3: observe at tick 60, before the cancel up to about 0.15 s per cycle. cancel-paused asserts that
+        every observe step completed.
+      - LOW-3: record `startReturnedMonotonicNs` before `run_ended` is set. Assert the cancel against it. Set
+        `cancelNotIssued` only when no cancel was requested.
+      - LOW-4: report the start cycle separately from the steady-state mean and maximum.
+      - LOW-1, LOW-2 and LOW-5: errata in this log, the comments and the README. The re-verification
+        runs and `xverse-argus verify` output are recorded in the next finding.
+20. **Re-verification on blueprints `f19ae58` (2026-10-23 17:17–17:22, CARLA instance 11; recorded before any
+    repair).** Compat main `25e4e1f`, platform main `b28a2aacf`. The load average at run start and end is in
+    each `maestro-run.json`.
+    - **freeze-vcu `171706`** (load 4.9): P1. All markers present. `xverse-argus verify` reports both the
+      Maestro and the flow root closed and complete, with 571 events. Observe completed. Steady mean cycle
+      0.055 s.
+    - **nominal `…-nominal`** (load 5.2): P1, with both roots closed and complete.
+    - **cancel-paused `172145`** (load 7.3): **P3 not met, while the harness exited 0.**
+      - The outcome is `ML-SCHEDULE-CANCELLED` and every observe step completed.
+      - But `persistenceFailure` is `ML-PERSIST-CHILD` (kind `schedule`, stage `receive`, sequence 452). That
+        request started 0.4 ms after `entry.stop` returned (13.713 s), and the worker child had exited 2.6 ms
+        later.
+      - `cleanupComplete` false, with `ML-CLOSURE-WORKLOAD-WAIT-UNKNOWN`. The 4 native units have no retired or
+        reaped facts. The writer is `rpc-unresolved`. `dispatchTerminal` is null.
+      - The Maestro Argus root keeps its initial open manifest (0 events) beside a 269-line stream. `verify`
+        reports CORRUPT, MUTATED and WRITER-STATE.
+      - The host is clean: no residue processes or sockets. The guard held the ego to standstill and destroyed
+        the 3 owned actors.
+      - Cancel run `170215`, on `0d69bd7`, had closed consistently: writer failed, 297 events, and `verify`
+        gives only the WRITER-STATE reason, as DR-2 allows.
+    - **Defects.**
+      - (a) The cancel-paused assertions check the path, but not the P3 closure facts.
+      - (b) A platform cancel race after S1a. It is recorded in the platform log (S1a successor, finding 18)
+        and is not repaired here.
+    - **Repair plan (blueprints).** cancel-paused also asserts:
+      - `persistenceFailure` is null;
+      - `cleanupComplete` is true;
+      - every native unit is issued, retired and reaped;
+      - every closure writer ends `failed` or `closed` (DR-2).
+
+      The run still records everything before any assertion.
+21. **Finding-20 repair and remaining verification (2026-10-23 17:26–17:40).**
+    - **Repair: blueprints `fed431e`.** cancel-paused asserts the P3 closure facts:
+      - `persistenceFailure` is null;
+      - `cleanupComplete` is true;
+      - all 4 native units are issued, retired and reaped;
+      - every closure writer ends `failed` or `closed` (DR-2).
+
+      Replayed offline over the 7 recorded S1c-2a cancel runs, this predicate rejects only `172145`.
+    - **Rate.** Four more cancel-paused runs on `f19ae58` (load 6.3–7.6) all closed consistently. So far 1 of 7
+      post-S1a cancel runs showed the platform race. It is recorded in the platform log as the S1a successor
+      finding 18 (`candidate/lite-stabilization-s1a2-20261023`, record only).
+    - **no-carla `…-no-carla` on `fed431e`** (load 6.3): P4.
+      - `ML-RUN-CHILD-EXIT`, with cleanup complete and no residue.
+      - The Maestro writer is `failed`.
+      - The flow root stays `open` because the driver is killed. That is outside P4.
+    - **Consequence.** With `fed431e`, a recurrence of the race makes cancel-paused fail visibly. VS-09 and
+      the S1d P3 criterion therefore depend on the platform diagnosis.
+22. **Independent review 7, of S1c-2a at blueprints `fed431e` (2026-10-23 about 18:00): PASS, no HIGH, with 2 MEDIUM
+    and 6 LOW. Recorded before any repair.**
+    - **MEDIUM-1.** The freeze's lower margin is not analysed.
+      - In freeze-vcu `171706` the freeze applied at 4.893 s, and the throttle segment started at 4.81 s
+        (`stimulus.jsonl`): an 83 ms margin.
+      - Across the other CARLA runs, tick 40 minus the throttle start is +0.70 to +0.89 s. A fast start, like
+        no-carla `173434` (first tick 1.54 s, start cycle 1.0 s), would put the freeze in the idle second.
+      - The case would still pass, because freeze-vcu asserts only success and markers.
+    - **MEDIUM-2.** The P3 Argus conditions are evaluated under an interpretation that is not recorded.
+      - In every cancel run the flow root (`driver/argus-flows`) is open, with 0 events and CORRUPT and
+        MUTATED reasons: the driver unit is SIGKILLed.
+      - DR-2 forbids the WRITER-STATE reason, but a `failed` writer always produces it. Findings 20 and 21
+        call it "as DR-2 allows".
+      - Read literally, every passing cancel run fails P3. An explicit reading needs an author decision.
+    - **LOW-1.** `cancellerAliveAfterJoin` is recorded but not asserted. A late `cancelReturnedMonotonicNs`
+      can then exist only in memory.
+    - **LOW-2.** The harness encodes only part of P3 and P4. It does not assert:
+      - Maestro-root CORRUPT or MUTATED reasons;
+      - the guard;
+      - residue;
+      - that the no-carla writer is `failed`.
+
+      `README.md` overstates this as "as P3 requires". No cancel, nominal or freeze run was made at
+      `fed431e`, and the finding-21 replay is not recorded as evidence.
+    - **LOW-3.** The new runs fall outside the comment's ranges: the first tick came at 1.54–2.82 s and the
+      start cycle took 0.995–2.14 s.
+    - **LOW-4.** `SHA256SUMS` excludes `maestro-tmp/`, which holds the raw Maestro Argus roots, `m3.jsonl` and
+      the markers.
+    - **LOW-5.** Some claims are stronger than the evidence supports.
+      - "Host clean" for `172145` covers only the 4 unit command lines, not the Maestro helpers or the
+        persistence worker.
+      - The 1-in-7 rate pools 3 revisions and 2 paths. On `f19ae58` alone it is 1 in 5.
+      - Platform finding 18 cites `xverse-argus verify` output for runs `164544` and `170215`, which have
+        only manifests.
+      - "S1a acceptance evidence is unaffected" is not supported.
+    - **LOW-6.** Timestamps.
+      - Finding 20 (17:23:48) refers to platform finding 18, which was committed at 17:35:04.
+      - Platform finding 18 is headed 17:22, but it holds analysis and runs from 17:26–17:33.
+      - The erratum file says 17:20; its mtime is 17:15.
+    - **Platform (review analysis, recorded as platform finding 19).** The code supports a native kill chain:
+      a cancel that collides with a health QUERY on the authority connection is revoked (SIGKILL of the
+      authority), and the bootstrap root then kills the persistence worker. Only `172145`'s cancel fell
+      inside a health scan. This is a hypothesis, not proven.
+    - **Repair plan (blueprints).**
+      - MEDIUM-1: move the freeze to tick 60, about +1.1 to +1.9 s into the throttle at the floor. freeze-vcu
+        records the overlap of the freeze with the throttle (from the Argus fault events and
+        `stimulus.jsonl`) and fails unless it is positive.
+      - MEDIUM-2: propose DR-6 to the author (see the thesis record). The harness checks the Maestro root
+        with `xverse-argus verify` for every case:
+        - nominal and freeze-vcu: closed and complete;
+        - cancel-paused and no-carla: writer `failed` or `closed`, and no reason other than WRITER-STATE.
+      - LOW-1: assert that `cancellerAliveAfterJoin` is absent.
+      - LOW-2: narrow the README wording to what the harness asserts. The guard, residue and full P1–P8
+        audit stay with S1-T15a. Verification runs of every case on the repaired head follow.
+      - LOW-3: correct the comment ranges.
+      - LOW-4: include `maestro-tmp/` in `SHA256SUMS`.
+      - LOW-5 and LOW-6: these items are the errata. The scope of "host clean" is the 4 unit command lines.
+        The rate is 1 of 5 on `f19ae58` and 1 of 7 pooled. Runs `164544` and `170215` are manifest-only.
+        The S1a statement is withdrawn. The timestamps are as listed above.
+23. **Verification of the finding-22 repairs on blueprints `588f84a` (2026-10-23 17:51–18:01, CARLA instance 12).**
+    Compat main `25e4e1f`, platform main `b28a2aacf`. Every run has dirty=0, residue 0 (the 4 unit command
+    lines and the run's sockets) and a successful guard.
+
+    | Run | Load | Result |
+    | --- | --- | --- |
+    | freeze-vcu `175156` | 4.7 | succeeded with all markers; Maestro root closed and complete; freeze overlaps the stimulus throttle by 0.72 s |
+    | nominal `175232` | 5.3 | succeeded; Maestro root closed and complete |
+    | cancel-paused `175513` | 6.7 | `ML-SCHEDULE-CANCELLED` |
+    | cancel-paused `175740` | 6.6 | `ML-SCHEDULE-CANCELLED` |
+    | cancel-paused `180007` | 7.3 | `ML-SCHEDULE-CANCELLED` |
+    | no-carla `180049` | — | `ML-RUN-CHILD-EXIT`, cleanup complete; Maestro writer failed, WRITER-STATE only |
+
+    - **All three cancel runs passed every assertion:**
+      - observe completed;
+      - the cancel came during the run;
+      - no persistence failure;
+      - cleanup complete;
+      - native units retired and reaped;
+      - Maestro writer `failed` with WRITER-STATE only.
+
+      The platform race did not recur. Its rate on `f19ae58` and `588f84a` together is 1 of 8.
+    - **Offline replay.** The new checks were replayed over every earlier `dev-s1c2a-*` run
+      (`REPLAY-S1c-finding22.md` in the evidence directory). They reject `164220`, `165012` and `172145` and
+      accept the others.
+    - **Checksums.** `SHA256SUMS` now covers `maestro-tmp/` too: 1400 files.
+    - **Open, for the author.** DR-6, the P3 and P4 Argus reading, is proposed in the thesis record. The
+      platform race is in platform findings 18–19.
+24. **Independent review 8, of S1c-2a at blueprints `588f84a` (review returned before 18:09:26; this entry was written at 18:09:26
+    2026-10-23): PASS, no HIGH, 1 MEDIUM and 4 LOW. Recorded before any repair.**
+    - **Confirmed.** Each review-7 repair resolves its item, and the evidence supports finding 23.
+      - The freeze start falls 1.08–1.98 s into the throttle across 19 runs. Tick 70 falls ≥ 0.65 s before
+        the throttle ends.
+      - The projected thaw interval is ≤ 2.50 s, against the 3.48 s limit.
+      - `SHA256SUMS` verifies all 1400 files.
+    - **MEDIUM-1.** `FREEZE_AT` = `OBSERVE_TICK` = 60.
+      - In `175156`, `observe-legacy-vcu` ran right after the freeze applied. It returned the cached
+        pre-freeze observation (`check_unit_health` returns the cached value for a suspended unit), so the
+        record shows "probe succeeded" for a frozen unit.
+      - Run outcomes are still protected by the post-thaw health scan. The evidence is misleading.
+    - **LOW-1.** `overlapS > 0` accepts any overlap, not containment. `s1` is the last throttle sample, about
+      50 ms short of the segment end.
+    - **LOW-2.** DR-6's stated basis is inaccurate.
+      - `172145` had an `open` Maestro root with CORRUPT, MUTATED and WRITER-STATE reasons.
+      - The no-carla flow root is open with WRITER-STATE only.
+      - DR-6 does not say whether a `closed` writer satisfies P4. P4 says `failed`, while the harness accepts
+        either.
+    - **LOW-3.** Header times are later than the files' own times: finding 22, the replay record and DR-6.
+      From this finding on, the headers carry the shell time at which the entry was written.
+    - **LOW-4.** The bound comment understates its inputs. Gaps between VCU health successes reach 1.70 s,
+      not 1.58 s. Ticks 60–70 measured 0.72–1.00 s. The no-carla `180049` start (1.461 s, cycle 0.929 s) falls
+      just outside the stated ranges. The bound still holds: worst case 2.70 s ≤ 3.48 s.
+    - **Repair plan (blueprints).**
+      - MEDIUM-1: `FREEZE_AT = 61`, so the observe at tick 60 really probes the VCU just before the freeze.
+      - LOW-1: freeze-vcu asserts containment, apply ≥ the throttle start and clear ≤ the last throttle sample
+        + 0.05 s, and records both margins.
+      - LOW-4: correct the comment inputs.
+      - LOW-2 (thesis): correct DR-6's basis. State that P4 requires `failed`, and make the no-carla assertion
+        `failed` only.
+      - Then one verifying freeze-vcu run, and one no-carla run.
+25. **Verification of the finding-24 repairs on blueprints `8aa57ca` (runs 18:11–18:17, CARLA instance 13; written
+    at 18:17:43 2026-10-23).** Compat main `25e4e1f`, platform main `b28a2aacf`. Every run has dirty=0, residue 0
+    and the world restored.
+
+    | Run | Load | Result |
+    | --- | --- | --- |
+    | freeze-vcu `181112` | 4.3 | succeeded; Maestro root closed and complete; freeze inside the throttle segment |
+    | nominal `181350` | 8.0 | succeeded; Maestro root closed and complete |
+    | cancel-paused `181632` | 6.7 | `ML-SCHEDULE-CANCELLED`, every assertion met |
+    | no-carla `181700` | — | `ML-RUN-CHILD-EXIT`, cleanup complete, writer `failed` with WRITER-STATE only |
+
+    - **freeze-vcu detail.**
+      - The freeze lies inside the throttle segment, with a start margin of 1.271 s and an end margin of 1.73 s.
+      - At tick 60, `observe-legacy-vcu` made a real health query (host 725.313) before its probe (725.338). The
+        freeze applied at tick 61 (725.420) and cleared at tick 71 (725.919).
+      - The thaw came 0.61 s after that health success.
+    - **cancel-paused.** It met every assertion, with no persistence failure. The platform race rate is now 1 of
+      9 on the last three heads.
+    - **Checksums.** `SHA256SUMS` was refreshed: 1627 files.
+    - **DR-6.** Its basis is corrected in the thesis record (review 8, LOW-2).
+26. **Independent review 9, of the finding-24 repairs at blueprints `8aa57ca` (written at 18:21:09 2026-10-23): PASS,
+    no HIGH or MEDIUM, 2 LOW. Recorded before the documentation repair.**
+    - **Confirmed.**
+      - The margins handle None correctly and accept a margin of exactly 0.
+      - The +0.05 s end convention matches the stimulus samples.
+      - The observe at tick 60 makes a real VCU health query (725.313) before the freeze at tick 61. The probe's
+        `causationId` is that health event.
+      - The thaw came 0.61 s after the VCU's last health success.
+      - no-carla requires `failed`.
+      - Finding 25's evidence holds, the rate of 1 in 9 holds, and the corrected DR-6 basis is accurate.
+      - Finding 24 preceded the repair.
+    - **LOW-A (erratum to findings 23 and 25).** The no-carla runs (`170253`, `173434`, `180049`, `181700`) have
+      no restore guard. For them "guard successful" and "world restored" should read "n/a (no CARLA)".
+    - **LOW-B.** The comment's measured ranges are exceeded again.
+      - Nominal `181350` has `firstTickS` 2.830, above the stated 1.5–2.8 s.
+      - Ticks 61–71 lasted 0.50 s in `181112`, outside the stated 0.72–1.00 s.
+      - Repair (comment only, after the evidence): tick 0 came 1.5–2.9 s after start, and 10 ticks measured
+        0.50–1.00 s.
+27. **Author acceptance (written at 18:42:10 2026-10-23).** The author wrote "I accept all" in reply to the three
+    decisions in the thesis record `specs/029-lite-stabilization/review/acceptance-package-s1c2a-20261023.md`:
+    - S1c-2a is accepted as presented. The code is blueprints `8aa57ca`; `c5950f6` corrects comments only. The
+      compat change is this log only.
+    - DR-6 (the P3 and P4 Argus reading) is approved as proposed.
+    - The platform cancel race is sequenced as S1a-2, before S1b.
+    - **Merge.** `--no-ff` into each main, from bases `25e4e1f` and `126a80b`, which equal the mains. The tree
+      identity is checked before the push.
+    - **Next.** VS-09 is repeated on the merged revisions. It can still fail through the platform race (platform
+      findings 18–19).
