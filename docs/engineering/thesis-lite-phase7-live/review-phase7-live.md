@@ -287,3 +287,18 @@ The work is an engineering integration only: not AEB validation, not a scientifi
       - The README tick range is corrected to 0.07–0.7 s per tick.
 
     Every case is re-run from the new commits (item 21).
+21. **Re-verification defect, recorded with its repair (2026-10-23 about 01:33).**
+    - **What happened:** on the newly started server instance 5, the final baseline (`baseline-20261023T013121`)
+      normalized the world, which was in the synchronous start-up state at frame 0. The guard applied
+      asynchronous settings and one 2 s commit tick, but the world stayed synchronous, so the normalization
+      failed.
+    - **Effect:**
+      - the legacy vehicle had no ticking world, so the stimulus exited `no-clock`;
+      - the bounded stop killed the legacy vehicle (exit 137);
+      - the baseline correctly reported FAILED, with exit 3.
+    - **Probe:** the same apply-and-tick sequence, run by hand a minute later on the same instance, took
+      effect (`normalisation-probe.txt`). The likely cause is that the commit tick timed out while the server
+      was still initializing.
+    - **Repair:** the guard retries apply-and-tick up to 3 times with a 5 s tick, and records the number of
+      attempts (`applyAttempts`). A new test covers it; suite: 197 passed.
+    - **Re-run:** every case, from the new commits.

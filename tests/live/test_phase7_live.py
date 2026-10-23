@@ -341,3 +341,20 @@ def test_live_finding_06_guard_holds_and_destroys_registered_actors_by_id_before
     assert calls[0] == (True, ["control"])  # held while the world was still paused
     assert record["held"] == [ego.id] and ego.controls[-1].hand_brake is True and record["destroyed"][0]["via"] == "registry"
     assert record["restored"] is True and world.actors == []
+
+
+def test_review_log_21_guard_retries_a_commit_tick_that_did_not_apply():
+    world = _World()
+    world.settings = SimpleNamespace(synchronous_mode=True, fixed_delta_seconds=0.05)
+    original = world.tick
+    calls = []
+
+    def flaky_tick(timeout=None):  # the first commit tick times out right after a server start
+        calls.append(timeout)
+        if len(calls) == 1:
+            raise RuntimeError("time-out")
+        return original(timeout)
+
+    world.tick = flaky_tick
+    record = restore(world)
+    assert record["applyAttempts"] == 2 and record["after"]["synchronousMode"] is False and record["restored"] is True

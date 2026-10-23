@@ -55,16 +55,21 @@ def restore(world, carla=None, settings_to=None, client=None, registry=None) -> 
                 actor.apply_control(carla.VehicleControl(throttle=0.0, brake=1.0, steer=0.0, hand_brake=True))
                 held.append(actor.id)
     target = settings_to or {"synchronousMode": False, "fixedDeltaSeconds": None}
-    if before != target:
-        settings = world.get_settings()
-        settings.synchronous_mode = bool(target["synchronousMode"])
-        settings.fixed_delta_seconds = target["fixedDeltaSeconds"]
-        world.apply_settings(settings)
-        if before["synchronousMode"]:
-            try:
-                world.tick(2.0)  # a synchronous world applies new settings on the next tick (live finding 02)
-            except RuntimeError:
-                pass
+    attempts = 0
+    if before != {k: target[k] for k in ("synchronousMode", "fixedDeltaSeconds")}:
+        # bounded retry: right after a server start a commit tick can time out and leave the settings (review log 21)
+        for attempts in range(1, 4):
+            settings = world.get_settings()
+            settings.synchronous_mode = bool(target["synchronousMode"])
+            settings.fixed_delta_seconds = target["fixedDeltaSeconds"]
+            world.apply_settings(settings)
+            if before["synchronousMode"]:
+                try:
+                    world.tick(5.0)  # a synchronous world applies new settings on the next tick (live finding 02)
+                except RuntimeError:
+                    pass
+            if _settings(world)["synchronousMode"] == bool(target["synchronousMode"]):
+                break
     destroyed = []
     if carla is not None and client is not None and registered:
         for entry, response in zip(registered, client.apply_batch_sync([carla.command.DestroyActor(a["id"]) for a in registered], False)):
@@ -84,7 +89,7 @@ def restore(world, carla=None, settings_to=None, client=None, registry=None) -> 
         target["fixedDeltaSeconds"] is not None and after["fixedDeltaSeconds"] is not None
         and abs(after["fixedDeltaSeconds"] - target["fixedDeltaSeconds"]) < 1e-6)
     matches = after["synchronousMode"] == bool(target["synchronousMode"]) and delta_ok  # review 2 N-8: the step too
-    return {"before": before, "target": target, "after": after, "held": held, "destroyed": destroyed, "remaining": remaining,
+    return {"before": before, "target": target, "after": after, "applyAttempts": attempts, "held": held, "destroyed": destroyed, "remaining": remaining,
             "restored": matches and not remaining}
 
 
