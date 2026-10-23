@@ -37,3 +37,22 @@ engineering stabilization candidate: not M1, not AEB evidence.
      mode is synchronous.
    - Suite with `/dev/shm/compat-p6-venv` (installed platform wheel = platform main `8b3d8c8e8`): 202
      passed, 39 subtests.
+4. **The blueprint part of S1c-1 is on `xverse-blueprints` `candidate/lite-stabilization-s1c-20261023`, commit
+   `3a3da84`, base `e7a6ebc`.**
+   - **FR-014.** `require_compat` in `lib-live.sh`: `run-live.sh` and `run-baseline.sh` refuse with exit 4
+     and a BLOCKED line when `XVERSE_COMPAT_SRC` is unset or is not a compat checkout. Both were checked:
+     exit 4. The default path to the Phase 7 candidate worktree is removed.
+   - **FR-016.** `legacy_identity` records the revision, dirty count and diff hash for the bridge
+     repository and the legacy VCU in both commands. It was checked on `vcu_zenoh`: `125566e`, dirty 0.
+   - **FR-015 T-2.** After a normalisation, the baseline lists the world again into
+     `world-after-normalisation.json`. `world-before.json` keeps the found state. The vehicle checks and
+     the leftover set use the starting world.
+   - **FR-015 T-5.**
+     - (a) A world with any vehicle is refused, as in the Lite preflight.
+     - (b) 143 is accepted only for a process the script sent TERM to; 137 (KILL) still fails.
+     - (c) Every exit writes `baseline-exit.txt` through `finish`.
+     - (d) The world queries catch `RuntimeError`, print one line and fail closed.
+   - **FR-017.** The harness records `persistenceFailure`, `closureDiagnostics`, `closureWriters`,
+     `closureTerminalReports` and `dispatchTerminal` in `maestro-run.json`.
+   - **Checks.** `bash -n` and Python AST parse pass. The live behaviour is verified in the VS-09
+     confirmation and in S1d, both after ES-1.
