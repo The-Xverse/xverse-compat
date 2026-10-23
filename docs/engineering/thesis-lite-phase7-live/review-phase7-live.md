@@ -302,3 +302,13 @@ The work is an engineering integration only: not AEB validation, not a scientifi
     - **Repair:** the guard retries apply-and-tick up to 3 times with a 5 s tick, and records the number of
       attempts (`applyAttempts`). A new test covers it; suite: 197 passed.
     - **Re-run:** every case, from the new commits.
+22. **Invalid baseline, recorded with its repair (2026-10-23 about 01:37).**
+    - **What happened:** the baseline `…013416` ran while a leftover `ego_vehicle` (actor 24) was in the
+      world. Its observer, which selects by role name, tracked that stationary actor (1501 frames, peak 0)
+      instead of the vehicle the run spawned. The run is **INVALID** as evidence.
+    - **Origin:** the failed baseline `…013121` killed its legacy vehicle. The vehicle's queued spawn most
+      likely executed when the manual normalization probe ticked the synchronous world.
+    - **Repair:**
+      - actor 24 was destroyed by ID, and no vehicles remained;
+      - the baseline refuses to start when an `ego_vehicle` already exists (blueprints, next commit).
+    - **Re-run:** the baseline.
