@@ -641,3 +641,29 @@ engineering stabilization candidate: not M1, not AEB evidence.
       identity is checked before the push.
     - **Next.** VS-09 is repeated on the merged revisions. It can still fail through the platform race (platform
       findings 18–19).
+28. **S1c-2 planning (written at 19:37:43 2026-10-23, before any S1c-2 code).**
+    - **Branches.** `candidate/lite-stabilization-s1c2-20261023` in `xverse-blueprints`, from main `6ac7703`, and
+      in `xverse-compat`, from main `bb07492`. Part 1 covers what does not depend on S1b (ES-3). Part 2 adopts
+      the S1b graceful stop, stderr capture and marker probe after S1b is merged.
+    - **Part 1, S1-T15a: the soak tooling**, in `automotive/thesis-lite-carla-closed-loop/soak/`:
+      - **`health_check.py`.** A read-only, independent CARLA check: a fresh client, `get_world()` within 15 s,
+        then a passive `wait_for_tick(5 s)` on the asynchronous world. It never ticks. Its output is JSON.
+      - **`audit.py`.** The per-run criteria P1 and P3–P8 from `plan.md` §Soak, with DR-2 and DR-6 applied, read
+        from the recorded run evidence only. P2 is reported as dispersion.
+      - **`run_soak.py`.** The predeclared runner (FR-019, FR-020):
+        - interleaved rounds; a round starts only at a 1-minute load ≤ 5;
+        - per-run load samples every 5 s;
+        - a CARLA server block every 10 rounds, restarted with the author's recipe;
+        - the health check before the preflight and after the cleanup;
+        - the INVALID and observation rules;
+        - stop at the first failure;
+        - pinned, clean, detached revisions, refused on any change;
+        - a soak manifest and a report.
+    - **Part 1, the FR-018 horizon part not tied to S1b.**
+      - A `long-run` case at the S-D1 horizon (600 ticks, 4 units), with the driver episode and the stimulus
+        profile extended to cover it.
+      - A 5 s start-up scope margin (S1b finding 2, GA-10).
+      - `maestro-run.json` also records the broker's cancel result (confirmed or revoked) for every cancel run
+        (S1a-2 finding 24).
+    - **Order.** Each part is reviewed independently before any soak run. The soak itself (S1-T16) waits for
+      the accepted mains of S1a-2, S1b and S1c-2.
