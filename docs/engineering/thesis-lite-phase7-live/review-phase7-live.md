@@ -383,4 +383,4 @@ The work is an engineering integration only: not AEB validation, not a scientifi
     | `lite-…041146-cancel-paused` | `ML-SCHEDULE-CANCELLED`; guard held ego 35 by ID before un-pausing, destroyed 3 owned actors, restored with 1 attempt |
     | `lite-…041222-no-carla` | `ML-RUN-CHILD-EXIT`; cleanup complete |
 
-    `report-final` and `run-index.json` (69 runs) are regenerated. End state: CARLA stopped; `zenohd` running.
+    `report-final` and `run-index.json` (74 runs) are regenerated. End state: CARLA stopped; `zenohd` running.
