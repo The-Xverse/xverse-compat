@@ -106,10 +106,11 @@ def restore(world, carla=None, settings_to=None, client=None, registry=None) -> 
             if unpause_ns is None:
                 unpause_ns = time.monotonic_ns()  # the first apply-and-commit (S1 FR-022)
             settings = world.get_settings()
+            synchronous_now = settings.synchronous_mode  # the mode this attempt is applied in (S1c finding 2)
             settings.synchronous_mode = bool(target["synchronousMode"])
             settings.fixed_delta_seconds = target["fixedDeltaSeconds"]
             world.apply_settings(settings)
-            if before["synchronousMode"]:
+            if synchronous_now:
                 try:
                     world.tick(5.0)  # a synchronous world applies new settings on the next tick (live finding 02)
                 except RuntimeError:

@@ -32,3 +32,8 @@ engineering stabilization candidate: not M1, not AEB evidence.
      CARLA normally applies mode and step together, so this has not been observed live. The test documents
      the path.
    - **Repair (next commit).** Tick whenever the world is synchronous at the time of each attempt.
+3. **Repair of finding 2.**
+   - Each attempt records the mode it is applied in (`synchronous_now`) and commits with a tick when that
+     mode is synchronous.
+   - Suite with `/dev/shm/compat-p6-venv` (installed platform wheel = platform main `8b3d8c8e8`): 202
+     passed, 39 subtests.
