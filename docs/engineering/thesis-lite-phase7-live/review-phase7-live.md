@@ -353,7 +353,7 @@ The work is an engineering integration only: not AEB validation, not a scientifi
       the ego exists (not "4–14 ms").
     - **Item 23, cancel row (M-8):** the guard destroyed the ego about 0.25 s of simulation time after the hold,
       at 8.49 km/h. The hold is shown as deceleration (−4.6, −7.0 and −6.0 m/s²), not as standstill.
-25. **Decision (engineer, 2026-10-23 about 04:15, under the author's delegation): repair M-2 to M-5 now and
+25. **Decision (engineer, 2026-10-23 about 04:04, under the author's delegation): repair M-2 to M-5 now and
     re-run the evidence set,** so that the author's AD-01 decision does not depend on a repair cycle.
     Acceptance stays with the author.
 
@@ -384,3 +384,21 @@ The work is an engineering integration only: not AEB validation, not a scientifi
     | `lite-…041222-no-carla` | `ML-RUN-CHILD-EXIT`; cleanup complete |
 
     `report-final` and `run-index.json` (74 runs) are regenerated. End state: CARLA stopped; `zenohd` running.
+27. **Independent review 4 (2026-10-23 about 04:20, on compat `466d292` and blueprints `320a284`): READY FOR
+    AUTHOR REVIEW**, with no HIGH or MEDIUM finding.
+    - M-2 to M-5 are confirmed as repaired, and item 26 was confirmed against the raw files.
+    - Suite: 197 passed.
+
+    LOW dispositions:
+    - **Fixed after the evidence, documentation only:**
+      - T-1: the README baseline section;
+      - T-4: the time of item 25 is corrected to about 04:04.
+    - **Disclosed, left to the author.** These change run code or tests:
+      - T-2: the baseline's re-list overwrites `world-before.json`. The original state survives in
+        `run-baseline.log` and in the `before` field of `world-normalised.json`.
+      - T-3: no test covers the step-aware retry stop.
+      - T-5:
+        - (a) the baseline refuses only a pre-existing `ego_vehicle`, but fails on any leftover vehicle;
+        - (b) a legacy process that needed TERM (exit 143) counts as failed;
+        - (c) the baseline exit code is inferred from `baseline-status.txt` and is not written to a file;
+        - (d) a traceback appears when the server hangs (it still fails closed).
