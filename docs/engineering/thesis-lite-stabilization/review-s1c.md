@@ -457,3 +457,20 @@ engineering stabilization candidate: not M1, not AEB evidence.
       - every closure writer ends `failed` or `closed` (DR-2).
 
       The run still records everything before any assertion.
+21. **Finding-20 repair and remaining verification (2026-10-23 17:26–17:40).**
+    - **Repair: blueprints `fed431e`.** cancel-paused asserts the P3 closure facts:
+      - `persistenceFailure` is null;
+      - `cleanupComplete` is true;
+      - all 4 native units are issued, retired and reaped;
+      - every closure writer ends `failed` or `closed` (DR-2).
+
+      Replayed offline over the 7 recorded S1c-2a cancel runs, this predicate rejects only `172145`.
+    - **Rate.** Four more cancel-paused runs on `f19ae58` (load 6.3–7.6) all closed consistently. So far 1 of 7
+      post-S1a cancel runs showed the platform race. It is recorded in the platform log as the S1a successor
+      finding 18 (`candidate/lite-stabilization-s1a2-20261023`, record only).
+    - **no-carla `…-no-carla` on `fed431e`** (load 6.3): P4.
+      - `ML-RUN-CHILD-EXIT`, with cleanup complete and no residue.
+      - The Maestro writer is `failed`.
+      - The flow root stays `open` because the driver is killed. That is outside P4.
+    - **Consequence.** With `fed431e`, a recurrence of the race makes cancel-paused fail visibly. VS-09 and
+      the S1d P3 criterion therefore depend on the platform diagnosis.
