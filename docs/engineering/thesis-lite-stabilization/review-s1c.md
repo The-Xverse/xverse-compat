@@ -88,3 +88,35 @@ engineering stabilization candidate: not M1, not AEB evidence.
      - no remaining candidate default;
      - the FR-017 attribute names, against platform `8b3d8c8e8`;
      - CARLA 0.9.15 semantics of `get_actor`, `get_velocity` and `wait_for_tick`.
+6. **Repairs for review 1 (finding 5).**
+   - **Compat, this commit:**
+     - **R1-1.** The standstill wait is wrapped in a handler. An error is recorded as `standstill.ok: false`
+       with `error`, and the destroy always follows. Test
+       `test_s1c_r1_1_a_failing_standstill_wait_still_destroys_owned_actors`.
+     - **R1-7.** The record now carries `holdMonotonicNs` and `unpauseMonotonicNs` (taken after the first
+       apply-and-commit). When no change was needed, `unpauseReason` says so. Egos already gone are listed
+       `absent: true`. The synchronous-target reason text is corrected. Test
+       `test_s1c_r1_7_absent_held_ego_and_unpause_anchor_are_recorded`.
+     - **R1-8.** The fake velocity changes per tick (`_World.tick` advances the actors), as a CARLA
+       snapshot does. The dead constant patch is removed. The fake client returns an error response for
+       an unknown actor ID instead of raising.
+     - Suite: 204 passed, 39 subtests.
+   - **Blueprints, commit `3595ed0`:**
+     - **R1-2.** The FR-017 facts, plus `normalUnitRecordsComplete` and `nativeUnits`, are computed by
+       `_fact`, which returns JSON data (dataclasses as dicts, None as null) or `{"error": ...}`. A
+       failing fact can no longer lose `maestro-run.json` or skip `dispose()`.
+     - **R1-3.** The baseline sets a persistent `on_exit` EXIT trap. INT and TERM exit with 130 and 143.
+       Every exit after the run directory exists writes `baseline-exit.txt`, including signals and
+       `set -u` aborts. The pre-run `require_compat` refusal exits 4 before a run directory exists; that
+       is documented and intended. Checked: a blocked preflight wrote `4`.
+     - **R1-4.** `require_compat` resolves the path with `realpath`, and both commands record
+       `compat-src <absolute path>` in `identities.txt`. Checked: a relative path was resolved and
+       recorded.
+     - **R1-5.** `legacy_identity` prints `unknown error=not-a-git-checkout` for a non-repository path.
+     - **R1-6.** `get_actors` is inside the try in both world queries. The leftover-ID parser and the
+       leftover destroy fail closed in one line.
+     - **R1-9.** Vehicles are refused before the normalisation changes anything, and again after it (for
+       a spawn that appears on the commit tick).
+   - **Traceability (R1-9).** Finding 1 was recorded with its repair (`076b25f`), and the blueprint
+     findings after the blueprint commit. Both are noted here. Review-1 findings were recorded before these
+     repairs (`e77d655`).

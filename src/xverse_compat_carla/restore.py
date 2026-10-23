@@ -50,14 +50,19 @@ def _speed(actor):
 def _hold_to_standstill(world, held, timeout_s=STANDSTILL_TIMEOUT_S) -> dict:
     """Wait, holding brake, until every held ego still in the world is at standstill (S1 FR-022)."""
 
-    vehicles, pending = [], [i for i in held if world.get_actor(i) is not None]
+    vehicles, pending = [], []
+    for actor_id in held:
+        if world.get_actor(actor_id) is None:  # already destroyed (for example by the adapter's own close)
+            vehicles.append({"id": actor_id, "absent": True, "speedMps": None, "monotonicNs": time.monotonic_ns()})
+        else:
+            pending.append(actor_id)
     end = time.monotonic() + timeout_s
     while pending:
         for actor_id in list(pending):
             actor = world.get_actor(actor_id)
             speed = None if actor is None else _speed(actor)
             if actor is None or speed < STANDSTILL_MPS:
-                vehicles.append({"id": actor_id, "speedMps": speed, "monotonicNs": time.monotonic_ns()})
+                vehicles.append({"id": actor_id, "absent": actor is None, "speedMps": speed, "monotonicNs": time.monotonic_ns()})
                 pending.remove(actor_id)
         if not pending or time.monotonic() >= end:
             break
@@ -99,12 +104,12 @@ def restore(world, carla=None, settings_to=None, client=None, registry=None) -> 
                 held.append(actor.id)
     target = settings_to or {"synchronousMode": False, "fixedDeltaSeconds": None}
     attempts = 0
+    hold_ns = time.monotonic_ns()  # the brake hold is applied (S1 FR-022)
     unpause_ns = None
+    unpause_reason = "world already in the target mode: it was not paused by this guard"
     if before != {k: target[k] for k in ("synchronousMode", "fixedDeltaSeconds")}:
         # bounded retry: right after a server start a commit tick can time out and leave the settings (review log 21)
         for attempts in range(1, 4):
-            if unpause_ns is None:
-                unpause_ns = time.monotonic_ns()  # the first apply-and-commit (S1 FR-022)
             settings = world.get_settings()
             synchronous_now = settings.synchronous_mode  # the mode this attempt is applied in (S1c finding 2)
             settings.synchronous_mode = bool(target["synchronousMode"])
@@ -115,14 +120,21 @@ def restore(world, carla=None, settings_to=None, client=None, registry=None) -> 
                     world.tick(5.0)  # a synchronous world applies new settings on the next tick (live finding 02)
                 except RuntimeError:
                     pass
+            if unpause_ns is None:
+                unpause_ns, unpause_reason = time.monotonic_ns(), None  # after the first apply-and-commit (S1 FR-022)
             now = _settings(world)
             if now["synchronousMode"] == bool(target["synchronousMode"]) and _same_delta(now["fixedDeltaSeconds"], target["fixedDeltaSeconds"]):
                 break  # mode and step both match (review 3 M-2)
     standstill = {"ok": True, "applicable": False, "vehicles": [], "timedOut": []}
     if held and not target["synchronousMode"]:  # an asynchronous world advances: hold until standstill (S1 FR-022)
-        standstill = dict(_hold_to_standstill(world, held), applicable=True)
+        try:
+            standstill = dict(_hold_to_standstill(world, held), applicable=True)
+        except Exception as error:  # noqa: BLE001 - never skip the destroy below (S1c review 1 R1-1)
+            standstill = {"ok": False, "applicable": True, "vehicles": [], "timedOut": list(held),
+                          "error": f"{type(error).__name__}: {error}"}
     elif held:
-        standstill["reason"] = "synchronous restore target: nobody ticks, so standstill cannot be awaited"
+        standstill["reason"] = ("synchronous restore target: after the restore this guard does not tick, "
+                                "so standstill is not awaited")
     destroy_ns = time.monotonic_ns()
     destroyed = []
     if carla is not None and client is not None and registered:
@@ -144,7 +156,8 @@ def restore(world, carla=None, settings_to=None, client=None, registry=None) -> 
         and abs(after["fixedDeltaSeconds"] - target["fixedDeltaSeconds"]) < 1e-6)
     matches = after["synchronousMode"] == bool(target["synchronousMode"]) and delta_ok  # review 2 N-8: the step too
     return {"before": before, "target": target, "after": after, "applyAttempts": attempts, "held": held, "standstill": standstill,
-            "unpauseMonotonicNs": unpause_ns, "destroyMonotonicNs": destroy_ns, "destroyed": destroyed, "remaining": remaining,
+            "holdMonotonicNs": hold_ns, "unpauseMonotonicNs": unpause_ns, "unpauseReason": unpause_reason,
+            "destroyMonotonicNs": destroy_ns, "destroyed": destroyed, "remaining": remaining,
             "restored": matches and not remaining and standstill["ok"]}
 
 
