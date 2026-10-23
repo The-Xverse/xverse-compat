@@ -858,3 +858,16 @@ engineering stabilization candidate: not M1, not AEB evidence.
       cases.
     - **Audit replay over 31 recorded runs:** the verdicts are unchanged apart from the intended P6 change.
       `203658` still fails through the timeout.
+38. **Independent re-review 2 of S1c-2 part 1 at blueprints `44fca14` (written at 21:19:54 2026-10-23): PASS, LOW only.
+    Recorded before the repairs.**
+    - **Resolved.** Both finding-36 MEDIUM items and the LOW items are resolved; 15 passed. The audit replay over 36
+      runs matches finding 37. The P8 destroy margin is −0.17 to +0.38 ms against the 100 ms bound.
+    - **LOW-1.** The stop reason is wrong after an INVALID run followed by two failed restarts: it reads "more than 3
+      server failures" instead of DR-11's two failed starts.
+    - **LOW-2.** The end phase stops the last block's slot again and overwrites its `stopped-at.txt`.
+    - **LOW-3.** P2 in the report is unguarded when a passing guard-path run lacks `driver/driver-ticks.jsonl`.
+    - **LOW-4.** `platformSourceTree` hashes `platform-src/src`, but the harness also imports `platform-src/tests`
+      (`conftest.py`).
+    - **LOW-5.** Untested: an INVALID run followed by two failed restarts, the code-4 refusals, the `finally`
+      cleanup, and a restart in the end phase.
+    - **Repairs follow** in the next blueprints commit.
