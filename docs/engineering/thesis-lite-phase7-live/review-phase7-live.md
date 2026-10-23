@@ -207,3 +207,18 @@ The work is an engineering integration only: not AEB validation, not a scientifi
         synchronous state only when it had a tick owner, otherwise asynchronous, with the reason recorded.
       - The baseline normalizes an ownerless synchronous world to asynchronous as a declared setup step.
       - The baseline has a cleanup trap and a bounded stop: INT, then TERM, then KILL, then `wait`.
+18. **Final evidence set (2026-10-23 01:18–01:22).** Revisions: compat `f2b9088`; blueprints `cc5774f`, and
+    `6666953` for the freeze case. All trees were clean (`dirty=0`, empty-diff hash). Evidence root
+    `…/runs/xverse-lite-live-20261022/report-final` (`report.json`, `report.md`, and `run-index.json` with 55
+    runs and their dispositions).
+
+    | Run | Result |
+    | --- | --- |
+    | `baseline-…011802` | legacy loop; peak 23.2 km/h at actuated throttle 0.5 (÷1.2 damping) for 3.48 s; world asynchronous afterwards, no vehicles |
+    | `lite-…011815-nominal` | Maestro succeeded, all markers collected; peak 28.8 km/h at commanded throttle 0.6 for 3.45 s; standstill 0.55 s after deceleration onset; host tick latency p95 about 24 ms, no tick above 200 ms; 376 flow items delivered; Argus flow run holds its 2 summary events |
+    | `lite-…012125-freeze-vcu` | Maestro succeeded; freeze applied and cleared over 1.38 s of host time, overlapping the stimulus throttle window; commanded throttle delayed by 0.647 s; peak 24.0 km/h; automatic thaw recovered the loop |
+    | `lite-…011934-cancel-paused` | Maestro `ML-SCHEDULE-CANCELLED` after 6 s paused; the guard held the ego by ID before un-pausing, destroyed 3 owned actors and restored asynchronous mode, because the recorded synchronous state had no owner (DLG-11a) |
+    | `lite-…012000-no-carla` | Maestro `ML-RUN-CHILD-EXIT`; adapter failed after its 5 s client timeout; cleanup complete; no residue |
+
+    At the end CARLA was stopped by this session and `zenohd` was left running, which is the state at session
+    start apart from the author's own `zenohd`, which had died and was replaced.
