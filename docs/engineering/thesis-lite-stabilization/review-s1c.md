@@ -213,3 +213,19 @@ engineering stabilization candidate: not M1, not AEB evidence.
       applies to the baseline.
     - **LOW S1c-R4-4.** No test covers `commitTickRaisedAttempts`.
     - **LOW S1c-R4-5.** A reused run directory keeps a stale `baseline-exit.txt`.
+12. **LOW repairs for review 4 (finding 11).**
+    - **R4-1 (blueprints `f450d97`).** `PYTEST=not-run` until the harness returns, so an interrupted run logs
+      `maestro-harness exit=not-run script exit=130`.
+    - **R4-3 (blueprints `f450d97`).** Both observers start through `/usr/bin/setsid`, inside the existing
+      `exec` subshell. Because the subshell is not a group leader, `setsid` does not fork, so `$OBS`
+      stays the observer's PID for `kill -TERM` and `wait`.
+      - **Check (reduced copy):** after a process-group SIGINT, the observer is alive when the guard step
+        runs, the cleanup's TERM stops it (exit 0), and the script exits 130.
+    - **R4-5 (blueprints `f450d97`).** The baseline removes a stale `baseline-exit.txt` straight after
+      `mkdir`.
+    - **R4-4 (compat, this commit).** `test_s1c_r4_4_commit_tick_raised_attempts_are_recorded`: a flaky
+      first commit tick gives `commitTickRaisedAttempts == [1]`. Suite: 207 passed, 39 subtests.
+    - **R4-2 (carried, LOW, pre-existing).** A TERM sent only to the script PID during the pytest step is
+      handled when the harness returns. The run never resumes after it. A process-group signal, as from
+      Ctrl-C or `timeout` sent to the group, interrupts the harness at once. Forwarding signals to a
+      background harness is left for a later successor.

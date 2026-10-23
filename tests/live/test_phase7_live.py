@@ -498,3 +498,20 @@ def test_s1c_r2_3_absent_branch_of_the_standstill_wait():
     result = _hold_to_standstill(world, [gone], timeout_s=0.2)
     assert result["ok"] and result["vehicles"] == [dict(result["vehicles"][0], id=gone, absent=True, speedMps=None)]
 
+
+def test_s1c_r4_4_commit_tick_raised_attempts_are_recorded():
+    world = _World()
+    world.settings = SimpleNamespace(synchronous_mode=True, fixed_delta_seconds=0.05)
+    original = world.tick
+    calls = []
+
+    def flaky_tick(timeout=None):  # the first commit tick times out right after a server start
+        calls.append(timeout)
+        if len(calls) == 1:
+            raise RuntimeError("time-out")
+        return original(timeout)
+
+    world.tick = flaky_tick
+    record = restore(world)
+    assert record["commitTickRaisedAttempts"] == [1] and record["applyAttempts"] == 2 and record["restored"] is True
+
