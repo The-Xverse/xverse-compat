@@ -871,3 +871,14 @@ engineering stabilization candidate: not M1, not AEB evidence.
     - **LOW-5.** Untested: an INVALID run followed by two failed restarts, the code-4 refusals, the `finally`
       cleanup, and a restart in the end phase.
     - **Repairs follow** in the next blueprints commit.
+39. **The finding-38 LOW repairs (blueprints `6651971`; written at 21:21:15 2026-10-23).**
+    - LOW-1: `_restart` records the exact stop cause, either "server failed to start twice in a row (DR-11)" or
+      "more than 3 server failures", and every stop uses it.
+    - LOW-2: the end phase stops a server only if one is running (`_stop_running`).
+    - LOW-3: P2 tolerates missing driver ticks, recording the throttle time as null.
+    - LOW-4: the pins add `platformTestsTree`, a tree digest of `platform-src/tests`.
+    - LOW-5: three new tests: an INVALID run followed by two failed restarts names DR-11; a runner that differs from
+      the pinned copy is refused with code 4 before any run; a crash with a server up stops it.
+      `test_run_soak_logic.py`: 18 passed.
+    - **Status.** S1c-2 part 1 tooling is ready. Part 2 (adopting S1b, re-pinning the authority digest, scheduled
+      `stop` steps per DR-7, asserting `stop_mode`) waits for the S1b acceptance. The soak waits for S-D9.
