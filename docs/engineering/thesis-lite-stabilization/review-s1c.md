@@ -561,3 +561,35 @@ engineering stabilization candidate: not M1, not AEB evidence.
     - **Checksums.** `SHA256SUMS` now covers `maestro-tmp/` too: 1400 files.
     - **Open, for the author.** DR-6, the P3 and P4 Argus reading, is proposed in the thesis record. The
       platform race is in platform findings 18–19.
+24. **Independent review 8, of S1c-2a at blueprints `588f84a` (review returned before 18:09:26; this entry was written at 18:09:26
+    2026-10-23): PASS, no HIGH, 1 MEDIUM and 4 LOW. Recorded before any repair.**
+    - **Confirmed.** Each review-7 repair resolves its item, and the evidence supports finding 23.
+      - The freeze start falls 1.08–1.98 s into the throttle across 19 runs. Tick 70 falls ≥ 0.65 s before
+        the throttle ends.
+      - The projected thaw interval is ≤ 2.50 s, against the 3.48 s limit.
+      - `SHA256SUMS` verifies all 1400 files.
+    - **MEDIUM-1.** `FREEZE_AT` = `OBSERVE_TICK` = 60.
+      - In `175156`, `observe-legacy-vcu` ran right after the freeze applied. It returned the cached
+        pre-freeze observation (`check_unit_health` returns the cached value for a suspended unit), so the
+        record shows "probe succeeded" for a frozen unit.
+      - Run outcomes are still protected by the post-thaw health scan. The evidence is misleading.
+    - **LOW-1.** `overlapS > 0` accepts any overlap, not containment. `s1` is the last throttle sample, about
+      50 ms short of the segment end.
+    - **LOW-2.** DR-6's stated basis is inaccurate.
+      - `172145` had an `open` Maestro root with CORRUPT, MUTATED and WRITER-STATE reasons.
+      - The no-carla flow root is open with WRITER-STATE only.
+      - DR-6 does not say whether a `closed` writer satisfies P4. P4 says `failed`, while the harness accepts
+        either.
+    - **LOW-3.** Header times are later than the files' own times: finding 22, the replay record and DR-6.
+      From this finding on, the headers carry the shell time at which the entry was written.
+    - **LOW-4.** The bound comment understates its inputs. Gaps between VCU health successes reach 1.70 s,
+      not 1.58 s. Ticks 60–70 measured 0.72–1.00 s. The no-carla `180049` start (1.461 s, cycle 0.929 s) falls
+      just outside the stated ranges. The bound still holds: worst case 2.70 s ≤ 3.48 s.
+    - **Repair plan (blueprints).**
+      - MEDIUM-1: `FREEZE_AT = 61`, so the observe at tick 60 really probes the VCU just before the freeze.
+      - LOW-1: freeze-vcu asserts containment, apply ≥ the throttle start and clear ≤ the last throttle sample
+        + 0.05 s, and records both margins.
+      - LOW-4: correct the comment inputs.
+      - LOW-2 (thesis): correct DR-6's basis. State that P4 requires `failed`, and make the no-carla assertion
+        `failed` only.
+      - Then one verifying freeze-vcu run, and one no-carla run.
