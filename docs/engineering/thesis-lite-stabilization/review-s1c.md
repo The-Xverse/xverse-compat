@@ -631,3 +631,13 @@ engineering stabilization candidate: not M1, not AEB evidence.
       - Ticks 61–71 lasted 0.50 s in `181112`, outside the stated 0.72–1.00 s.
       - Repair (comment only, after the evidence): tick 0 came 1.5–2.9 s after start, and 10 ticks measured
         0.50–1.00 s.
+27. **Author acceptance (written at 18:42:10 2026-10-23).** The author wrote "I accept all" in reply to the three
+    decisions in the thesis record `specs/029-lite-stabilization/review/acceptance-package-s1c2a-20261023.md`:
+    - S1c-2a is accepted as presented. The code is blueprints `8aa57ca`; `c5950f6` corrects comments only. The
+      compat change is this log only.
+    - DR-6 (the P3 and P4 Argus reading) is approved as proposed.
+    - The platform cancel race is sequenced as S1a-2, before S1b.
+    - **Merge.** `--no-ff` into each main, from bases `25e4e1f` and `126a80b`, which equal the mains. The tree
+      identity is checked before the push.
+    - **Next.** VS-09 is repeated on the merged revisions. It can still fail through the platform race (platform
+      findings 18–19).
