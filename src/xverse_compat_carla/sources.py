@@ -143,7 +143,7 @@ def _check_sensor(name: str, sensor, d) -> None:
 class LiveSource:
     """Declared-unverified live source (design §9.4); never run against a server in this phase."""
 
-    def __init__(self, client, ego_id: int, camera_id: int, radar_id: int, d, carla_module=None, *, scenario=None) -> None:
+    def __init__(self, client, ego_id: int, camera_id: int, radar_id: int, d, carla_module=None, *, scenario=None, registry=None) -> None:
         """Bind to existing actors of ``client``'s world, or, with ``scenario`` (Phase 7 successor), spawn the
         declared ego vehicle and sensors itself, own them, and destroy them at ``close()``."""
 
@@ -165,6 +165,12 @@ class LiveSource:
                 from .scenario import spawn  # noqa: PLC0415
 
                 self._spawned = spawn(self._world, carla_module, d, scenario)  # ego, camera, radar
+                if registry is not None:  # owned-actor registry for the restore guard (live finding 06)
+                    import json  # noqa: PLC0415
+
+                    with open(registry, "w", encoding="utf-8") as stream:
+                        json.dump({"actors": [{"id": a.id, "typeId": a.type_id, "roleName": a.attributes.get("role_name")}
+                                              for a in self._spawned]}, stream)
                 self._world.tick()  # the spawned actors exist from the next frame
                 ego_id, camera_id, radar_id = (actor.id for actor in self._spawned)
                 self._ego_id = ego_id

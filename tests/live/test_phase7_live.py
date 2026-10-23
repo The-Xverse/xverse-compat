@@ -309,3 +309,35 @@ def test_review1_r16_driver_without_router_still_writes_summary_and_marker(tmp_p
                         "--run-dir", str(tmp_path / "run"), "--marker", str(marker), "--accept-timeout-s", "0.2"])
     summary = json.loads((tmp_path / "run" / "driver-summary.json").read_text())
     assert code == 3 and "error" in summary and json.loads(marker.read_text())["code"] == 3
+
+
+def test_live_finding_06_guard_holds_and_destroys_registered_actors_by_id_before_unpausing():
+    world = _World()
+    bp = _Blueprint("vehicle.audi.etron")
+    bp.set_attribute("role_name", "xverse-lite-ego")
+    ego = world.spawn_actor(bp, None)
+    world.settings = SimpleNamespace(synchronous_mode=True, fixed_delta_seconds=0.05)
+    calls = []
+
+    class Response:
+        def has_error(self):
+            return False
+
+    class Client:  # server-side batch by id: independent of the (stale) client actor list
+        def apply_batch_sync(self, commands, do_tick):
+            calls.append((world.settings.synchronous_mode, [c[0] for c in commands]))
+            for kind, actor_id, *rest in commands:
+                actor = world.get_actor(actor_id)
+                if kind == "control":
+                    actor.apply_control(rest[0])
+                else:
+                    actor.destroy()
+            return [Response() for _ in commands]
+
+    carla = SimpleNamespace(VehicleControl=CARLA.VehicleControl, command=SimpleNamespace(
+        ApplyVehicleControl=lambda i, c: ("control", i, c), DestroyActor=lambda i: ("destroy", i)))
+    registry = {"actors": [{"id": ego.id, "typeId": "vehicle.audi.etron", "roleName": "xverse-lite-ego"}]}
+    record = restore(world, carla, None, Client(), registry)
+    assert calls[0] == (True, ["control"])  # held while the world was still paused
+    assert record["held"] == [ego.id] and ego.controls[-1].hand_brake is True and record["destroyed"][0]["via"] == "registry"
+    assert record["restored"] is True and world.actors == []

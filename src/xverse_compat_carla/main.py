@@ -60,6 +60,7 @@ def _main(argv) -> int:
     parser.add_argument("--connect", default=None, help="unix:<path> (protocol 2 only)")
     parser.add_argument("--connect-timeout-s", type=float, default=10.0)
     parser.add_argument("--scenario", default=None, help="owned live scenario JSON (protocol 2 only)")
+    parser.add_argument("--owned-registry", default=None, help="write the ids of the owned scenario actors here")
     parser.add_argument("--carla-site", default=None, help="site-packages of the pinned carla environment")
     parser.add_argument("--linger", action="store_true", help="after the protocol ends, stay alive until stopped (Maestro unit)")
     parser.add_argument("--marker", default=None, help="write this collection marker when the protocol ends")
@@ -92,7 +93,7 @@ def _main(argv) -> int:
                 client = carla.Client(fields[0], int(fields[1]))
                 client.set_timeout(5.0)  # a missing simulator fails within 5 s, before Maestro's observe step
                 scenario = json.loads(open(args.scenario, encoding="utf-8").read())
-                source = LiveSource(client, -1, -1, -1, descriptors, scenario=scenario)
+                source = LiveSource(client, -1, -1, -1, descriptors, scenario=scenario, registry=args.owned_registry)
             else:
                 host, port, ego, camera, radar = fields
                 client = carla.Client(host, int(port))

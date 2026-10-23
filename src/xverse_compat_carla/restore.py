@@ -33,7 +33,7 @@ def _owned(world) -> list:
     return [a for a in world.get_actors() if getattr(a, "attributes", {}).get("role_name", "").startswith(ROLE_PREFIX)]
 
 
-def restore(world, carla=None, settings_to=None) -> dict:
+def restore(world, carla=None, settings_to=None, client=None, registry=None) -> dict:
     """Restore world (duck-typed) and return the record.
 
     The settings are restored and committed first: in a synchronous world new settings take effect on the
@@ -43,9 +43,15 @@ def restore(world, carla=None, settings_to=None) -> dict:
 
     before = _settings(world)
     held = []
+    registered = list((registry or {}).get("actors", []))
+    if carla is not None and client is not None and registered:  # by id, server-side: no stale client list (finding 06)
+        hold = carla.VehicleControl(throttle=0.0, brake=1.0, steer=0.0, hand_brake=True)
+        vehicles = [a["id"] for a in registered if str(a.get("typeId", "")).startswith("vehicle.")]
+        responses = client.apply_batch_sync([carla.command.ApplyVehicleControl(i, hold) for i in vehicles], False)
+        held += [i for i, r in zip(vehicles, responses) if not r.has_error()]
     if carla is not None:
         for actor in _owned(world):  # hold before un-pausing: a killed adapter leaves its last throttle applied
-            if str(getattr(actor, "type_id", "")).startswith("vehicle."):
+            if str(getattr(actor, "type_id", "")).startswith("vehicle.") and actor.id not in held:
                 actor.apply_control(carla.VehicleControl(throttle=0.0, brake=1.0, steer=0.0, hand_brake=True))
                 held.append(actor.id)
     target = settings_to or {"synchronousMode": False, "fixedDeltaSeconds": None}
@@ -60,7 +66,12 @@ def restore(world, carla=None, settings_to=None) -> dict:
             except RuntimeError:
                 pass
     destroyed = []
-    for actor in _owned(world):
+    if carla is not None and client is not None and registered:
+        for entry, response in zip(registered, client.apply_batch_sync([carla.command.DestroyActor(a["id"]) for a in registered], False)):
+            if not response.has_error():
+                destroyed.append({"id": entry["id"], "typeId": entry.get("typeId"), "roleName": entry.get("roleName"), "via": "registry"})
+    gone = {d["id"] for d in destroyed}
+    for actor in [x for x in _owned(world) if x.id not in gone]:
         destroyed.append({"id": actor.id, "typeId": actor.type_id, "roleName": actor.attributes.get("role_name")})
         actor.destroy()
     try:
@@ -80,6 +91,7 @@ def main(argv=None) -> int:
     parser.add_argument("--port", type=int, default=2000)
     parser.add_argument("--carla-site", default=None)
     parser.add_argument("--settings-from", default=None, help="JSON with synchronousMode/fixedDeltaSeconds recorded before the run")
+    parser.add_argument("--owned-registry", default=None, help="owned-actor registry written by the adapter")
     args = parser.parse_args(argv)
     target = None
     if args.settings_from:
@@ -93,7 +105,10 @@ def main(argv=None) -> int:
 
         client = carla.Client(args.host, args.port)
         client.set_timeout(10.0)
-        record = restore(client.get_world(), carla, target)
+        registry = None
+        if args.owned_registry and os.path.exists(args.owned_registry):
+            registry = json.loads(open(args.owned_registry, encoding="utf-8").read())
+        record = restore(client.get_world(), carla, target, client, registry)
         record.update(wallNs=time.time_ns(), monotonicNs=time.monotonic_ns())
     except Exception as error:  # noqa: BLE001
         print(json.dumps({"error": f"{type(error).__name__}: {error}"}), flush=True)
