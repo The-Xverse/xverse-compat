@@ -130,6 +130,13 @@ class _Actor:
     def get_control(self):
         return SimpleNamespace(brake=self.controls[-1].brake if self.controls else 0.0)
 
+    def get_velocity(self):  # S1 FR-022: as CARLA, the velocity of the last received snapshot (changes per tick)
+        return SimpleNamespace(x=getattr(self, "speed", 0.0), y=0.0, z=0.0)
+
+    def advance(self):  # one simulation step: a brake hold decelerates the vehicle
+        if self.controls and getattr(self.controls[-1], "brake", 0.0) >= 1.0:
+            self.speed = max(0.0, getattr(self, "speed", 0.0) - getattr(self, "decel_per_tick", 10.0))
+
 
 class _World:
     def __init__(self, fail_at=None):
@@ -173,6 +180,9 @@ class _World:
         self.ticks += 1
         if self.pending is not None:
             self.settings, self.pending = self.pending, None
+        for actor in self.actors:
+            if hasattr(actor, "advance"):
+                actor.advance()
         return self.ticks
 
     def wait_for_tick(self, timeout=None):
@@ -358,3 +368,150 @@ def test_review_log_21_guard_retries_a_commit_tick_that_did_not_apply():
     world.tick = flaky_tick
     record = restore(world)
     assert record["applyAttempts"] == 2 and record["after"]["synchronousMode"] is False and record["restored"] is True
+
+
+def _registry_world(speed, decel):
+    world = _World()
+    bp = _Blueprint("vehicle.audi.etron")
+    bp.set_attribute("role_name", "xverse-lite-ego")
+    ego = world.spawn_actor(bp, None)
+    ego.speed, ego.decel_per_tick = speed, decel
+    world.settings = SimpleNamespace(synchronous_mode=True, fixed_delta_seconds=0.05)
+
+    class Response:
+        def __init__(self, error=False):
+            self.error = error
+
+        def has_error(self):
+            return self.error
+
+    class Client:  # as CARLA: a command on an unknown actor id yields an error response, not an exception
+        def apply_batch_sync(self, commands, do_tick):
+            responses = []
+            for kind, actor_id, *rest in commands:
+                actor = world.get_actor(actor_id)
+                if actor is None:
+                    responses.append(Response(True))
+                    continue
+                if kind == "control":
+                    actor.apply_control(rest[0])
+                else:
+                    actor.destroy()
+                responses.append(Response())
+            return responses
+
+    carla = SimpleNamespace(VehicleControl=CARLA.VehicleControl, command=SimpleNamespace(
+        ApplyVehicleControl=lambda i, c: ("control", i, c), DestroyActor=lambda i: ("destroy", i)))
+    registry = {"actors": [{"id": ego.id, "typeId": "vehicle.audi.etron", "roleName": "xverse-lite-ego"}]}
+    return world, ego, carla, Client(), registry
+
+
+def test_s1_fr022_guard_holds_a_moving_ego_until_standstill_before_destroying_it():
+    world, ego, carla, client, registry = _registry_world(speed=4.4, decel=1.0)
+    destroyed_at_speed = []
+    original = ego.destroy
+    ego.destroy = lambda: (destroyed_at_speed.append(ego.speed), original())[-1]
+    record = restore(world, carla, None, client, registry)
+    assert record["standstill"]["applicable"] and record["standstill"]["ok"] and record["standstill"]["vehicles"][0]["id"] == ego.id
+    assert destroyed_at_speed == [0.0]  # never destroyed while moving
+    assert record["unpauseMonotonicNs"] <= record["standstill"]["vehicles"][0]["monotonicNs"] <= record["destroyMonotonicNs"]
+    assert record["restored"] is True and world.actors == []
+
+
+def test_s1_fr022_standstill_timeout_is_a_recorded_failure(monkeypatch):
+    from xverse_compat_carla import restore as restore_module
+
+    world, ego, carla, client, registry = _registry_world(speed=4.4, decel=0.0)  # brakes never take effect
+    monkeypatch.setattr(restore_module, "_hold_to_standstill",
+                        lambda w, held, f=restore_module._hold_to_standstill: f(w, held, 0.2))
+    record = restore(world, carla, None, client, registry)
+    assert record["standstill"]["ok"] is False and record["standstill"]["timedOut"][0]["id"] == ego.id
+    assert record["restored"] is False and record["remaining"] == []  # still destroyed, but the guard fails
+
+
+def test_s1_fr022_synchronous_target_does_not_wait_for_standstill():
+    world, ego, carla, client, registry = _registry_world(speed=4.4, decel=0.0)
+    record = restore(world, carla, {"synchronousMode": True, "fixedDeltaSeconds": 0.05}, client, registry)
+    assert record["standstill"]["applicable"] is False and "synchronous" in record["standstill"]["reason"]
+    assert record["restored"] is True
+
+
+def test_s1_t3_retry_continues_until_mode_and_step_both_match():
+    world = _World()
+    world.settings = SimpleNamespace(synchronous_mode=False, fixed_delta_seconds=None)
+    applied = []
+    original = world.apply_settings
+
+    def partial_apply(settings):  # the first commit applies the mode but not the step (review 3 M-2)
+        applied.append(settings.fixed_delta_seconds)
+        if len(applied) == 1:
+            settings = SimpleNamespace(**vars(settings))
+            settings.fixed_delta_seconds = None
+        original(settings)
+
+    world.apply_settings = partial_apply
+    record = restore(world, None, {"synchronousMode": True, "fixedDeltaSeconds": 0.05})
+    assert record["applyAttempts"] == 2 and record["restored"] is True
+
+
+def test_s1_t3_retry_stops_after_three_attempts_and_fails():
+    world = _World()
+    world.settings = SimpleNamespace(synchronous_mode=False, fixed_delta_seconds=None)
+    world.apply_settings = lambda settings: None  # the server never applies the settings
+    record = restore(world, None, {"synchronousMode": True, "fixedDeltaSeconds": 0.05})
+    assert record["applyAttempts"] == 3 and record["restored"] is False
+
+
+def test_s1c_r1_1_a_failing_standstill_wait_still_destroys_owned_actors(monkeypatch):
+    world, ego, carla, client, registry = _registry_world(speed=4.4, decel=1.0)
+    monkeypatch.setattr(ego, "get_velocity", lambda: (_ for _ in ()).throw(RuntimeError("time-out")))
+    record = restore(world, carla, None, client, registry)
+    assert record["standstill"]["ok"] is False and "time-out" in record["standstill"]["error"]
+    assert record["destroyed"] and world.actors == [] and record["restored"] is False
+
+
+def test_s1c_r1_7_absent_held_ego_and_unpause_anchor_are_recorded():
+    world, ego, carla, client, registry = _registry_world(speed=0.0, decel=1.0)
+    record = restore(world, carla, None, client, registry)
+    assert record["unpauseMonotonicNs"] is not None and record["holdMonotonicNs"] <= record["unpauseMonotonicNs"]
+    world2, ego2, carla2, client2, registry2 = _registry_world(speed=0.0, decel=1.0)
+    world2.settings = SimpleNamespace(synchronous_mode=False, fixed_delta_seconds=None)  # already the target mode
+    ego2.destroy()  # gone before the guard (adapter close)
+    record2 = restore(world2, carla2, None, client2, registry2)
+    assert record2["unpauseMonotonicNs"] is None and "not paused" in record2["unpauseReason"]
+
+
+def test_s1c_r2_3_an_ego_gone_before_the_guard_is_recorded():
+    world, ego, carla, client, registry = _registry_world(speed=0.0, decel=1.0)
+    ego.destroy()  # the adapter's own close destroyed it first
+    record = restore(world, carla, None, client, registry)
+    assert record["holdFailed"] == [ego.id] and record["destroyFailed"] == [ego.id]
+    assert record["held"] == [] and record["restored"] is True and record["remaining"] == []
+
+
+def test_s1c_r2_3_absent_branch_of_the_standstill_wait():
+    from xverse_compat_carla.restore import _hold_to_standstill
+
+    world, ego, carla, client, registry = _registry_world(speed=3.0, decel=1.0)
+    gone = ego.id
+    ego.destroy()
+    result = _hold_to_standstill(world, [gone], timeout_s=0.2)
+    assert result["ok"] and result["vehicles"] == [dict(result["vehicles"][0], id=gone, absent=True, speedMps=None)]
+
+
+def test_s1c_r4_4_commit_tick_raised_attempts_are_recorded():
+    world = _World()
+    world.settings = SimpleNamespace(synchronous_mode=True, fixed_delta_seconds=0.05)
+    original = world.tick
+    calls = []
+
+    def flaky_tick(timeout=None):  # the first commit tick times out right after a server start
+        calls.append(timeout)
+        if len(calls) == 1:
+            raise RuntimeError("time-out")
+        return original(timeout)
+
+    world.tick = flaky_tick
+    record = restore(world)
+    assert record["commitTickRaisedAttempts"] == [1] and record["applyAttempts"] == 2 and record["restored"] is True
+
