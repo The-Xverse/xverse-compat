@@ -19,6 +19,7 @@ import signal
 import sys
 import time
 
+from xverse_compat.live.readiness import announce_ready
 from xverse_compat.live.zenoh_io import Latest, open_session, redirect_stderr
 
 PROFILE = (  # (until simulation seconds since the first clock sample, accelerator pedal, brake pedal)
@@ -59,6 +60,12 @@ def main(argv=None) -> int:
     session = open_session(args.router)
     pubs = {k: session.declare_publisher(KEYS[k]) for k in ("acc", "brake", "steer")}
     clock, speed = Latest(session, KEYS["clock"], -1.0), Latest(session, KEYS["speed"], -1.0)
+    try:  # S1b nonce marker (a no-op without a challenge): the zenoh session, publishers and subscribers are open
+        announce_ready()
+    except OSError as error:
+        print(f"stimulus: readiness: {type(error).__name__}: {error}", file=sys.stderr)
+        session.close()
+        return 3
     outcome = "profile-complete"
     with open(args.out, "w", encoding="utf-8") as out:
         profile = PROFILES[args.profile]

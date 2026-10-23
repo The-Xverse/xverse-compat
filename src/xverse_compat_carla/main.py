@@ -6,7 +6,9 @@ Phase 7 successor (carla-items/2): ``--protocol 2 --connect unix:<path>`` serves
 socket (Maestro units have ``/dev/null`` standard streams); ``--source live:<host>:<port>:scenario
 --scenario <file>`` spawns and owns the declared ego vehicle and sensors; ``--carla-site <dir>`` adds the
 pinned environment's site-packages when the unit is launched through the plain interpreter
-(``/usr/bin/python3.10``; a symlinked venv interpreter cannot be sealed by Maestro)."""
+(``/usr/bin/python3.10``; a symlinked venv interpreter cannot be sealed by Maestro). A Maestro unit that declares
+the ``nonce-marker`` readiness probe runs in its own working directory with ``PYTHONPATH=<checkout>/src`` and answers
+the native challenge there once the source and the link are set up (``readiness.py``; S1c finding 40)."""
 
 from __future__ import annotations
 
@@ -20,6 +22,7 @@ import time
 
 from .descriptors import load_descriptors
 from .protocol import StrictLines, run
+from .readiness import announce_ready
 from .sources import FakeSource, LiveSource
 
 
@@ -114,6 +117,12 @@ def _main(argv) -> int:
     else:
         # strict decoding: under ``env -i`` the interpreter runs in UTF-8 mode with surrogateescape (review 2 L-a)
         stdin = StrictLines(sys.stdin.buffer)
+    try:  # S1b nonce marker (a no-op without a challenge): CARLA, the owned scenario and the link are set up
+        announce_ready()
+    except OSError as error:
+        _close(source, quiet=True)
+        print(f"XVERSE-COMPAT-CARLA-SOURCE: readiness: {type(error).__name__}: {error}", file=sys.stderr)
+        return 3
     try:
         code = run(source, descriptors, stdin, stdout, sys.stderr, carla_version=carla_version, ground_truth=args.ground_truth,
                    protocol=args.protocol)
