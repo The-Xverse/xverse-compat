@@ -222,3 +222,34 @@ The work is an engineering integration only: not AEB validation, not a scientifi
 
     At the end CARLA was stopped by this session and `zenohd` was left running, which is the state at session
     start apart from the author's own `zenohd`, which had died and was replaced.
+19. **Independent review 2 (2026-10-23 about 01:30, on compat `8517de6` and blueprints `5ce3bc8`): NOT READY.**
+    It reports two MEDIUM findings, both on documentation and traceability. It confirmed that R-1, R-2, R-4,
+    R-7, R-8, R-11 to R-14, R-16 and R-17 are repaired; R-5 and R-10 are partly repaired; R-3 is repaired in
+    the evidence, with a partial declaration; R-6 is accepted as a disclosed platform finding; and R-9 is
+    repaired by DLG-13. It also confirmed that the clocks are comparable: Maestro's host time and the units'
+    monotonic time agree within 0.8 ms.
+
+    Findings, recorded before repair:
+    - **N-1 MED.** The clean freeze run `lite-…011855` (Maestro succeeded, freeze in the idle second) was
+      superseded without a log entry. The 8→20 tick change and the restart of server instance 4 are not
+      recorded, and the run index gives 011855 a generic disposition.
+    - **N-2 MED.**
+      - Item 18 wrongly attributes the cancel-paused restore to DLG-11a; that run's pre-run state was
+        asynchronous and advancing.
+      - The blueprint README is stale: no DLG-11, 11a or 12, no ÷1.2 damping, no wall time base, no registry,
+        no contract notes.
+      - `report.md` lacks the actuated and commanded throttle.
+    - **N-3 LOW.** The cancel pause happened with the ego at rest (throttle 0), so the hold was not shown
+      against a throttled ego.
+    - **N-4 LOW.** Markers are also written on failure, and the completion check reads file names only.
+    - **N-5 LOW.** After a BLOCKED preflight, the trapped guard still runs.
+    - **N-6 LOW.** The baseline trap lacks EXIT, a leftover legacy `ego_vehicle` is not destroyed, and the exit
+      status ignores failures.
+    - **N-7 LOW.** CARLA clients without a `users:` field pass the check, and the advancing-synchronous branch
+      of DLG-11a is probably unreachable.
+    - **N-8 LOW.**
+      - The "monotonic_ns" label in the log is a wall-clock value.
+      - `restored` ignores `fixedDeltaSeconds`.
+      - The registry destroy does not check the role prefix.
+      - The report revision is not recorded.
+      - The tick-rate range in the README is wrong (0.069 s per tick was seen).
