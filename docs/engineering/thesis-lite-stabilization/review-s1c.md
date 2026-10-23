@@ -260,3 +260,30 @@ engineering stabilization candidate: not M1, not AEB evidence.
     - **Unchanged.** Execution remains non-M1 (DLG-7). Command echo is not evidence of braking, and
       `brakeStatus` and `wheelSpeedEscStatus` stay blocked. Lane activation, M1 admission, factory runs and
       scientific claims stay closed.
+15. **VS-09 attempt 1 on the merged mains: the cancel was never issued (2026-10-23 16:25; recorded before any
+    repair).**
+    - **Run.** `runs/lite-stabilization-s1/vs09-20261023/lite-20261023T162536-cancel-paused` on loop10, from
+      clean worktrees of platform main `b28a2aacf`, compat main `25e4e1f` and blueprints main `126a80b`
+      (`VS09-RESULT.md`, `SHA256SUMS`).
+    - **Observed.** The harness exits 0, because the test asserts only the nominal case. Maestro reports
+      `ML-SCHEDULE-COLLECTION-INCOMPLETE`, not `ML-SCHEDULE-CANCELLED`, and `maestro-run.json` has no
+      `cancelEpoch`. The cleanup is complete and the guard is clean (held to standstill, 3 actors destroyed, no
+      residue).
+    - **Cause.** The canceller fires at the driver's pause plus 6.0 s, and its 0.2 s poll can add more. The
+      80-tick schedule's wall duration is not fixed: it ended 6.02 s after the pause, before the stop. The
+      Phase 7 verification run won the same race by about 60 ms. S1a made each tick cheaper, so the race is now
+      lost.
+    - **Defects.**
+      - (a) The cancel-paused case depends on the schedule outliving the cancel point. Nothing guarantees it.
+      - (b) The harness does not fail when the cancel is not issued, or when the outcome is not a cancel. The
+        miss was silent.
+    - **Related risk (observation, not a defect here).** The nominal case needs the 9.5 s episode plus about
+      2 s of start-up inside the 80 ticks. At the measured 0.165 s per tick its margin is about 1.7 s. FR-018
+      (S1c-2) re-derives the horizons; this item does not change the nominal or freeze-vcu horizon.
+    - **Repair plan (S1c-1a; blueprints only).**
+      - Give the cancel-paused case its own horizon of 160 ticks. At the fastest measured cycle that is about
+        26 s, more than 10 s past the cancel point. Under load the cycle is slower, which only adds margin.
+        The cancel still ends the schedule at about 13 s, so the event count does not grow.
+      - Record `cancelNotIssued` with the reason when the schedule ends first.
+      - Make the harness fail for cancel-paused unless the cancel was issued and returned, and the outcome is
+        `ML-SCHEDULE-CANCELLED`.
