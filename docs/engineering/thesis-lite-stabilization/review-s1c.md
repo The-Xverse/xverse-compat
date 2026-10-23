@@ -200,3 +200,16 @@ engineering stabilization candidate: not M1, not AEB evidence.
     - **R3-5 (blueprints).** The baseline installs its traps before `mkdir` and the log, and `on_exit`
       writes the exit file only when the run directory exists.
     - Compat suite: 206 passed, 39 subtests.
+11. **Independent implementation review 4 (2026-10-23 about 12:50): PASS, no HIGH or MEDIUM. Recorded before
+    the LOW repairs.**
+    - **R3-1 to R3-5 verified.** The reviewer ran reduced copies under four signal cases (INT during the
+      preflight and during the pytest step, TERM to the group, TERM to the PID only). The script never
+      resumes, the guard completes, and the exit is 130 or 143.
+    - **LOW S1c-R4-1.** After a signal, the log still reads `maestro-harness exit=1`, the placeholder value.
+    - **LOW S1c-R4-2 (pre-existing).** A TERM sent only to the script PID during the pytest step is
+      deferred until pytest returns.
+    - **LOW S1c-R4-3 (pre-existing).** A process-group signal also stops the observer before the guard. P8
+      then fails (`stoppedBy` SIGINT), which is safe but means the guard path goes unmeasured. The same
+      applies to the baseline.
+    - **LOW S1c-R4-4.** No test covers `commitTickRaisedAttempts`.
+    - **LOW S1c-R4-5.** A reused run directory keeps a stale `baseline-exit.txt`.
