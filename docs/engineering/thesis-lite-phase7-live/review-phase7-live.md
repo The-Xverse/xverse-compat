@@ -312,3 +312,19 @@ The work is an engineering integration only: not AEB validation, not a scientifi
       - actor 24 was destroyed by ID, and no vehicles remained;
       - the baseline refuses to start when an `ego_vehicle` already exists (blueprints, next commit).
     - **Re-run:** the baseline.
+23. **Final evidence set, replacing item 18 (2026-10-23 01:36–01:39, CARLA server instance 5).**
+    - **Revisions** (clean trees, empty-diff hash): compat `f08b4e3`; blueprints `381780e` for the baseline
+      and `1c6cfa5` for the Lite cases. The `1c6cfa5` change only adds the Lite preflight's empty-world check.
+    - **Where:** `…/runs/xverse-lite-live-20261022/report-final` (`report.json`, `report.md`, and
+      `run-index.json` with 65 runs and specific dispositions).
+    - **World before each case:** no vehicles. The cases ran consecutively on instance 5.
+
+    | Run | Result |
+    | --- | --- |
+    | `baseline-…013652` | legacy loop; actuated throttle 0.5 (÷1.2) for 3.495 s; peak 23.75 km/h; standstill 0.43 s after onset; minimum −38.5 m/s² (simulator physics at a 4–14 ms asynchronous step); world afterwards asynchronous with no vehicles |
+    | `lite-…013723-nominal` | Maestro succeeded; markers collected, each recording success; commanded and actuated throttle 0.6 for 3.45–3.5 s; peak 28.8 km/h; standstill 0.55 s after onset |
+    | `lite-…013803-freeze-vcu` | Maestro succeeded; the freeze overlapped the stimulus throttle window; commanded throttle shortened to 2.2 s; peak 18.75 km/h; automatic thaw recovered the loop |
+    | `lite-…013844-cancel-paused` | paused at 4 s while throttled (13.9 km/h); Maestro `ML-SCHEDULE-CANCELLED`; the guard held the ego by ID before un-pausing, and the observer saw it decelerate (−7.0 m/s²); 3 owned actors destroyed; settings restored with 1 apply attempt |
+    | `lite-…013916-no-carla` | Maestro `ML-RUN-CHILD-EXIT`; adapter marker `{code: 3}`; cleanup complete; no residue |
+
+    End state: CARLA stopped (by this session), GPU free, `zenohd` running, no unit processes, no sockets.
