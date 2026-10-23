@@ -480,3 +480,21 @@ def test_s1c_r1_7_absent_held_ego_and_unpause_anchor_are_recorded():
     record2 = restore(world2, carla2, None, client2, registry2)
     assert record2["unpauseMonotonicNs"] is None and "not paused" in record2["unpauseReason"]
 
+
+def test_s1c_r2_3_an_ego_gone_before_the_guard_is_recorded():
+    world, ego, carla, client, registry = _registry_world(speed=0.0, decel=1.0)
+    ego.destroy()  # the adapter's own close destroyed it first
+    record = restore(world, carla, None, client, registry)
+    assert record["holdFailed"] == [ego.id] and record["destroyFailed"] == [ego.id]
+    assert record["held"] == [] and record["restored"] is True and record["remaining"] == []
+
+
+def test_s1c_r2_3_absent_branch_of_the_standstill_wait():
+    from xverse_compat_carla.restore import _hold_to_standstill
+
+    world, ego, carla, client, registry = _registry_world(speed=3.0, decel=1.0)
+    gone = ego.id
+    ego.destroy()
+    result = _hold_to_standstill(world, [gone], timeout_s=0.2)
+    assert result["ok"] and result["vehicles"] == [dict(result["vehicles"][0], id=gone, absent=True, speedMps=None)]
+

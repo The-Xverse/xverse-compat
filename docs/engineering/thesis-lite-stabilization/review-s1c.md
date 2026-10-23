@@ -145,3 +145,26 @@ engineering stabilization candidate: not M1, not AEB evidence.
    - **Verified by the reviewer:**
      - R1-1, R1-2 (`_fact` on the real platform classes), R1-4, R1-5, R1-6, R1-8 and R1-9.
      - R1-3 for TERM, `finish`, `set -u` and the blocked preflight.
+8. **Repairs for review 2 (finding 7).**
+   - **R2-1 (MEDIUM, blueprints `a4aa67d`).** Both commands start the log as
+     `exec > >(trap '' INT TERM; exec tee …)`, so the `tee` survives a Ctrl-C of the process group.
+     `run-live.sh` `cleanup()` and the baseline `on_exit()` now begin with
+     `trap - EXIT; trap '' INT TERM PIPE`. The baseline writes `baseline-exit.txt` before any output.
+     - **Check (reduced copy, the same pattern):** a background child that ignores INT was started, and
+       SIGINT was sent to the whole process group. Result: exit file `130`, the child killed by the
+       cleanup, the complete log written.
+     - This also covers the pre-existing `run-live.sh` case, where the guard could be skipped.
+   - **R2-2 (LOW, blueprints `a4aa67d`).** `executionSucceeded`, `cleanupComplete`, `diagnostics`,
+     `dispatchDiagnostic`, `steps` and `workArtifacts` also go through `_fact`. Each terminal report
+     is guarded on its own. `_fact` has no blueprint unit test, because the blueprint suite is the live
+     test. Review 2 verified it against the real platform classes.
+   - **R2-3 (LOW, compat).** The guard records `holdFailed` and `destroyFailed` IDs, typically egos
+     that the adapter's close had already destroyed. `timedOut` entries are always dicts. Tests:
+     `test_s1c_r2_3_an_ego_gone_before_the_guard_is_recorded` and
+     `test_s1c_r2_3_absent_branch_of_the_standstill_wait`.
+   - **R2-4 (LOW, compat).** The record carries `commitTickRaised`, and the docstring lists every
+     field.
+   - **R2-5 (LOW, blueprints).** The README states the interrupt-cleanup sequence (INT, then KILL after
+     3 s), the asynchronous-only standstill wait, and that a missing `XVERSE_COMPAT_SRC` exits 4
+     before any run directory exists.
+   - Compat suite: 206 passed, 39 subtests.

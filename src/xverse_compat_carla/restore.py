@@ -4,8 +4,9 @@ Maestro stops units with SIGKILL, so an adapter that was killed cannot restore t
 destroy the actors it spawned. The run command executes this guard after every run. It changes only
 actors whose ``role_name`` begins with ``xverse-lite-`` (listed, or read from the adapter's owned-actor
 registry) and the world's synchronous-mode settings. It prints one JSON line:
-``{before, target, after, applyAttempts, held, standstill, unpauseMonotonicNs, destroyMonotonicNs, destroyed,
-remaining, restored, wallNs, monotonicNs}``.
+``{before, target, after, applyAttempts, held, holdFailed, standstill, holdMonotonicNs, unpauseMonotonicNs,
+unpauseReason, commitTickRaised, destroyMonotonicNs, destroyed, destroyFailed, remaining, restored, wallNs,
+monotonicNs}``.
 
 Order (review 1 R-7, DLG-11, findings 06 and 21): hold every owned ego (throttle 0, brake 1, hand brake) by id
 while the world is still paused; restore the pre-run settings recorded by the run command
@@ -90,13 +91,14 @@ def restore(world, carla=None, settings_to=None, client=None, registry=None) -> 
     """
 
     before = _settings(world)
-    held = []
+    held, hold_failed, destroy_failed, tick_raised = [], [], [], False
     registered = [a for a in (registry or {}).get("actors", []) if str(a.get("roleName", "")).startswith(ROLE_PREFIX)]  # N-8
     if carla is not None and client is not None and registered:  # by id, server-side: no stale client list (finding 06)
         hold = carla.VehicleControl(throttle=0.0, brake=1.0, steer=0.0, hand_brake=True)
         vehicles = [a["id"] for a in registered if str(a.get("typeId", "")).startswith("vehicle.")]
         responses = client.apply_batch_sync([carla.command.ApplyVehicleControl(i, hold) for i in vehicles], False)
         held += [i for i, r in zip(vehicles, responses) if not r.has_error()]
+        hold_failed = [i for i, r in zip(vehicles, responses) if r.has_error()]  # typically already destroyed
     if carla is not None:
         for actor in _owned(world):  # hold before un-pausing: a killed adapter leaves its last throttle applied
             if str(getattr(actor, "type_id", "")).startswith("vehicle.") and actor.id not in held:
@@ -119,7 +121,7 @@ def restore(world, carla=None, settings_to=None, client=None, registry=None) -> 
                 try:
                     world.tick(5.0)  # a synchronous world applies new settings on the next tick (live finding 02)
                 except RuntimeError:
-                    pass
+                    tick_raised = True  # recorded: the un-pause time below is then an upper bound of the attempt
             if unpause_ns is None:
                 unpause_ns, unpause_reason = time.monotonic_ns(), None  # after the first apply-and-commit (S1 FR-022)
             now = _settings(world)
@@ -130,8 +132,8 @@ def restore(world, carla=None, settings_to=None, client=None, registry=None) -> 
         try:
             standstill = dict(_hold_to_standstill(world, held), applicable=True)
         except Exception as error:  # noqa: BLE001 - never skip the destroy below (S1c review 1 R1-1)
-            standstill = {"ok": False, "applicable": True, "vehicles": [], "timedOut": list(held),
-                          "error": f"{type(error).__name__}: {error}"}
+            standstill = {"ok": False, "applicable": True, "vehicles": [],
+                          "timedOut": [{"id": i, "speedMps": None} for i in held], "error": f"{type(error).__name__}: {error}"}
     elif held:
         standstill["reason"] = ("synchronous restore target: after the restore this guard does not tick, "
                                 "so standstill is not awaited")
@@ -141,6 +143,8 @@ def restore(world, carla=None, settings_to=None, client=None, registry=None) -> 
         for entry, response in zip(registered, client.apply_batch_sync([carla.command.DestroyActor(a["id"]) for a in registered], False)):
             if not response.has_error():
                 destroyed.append({"id": entry["id"], "typeId": entry.get("typeId"), "roleName": entry.get("roleName"), "via": "registry"})
+            else:
+                destroy_failed.append(entry["id"])  # typically already destroyed by the adapter's own close
     gone = {d["id"] for d in destroyed}
     for actor in [x for x in _owned(world) if x.id not in gone]:
         destroyed.append({"id": actor.id, "typeId": actor.type_id, "roleName": actor.attributes.get("role_name")})
@@ -157,7 +161,8 @@ def restore(world, carla=None, settings_to=None, client=None, registry=None) -> 
     matches = after["synchronousMode"] == bool(target["synchronousMode"]) and delta_ok  # review 2 N-8: the step too
     return {"before": before, "target": target, "after": after, "applyAttempts": attempts, "held": held, "standstill": standstill,
             "holdMonotonicNs": hold_ns, "unpauseMonotonicNs": unpause_ns, "unpauseReason": unpause_reason,
-            "destroyMonotonicNs": destroy_ns, "destroyed": destroyed, "remaining": remaining,
+            "commitTickRaised": tick_raised, "holdFailed": hold_failed, "destroyMonotonicNs": destroy_ns,
+            "destroyed": destroyed, "destroyFailed": destroy_failed, "remaining": remaining,
             "restored": matches and not remaining and standstill["ok"]}
 
 
