@@ -287,3 +287,35 @@ engineering stabilization candidate: not M1, not AEB evidence.
       - Record `cancelNotIssued` with the reason when the schedule ends first.
       - Make the harness fail for cancel-paused unless the cancel was issued and returned, and the outcome is
         `ML-SCHEDULE-CANCELLED`.
+16. **After S1a, the blueprint's tick horizons are too short (2026-10-23 16:30–16:34; recorded before any
+    repair). This supersedes the finding-15 repair plan.**
+    - **Development run 1.** `dev-s1c1a-20261023T163017-cancel-paused` on blueprints candidate `8743f91`
+      (finding-15 plan, 160 ticks) failed in the new assertion with `cancelNotIssued: run ended first`.
+    - **Tick timing, from the Argus host clock of each tick's events.**
+      - The cycle now runs at the 0.05 s `poll_seconds` floor. The mean is 0.057 s, with single cycles of
+        0.1–0.3 s at about every 30th tick.
+      - Tick 0 comes about 1.5–2 s after the run starts.
+      - So 80 ticks end about 7.4 s after start (VS-09 attempt 1), and 160 ticks about 12.1 s after start.
+      - Phase 7 measured 0.17–0.7 s per tick. Most of that was the growing persistence cost that S1a
+        removed.
+      - `poll_seconds` is capped at 0.05 s (`schedule_plan.py`, `POLL`), so a cycle cannot be lengthened.
+    - **Nominal on the merged mains.** `lite-20261023T163334-nominal` (load 6.7) fails with
+      `ML-SCHEDULE-COLLECTION-INCOMPLETE`. The schedule's last tick was at 9.15 s. The adapter was stopped
+      before the driver's 9.5 s episode completed (`adapter closed stdout without done`, driver marker code 3).
+      The Phase 7 scenario therefore no longer passes on the accepted mains. It is a defect of the blueprint's
+      tick-count assumptions, made visible by S1a; the platform behaves as designed.
+    - **Also affected.** freeze-vcu uses `at=16`, `duration=20` ticks to span the throttle phase. That is
+      now about 1 s, starting before the throttle. No run of it has been made.
+    - **Not affected.** no-carla ends at the adapter's child exit. The baseline does not use Maestro.
+    - **Repair plan (S1c-2a, the FR-018 horizon part; unblocked by ES-2).** Each tick value is derived from
+      the 0.05 s floor, and the upper bound is checked against the 55 s active window:
+      - one horizon of 400 ticks for nominal, freeze-vcu and cancel-paused. That is ≥ 20 s after tick 0 at the
+        floor, and about 23 s at the measured mean. It covers the driver episode end (about 11.5 s after tick
+        0) and the cancel (about 12.3 s after tick 0) with ≥ 7 s margin. The run fits the active window while
+        the mean cycle is ≤ 0.13 s.
+      - observe at tick 200;
+      - the freeze at tick 60 (about 3.4 s) for 80 ticks (about 4.6 s), inside the throttle phase;
+      - `retained-inputs.json` declared at 4 MiB: about 2.2 KB per event, and about 560 events at 400 ticks;
+      - the finding-15 assertions kept;
+      - the per-tick timing recorded in `maestro-run.json`.
+      - FR-018's long-run case (S-D1, 600 ticks) and its episode and stimulus extension stay in S1c-2.
