@@ -245,3 +245,18 @@ engineering stabilization candidate: not M1, not AEB evidence.
       - R4-2 stays carried.
     - **Verdict.** S1c-1 is complete for review. The live behaviour (FR-021, FR-022 timestamps, the
       baseline T-5 paths) is verified in VS-09 and S1d after the author's acceptance (ES-1 approved).
+14. **Author acceptance (2026-10-23 about 16:15 WEST).** The author wrote "i accept" in reply to the S1a
+    and S1c-1 acceptance request. S1c-1 is accepted as presented in the thesis record
+    `specs/029-lite-stabilization/review/acceptance-package-s1c1-20261023.md`.
+    - **Accepted content.** The compat code is this candidate at `bac0e8d`; the commits after it change only
+      this log. The blueprints code is `xverse-blueprints` `candidate/lite-stabilization-s1c-20261023` at
+      `f450d97`.
+    - **Pre-merge check (about 16:20, load about 3.2).** The compat suite on this candidate gave 207 passed and
+      39 subtests (`/dev/shm/compat-p6-venv`, `PYTHONPATH=src`).
+    - **Merge.** `--no-ff` into each main from bases `39d31fa` and `e7a6ebc`, which equal the mains, so each
+      merged tree equals its candidate's tree. The tree identity is checked before the push.
+    - **Carried, not repaired.** R4-2 and the review-5 LOW residuals (1) and (2). The live behaviour (FR-021,
+      the FR-022 timestamps, the baseline T-5 paths) is verified in VS-09 and the S1d soak.
+    - **Unchanged.** Execution remains non-M1 (DLG-7). Command echo is not evidence of braking, and
+      `brakeStatus` and `wheelSpeedEscStatus` stay blocked. Lane activation, M1 admission, factory runs and
+      scientific claims stay closed.
