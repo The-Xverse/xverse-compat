@@ -882,3 +882,28 @@ engineering stabilization candidate: not M1, not AEB evidence.
       `test_run_soak_logic.py`: 18 passed.
     - **Status.** S1c-2 part 1 tooling is ready. Part 2 (adopting S1b, re-pinning the authority digest, scheduled
       `stop` steps per DR-7, asserting `stop_mode`) waits for the S1b acceptance. The soak waits for S-D9.
+40. **S1c-2 part 2 plan (S1-T15: adopt S1b; written at 23:06:22 2026-10-23, before any part 2 code).**
+    - **Stacking.** Part 2 is developed against the unaccepted platform stack S1a-2 → S1b → S1a-3 (head
+      `d747f1e0c`), using a separate development driver venv. It is not accepted before ES-3.
+    - **compat.**
+      - A helper `xverse_compat/live/readiness.py`. If `.xverse-ready/challenge` exists in the unit's cwd, it writes
+        exactly that nonce to `.xverse-ready/ready` atomically (a temporary file in the same directory, then
+        `rename`). Without a challenge it does nothing.
+      - Each owned unit calls it once it is ready: the driver when it has connected to the adapter; the adapter
+        (py3.10) when CARLA and the owned scenario are set up; the stimulus when its zenoh session is open.
+      - SIGTERM handling is kept as it is.
+      - Tests for the helper.
+    - **blueprints.**
+      - Each owned unit gets its own cwd, `work/<unit>/`, inside the collection source root; the adapter gains
+        `PYTHONPATH=src`.
+      - Owned units declare the `nonce-marker` observe condition. The legacy VCU stays `running`.
+      - Every unit declares `process.stop.graceSeconds` 0.6 (inside `ML-SCHEDULE-STOP-GRACE` at
+        `per_unit_seconds` 2) and `process.stderr` (private, at most 256 KiB), with private directories
+        `<run>/stderr-private/<unit>/` outside the work root. The legacy VCU's TERM behaviour is measured and
+        recorded, not assumed.
+      - The owned units' own `--stderr` files are dropped in favour of the platform capture.
+      - The harness asserts `nativeUnits[].stop_mode == exited-on-term` for the owned units in nominal, freeze-vcu
+        and long-run, records the VCU's `stop_mode`, and asserts the probe identity in the evidence.
+      - `lib-live.sh` accepts `XVERSE_LIVE_DRIVER_VENV`; the default is unchanged.
+    - **Re-pins after the merges.** The compat platform lock (S1b changed the v0.2 schema and `catalog.py`).
+    - **Verification.** Development live runs on the stack. Then reviews, and the S1c-2 acceptance after ES-3.
