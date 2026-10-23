@@ -346,3 +346,28 @@ engineering stabilization candidate: not M1, not AEB evidence.
     - **Observation for the platform (not repaired here).** A thaw after the frozen unit's freshness has
       lapsed ends the run as a service deadline, not as a health failure of that unit. This is recorded for
       the S1b and Phase 8 fault planning.
+18. **Development run 5 (`dev-s1c2a-20261023T165012-freeze-vcu`, blueprints `093eada`, load 6.9): still
+    `ML-SCHEDULE-SERVICE-DEADLINE` at the thaw tick 100. This corrects the finding-17 analysis (recorded before
+    the repair).**
+    - **Mechanism (platform code, as designed).**
+      - The freeze suspends the unit's probing. `ProbeFacade.resume_health` restores it at the thaw, and
+        `next_health_deadline` is the unit's last observation plus its 5 s cadence.
+      - The dispatcher's `_end()` window closes `health_scan_seconds` earlier: 4 units × 0.38 s = 1.52 s
+        (`schedule_plan.py`).
+      - The fault-clear statement is therefore refused unless the thaw comes ≤ 3.48 s after the frozen unit's
+        last health success.
+    - **Measured** (thaw minus the VCU's last health success):
+
+      | Run | Interval | Result |
+      | --- | --- | --- |
+      | Phase 7 `lite-20261023T075151` | 2.84 s | passed |
+      | development run 2 | 5.65 s | failed |
+      | development run 5 | 3.62 s | failed |
+
+      Health scans run about every 1.6 s, so the last success can come up to about 1.6 s before the freeze.
+    - **Repair.** `FREEZE_TICKS = 20`, as in Phase 7. That is about 1.2 s at the measured mean and about 1.6 s
+      at a 0.08 s cycle, so the worst case is ≤ about 3.2 s. The freeze stays at tick 60, about 3.6 s after
+      tick 0, which is where Phase 7's freeze fell (7.46 s after start).
+    - **Observation for the S1b and Phase 8 fault planning (not repaired here).** The admissible freeze length
+      is bounded by about `cadence − health_scan_seconds −` (the time since the last success). A longer freeze
+      fails the run as a service deadline, not as a unit health failure.
