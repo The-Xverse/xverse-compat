@@ -613,3 +613,21 @@ engineering stabilization candidate: not M1, not AEB evidence.
       9 on the last three heads.
     - **Checksums.** `SHA256SUMS` was refreshed: 1627 files.
     - **DR-6.** Its basis is corrected in the thesis record (review 8, LOW-2).
+26. **Independent review 9, of the finding-24 repairs at blueprints `8aa57ca` (written at 18:21:09 2026-10-23): PASS,
+    no HIGH or MEDIUM, 2 LOW. Recorded before the documentation repair.**
+    - **Confirmed.**
+      - The margins handle None correctly and accept a margin of exactly 0.
+      - The +0.05 s end convention matches the stimulus samples.
+      - The observe at tick 60 makes a real VCU health query (725.313) before the freeze at tick 61. The probe's
+        `causationId` is that health event.
+      - The thaw came 0.61 s after the VCU's last health success.
+      - no-carla requires `failed`.
+      - Finding 25's evidence holds, the rate of 1 in 9 holds, and the corrected DR-6 basis is accurate.
+      - Finding 24 preceded the repair.
+    - **LOW-A (erratum to findings 23 and 25).** The no-carla runs (`170253`, `173434`, `180049`, `181700`) have
+      no restore guard. For them "guard successful" and "world restored" should read "n/a (no CARLA)".
+    - **LOW-B.** The comment's measured ranges are exceeded again.
+      - Nominal `181350` has `firstTickS` 2.830, above the stated 1.5–2.8 s.
+      - Ticks 61–71 lasted 0.50 s in `181112`, outside the stated 0.72–1.00 s.
+      - Repair (comment only, after the evidence): tick 0 came 1.5–2.9 s after start, and 10 ticks measured
+        0.50–1.00 s.
