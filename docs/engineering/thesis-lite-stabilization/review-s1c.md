@@ -56,3 +56,35 @@ engineering stabilization candidate: not M1, not AEB evidence.
      `closureTerminalReports` and `dispatchTerminal` in `maestro-run.json`.
    - **Checks.** `bash -n` and Python AST parse pass. The live behaviour is verified in the VS-09
      confirmation and in S1d, both after ES-1.
+5. **Independent implementation review 1 (2026-10-23 about 11:35): FAIL. Recorded before repair.**
+   - **MEDIUM:**
+     - **S1c-R1-1.** An exception from `get_actor` or `get_velocity` during the standstill wait skips the
+       destroy, and the record is lost (`restore.py:53-71, 180-182`).
+     - **S1c-R1-2.** The FR-017 facts are computed unguarded inside `finally`. A raising `public_data()`
+       would lose `maestro-run.json` and skip `dispose()`. `str(None)` writes the string "None", and the
+       dataclasses are stored as repr strings.
+     - **S1c-R1-3.** `baseline-exit.txt` is not written on every exit: not on a signal after the trap
+       reset, not on a `set -u` abort, and not on the pre-run `require_compat`. The log overstated this.
+     - **S1c-R1-4.** FR-014's "and records it" is missing: neither command records the compat path, and a
+       relative path resolves differently in different places.
+   - **LOW:**
+     - **S1c-R1-5.** `legacy_identity` fails open for a non-repository path.
+     - **S1c-R1-6.** T-5 (d) is partial: `get_actors` sits outside the try, the leftover-destroy snippet is
+       unguarded, and the heredoc parser traces back on an empty file.
+     - **S1c-R1-7.** The FR-022 record is imprecise: the un-pause time is taken before the commit and is
+       None when no change was needed; egos already gone are silent; the synchronous-target reason text is
+       wrong.
+     - **S1c-R1-8.** The test fakes decay speed per poll instead of per tick, and the patch of the timeout
+       constant does nothing.
+     - **S1c-R1-9.** Traceability:
+       - finding 1 was recorded with its repair;
+       - the blueprint findings were recorded after the blueprint commit;
+       - T-5 (a) refuses vehicles only after the normalisation has changed the settings.
+   - **Verified by the reviewer:**
+     - the `synchronous_now` fix for both callers;
+     - the bounded wait with no tick owner;
+     - `START_WORLD` usage;
+     - the `TERMED` bookkeeping;
+     - no remaining candidate default;
+     - the FR-017 attribute names, against platform `8b3d8c8e8`;
+     - CARLA 0.9.15 semantics of `get_actor`, `get_velocity` and `wait_for_tick`.
