@@ -836,3 +836,25 @@ engineering stabilization candidate: not M1, not AEB evidence.
       - `p8Paths` counts non-PASS runs without saying so.
       - Untested: the status classification (M3, M4), two failed starts in a row, a FAIL or INVALID in a repeat,
         the end-of-soak repeats with no-carla only, and the stop codes.
+37. **The finding-36 repairs (blueprints `44fca14`; written at 21:15:21 2026-10-23).**
+    - **MEDIUM-1.** `_restart(reason, failed_starts)` stops the soak after two failed starts in a row (DR-11), or after
+      more than 3 server failures. A block start that fails enters with `failed_starts=1`.
+    - **MEDIUM-2.** `stop_server` creates the slot directory. The end phase starts and records a server only when a
+      CARLA repeat is queued.
+    - **LOW items.**
+      - `audit.py` has no `TypeError` when there are no ego frames.
+      - The P8 guard window also requires the last ego frame to be received within 0.1 s of the destroy.
+      - The P6 duration check is back to the plan's ≤ 2 s. Timeouts are caught through `persistenceFailure`.
+      - The pins add tree digests of the platform source export and of the driver venv's `xverse` package. The
+        runner, `health_check.py` and `audit.py` must equal the pinned blueprints copies, and the soak refuses
+        with code 4 at start-up otherwise.
+      - Any exit, including a pin change or a crash, stops a running server.
+      - The `_audit` timeout is caught.
+      - The report gives P2 (passing runs) and `p8PathsOfPassingRuns`. The standalone `--dispersion` is
+        documented as audit-only.
+    - **Classification.** The status logic is the pure `classify()` (DR-12).
+    - **`test_run_soak_logic.py`: 15 passed.** New cases cover two failed starts in a row, a FAIL in an INVALID
+      repeat, end-of-soak repeats with no-carla only (using the real `stop_server`), and seven `classify`
+      cases.
+    - **Audit replay over 31 recorded runs:** the verdicts are unchanged apart from the intended P6 change.
+      `203658` still fails through the timeout.
