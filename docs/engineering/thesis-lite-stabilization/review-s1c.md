@@ -737,3 +737,14 @@ engineering stabilization candidate: not M1, not AEB evidence.
         (platform successor work);
       - (b) a shorter S-D1 long-run horizon (an author decision);
       - (c) a larger terminal budget (a frozen 2 s bound; an author decision).
+33. **S1c-2 part 1 verification on blueprints `b1c43b0` (runs 20:51–21:00, CARLA instance 15 stopped before
+    no-carla; written at 20:44:19 2026-10-23).**
+    - **Revisions.** Compat `c4b747f`, platform main `b28a2aacf`.
+    - **freeze-vcu.** Audit PASS. The freeze lay inside the throttle; the persistence p99 was 0.048 s and the maximum
+      0.235 s; load 8.3.
+    - **no-carla** (server stopped). Audit PASS: `ML-RUN-CHILD-EXIT`, writer `failed` with WRITER-STATE only.
+    - **Long-run.** It passed at load 6.3 (finding 31). At load 8.4 it failed through the terminal budget
+      (finding 32), which goes to the author as S-D9. Long-run P6 is therefore open.
+    - **Start-up scope.** It is 4.75 s in every run, and the broker cancel was confirmed in every run.
+    - **Evidence.** `runs/lite-stabilization-s1/s1c2-part1-dev-20261023` (`SHA256SUMS`).
+    - **Next.** An independent review of S1c-2 part 1 (findings 28–33).
