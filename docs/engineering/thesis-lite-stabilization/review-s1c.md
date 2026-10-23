@@ -907,3 +907,103 @@ engineering stabilization candidate: not M1, not AEB evidence.
       - `lib-live.sh` accepts `XVERSE_LIVE_DRIVER_VENV`; the default is unchanged.
     - **Re-pins after the merges.** The compat platform lock (S1b changed the v0.2 schema and `catalog.py`).
     - **Verification.** Development live runs on the stack. Then reviews, and the S1c-2 acceptance after ES-3.
+41. **S1c-2 part 2 implemented (compat `b0f9796`, blueprints `c53dbc9`; written at 23:23:38 2026-10-23). Nothing was run
+    live: no CARLA, no zenohd, no `run-live.sh`. The development live runs on the stack are the owner's.**
+    - **compat.**
+      - `xverse_compat/live/readiness.py`, `announce_ready(cwd=None)`. It opens `.xverse-ready` and `challenge` without
+        following links. The challenge must be a regular file of exactly 64 lowercase hex bytes. The helper writes
+        those bytes to `.xverse-ready/ready`: a temporary file in the same directory, `fsync`, `os.replace`, then an
+        `fsync` of the directory. Without a challenge it returns False. A malformed or linked challenge or directory
+        raises `ReadinessError`.
+      - `xverse_compat_carla/readiness.py` is the same code for the 3.10 adapter, which must not import
+        `xverse_compat` (`protocol.FORBIDDEN`; the driver fails a run whose adapter loaded it). A test checks that
+        both files are identical after their docstrings.
+      - Call sites:
+        - the driver, once its listener, zenoh session and evidence run are up, before it accepts the adapter;
+        - the adapter, once CARLA, the owned scenario and the link are set up; a readiness error closes the source
+          (the owned actors are destroyed) and exits 3;
+        - the stimulus, once its zenoh session, publishers and subscribers are open.
+      - SIGTERM handling is unchanged.
+    - **blueprints.**
+      - `units.py`: each owned unit runs in `work/<unit>/`, inside the collection source root. The adapter has
+        `PYTHONPATH` set to compat `src`. The owned units' `--stderr` arguments are dropped. The legacy VCU is unchanged.
+      - `build_documents`:
+        - every unit declares `process.stop {graceSeconds: 0.6}` and `process.stderr {capture: run-scoped-private,
+          maximumBytes: 262144}`;
+        - the owned units declare the observe condition `nonce-marker`, and the VCU keeps `running`.
+      - Each `UnitAdmission` gets `stderr_directory` `<run>/stderr-private/<unit>/`: mode 0700, empty, distinct,
+        outside the work root, with the path resolved.
+      - `maestro-run.json` adds:
+        - `declaredControls`;
+        - `stopModes` from `nativeUnits`;
+        - `stderrPrivateBytes`, with file names and sizes only;
+        - `readinessProbes`, the unit-scope probe, ready and health identities from the Maestro Argus stream.
+      - Assertions:
+        - every native unit has the field `stop_mode`;
+        - in nominal, freeze-vcu and long-run the owned units are `exited-on-term`; the VCU is recorded only;
+        - in those three cases and in cancel-paused, the owned units' probe and ready events carry `nonce-marker` and
+          the VCU's carry `running`, and health stays `running`.
+      - `lib-live.sh`: `VENV=${XVERSE_LIVE_DRIVER_VENV:-<unchanged default>}`. `run-live.sh` exports it and records it
+        in `identities.txt`. `run_soak.py` pops it, as it pops `XVERSE_PLATFORM_SRC`.
+      - `audit.py`: P1 reports the stop modes as an observation.
+    - **Deviations from finding 40 and additions.**
+      - **D1. The driver's readiness point.** Finding 40 says "when it has connected to the adapter". Maestro starts
+        the adapter only after the driver is ready (`start-carla-adapter` depends on `start-lite-driver`), so that
+        point would deadlock until `ML-PROBE-NOT-READY`. The driver therefore announces when it is ready to accept
+        the adapter.
+      - **D2. Profile v0.2.** `process.stop` and `process.stderr` exist only in `runtime-compatibility-v0.2`, and the
+        fixture documents are v0.1. The offline check caught this: `XDL-SEMANTIC-EXTENSION-SCHEMA`, "Additional
+        properties are not allowed ('stderr', 'stop' were unexpected)". `build_documents` now moves the profile
+        document (`metadata.version`, `schemaRef`) and every payload (`schemaVersion`) to v0.2, as the platform's
+        own S1b `declare()` helper does. The only other v0.2 difference is the optional `planningBlockers`.
+      - **D3. Owned readiness timeout 2 s.**
+        - The readiness window is `W = min(policy timeout, observe timeout)`. With the harness's 1 s policy
+          timeout, the last marker attempt comes 0.75 s after release.
+        - In the part 1 runs (load 6.3–8.5), the adapter's owned-actor registry was written 0.24–1.26 s after its
+          ready event. That is earlier than the point at which the adapter becomes ready.
+        - The owned units' policy timeout is therefore 2 s, the declared observe budget, with attempts at 0, 0.875
+          and 1.75 s. The VCU keeps 1 s.
+      - **D4. Other additions.**
+        - The probe identities are also asserted in cancel-paused.
+        - The presence of `stop_mode` is asserted, so that a platform without S1b fails visibly.
+        - `units.py` builds the owned units' `PYTHONPATH` from `XVERSE_LIVE_DRIVER_VENV`, so that the units and the
+          harness use one venv.
+    - **SIGTERM per unit.** These figures were measured offline at load 4.8, with a test-only zenoh stand-in and the
+      fake adapter source, in 3 runs.
+      - The driver, the stimulus and the adapter linger in 0.2 s sleeps and exit 0 on TERM: driver 0.214–0.215 s,
+        stimulus 0.114–0.164 s, adapter 0.032–0.214 s.
+      - The real zenoh `session.close()` is not measured offline.
+      - The adapter installs its TERM handler only in the linger, after the protocol has ended and its source has
+        been closed. That close destroys the owned actors and restores the settings. A TERM while it serves would
+        end it by the default action (`SIG_DFL` per S1b `child_exec`), with no destroy; the restore guard then
+        destroys the registered actors. In the scheduled cases the driver episode ends before the adapter's stop at
+        tick `horizon − 1`, so the TERM reaches a lingering adapter.
+      - The legacy VCU installs no TERM handler (code read), so TERM ends it by the default action. Its `stop_mode`
+        is recorded, not assumed.
+    - **Verified offline** with the S1a-3 stack venv (`lite-stabilization-s1a3/venv`, whose `xverse` and
+      `xverse_xdl` sources equal `d747f1e0c`) and the platform tests from the S1a-3 worktree, for nominal, long-run
+      and freeze-vcu:
+      - schema validation and plan compilation;
+      - `prepare_lifecycle`: each unit's `process_controls` is (0.6, 262144), and the observe conditions are
+        `nonce-marker` ×3 and `running`;
+      - `admit_schedule` passes with grace 0.6 and `per_unit_seconds` 2, and gives `ML-SCHEDULE-STOP-GRACE` at
+        1.8 s;
+      - the coverage rows: `readinessProbe` is `nonce-marker` for the owned units only;
+      - the broker's `_controls` for each unit on the harness's real directories gives (600, 262144, probe 1 or 0,
+        stderr fd), and `_admit_distinct` passes, which covers the shared, cwd, probe-cwd and budget checks.
+    - **Tests.**
+      - The compat suite: 244 passed, 39 subtests. The 36 new tests are in `tests/live/test_readiness.py`.
+      - `soak/test_run_soak_logic.py`: 19 passed, one of them new (the child environment drops both overrides).
+      - An `audit.py` replay over 37 recorded runs gives verdicts identical to `HEAD~1`.
+    - **Open issues.**
+      - **O1. no-carla (P4).**
+        - Without CARLA, the adapter waits 5 s for the simulator (`set_timeout(5.0)`; it exited about 5.1 s after its
+          ready event in `dev-s1c2p1-20261023T204355-no-carla`). With the marker probe it can no longer be ready
+          within its 2 s window.
+        - The run is therefore expected to fail at the adapter's start with `ML-PROBE-NOT-READY`, not through
+          `ML-RUN-CHILD-EXIT`. The exact diagnostic is not known offline.
+        - The harness assertion and audit P4 keep `ML-RUN-CHILD-EXIT`, the thesis plan text. The first no-carla
+          development run decides, and P4 then needs an author decision.
+      - **O2. The readiness window under load.** A unit's start deadline is also clipped by the next health scan
+        (`dispatcher._end`). The 2 s window is a measured choice, not a proof.
+      - **O3.** The re-pins (the compat platform lock and the authority digest) wait for the merges, as finding 40 says.
