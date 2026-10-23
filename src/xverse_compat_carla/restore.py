@@ -80,7 +80,7 @@ def restore(world, carla=None, settings_to=None, client=None, registry=None) -> 
         pass
     after = _settings(world)
     remaining = [a.id for a in _owned(world)]
-    matches = after["synchronousMode"] == bool(target["synchronousMode"])
+    matches = after["synchronousMode"] == bool(target["synchronousMode"])  # noqa: E501 (target may carry a reason)
     return {"before": before, "target": target, "after": after, "held": held, "destroyed": destroyed, "remaining": remaining,
             "restored": matches and not remaining}
 
@@ -97,6 +97,10 @@ def main(argv=None) -> int:
     if args.settings_from:
         recorded = json.loads(open(args.settings_from, encoding="utf-8").read())
         target = {"synchronousMode": recorded["synchronousMode"], "fixedDeltaSeconds": recorded["fixedDeltaSeconds"]}
+        if target["synchronousMode"] and not recorded.get("frameAdvancing", True):
+            # DLG-11a: a synchronous world that no client was ticking is not a usable original state (it would
+            # block the asynchronous legacy loop); restore asynchronous and say why
+            target = {"synchronousMode": False, "fixedDeltaSeconds": None, "reason": "recorded synchronous state had no tick owner"}
     if args.carla_site:
         site.addsitedir(args.carla_site)
     os.environ.setdefault("HOME", "/nonexistent-carla-home")

@@ -190,3 +190,20 @@ The work is an engineering integration only: not AEB validation, not a scientifi
         lookup checks any extension.
 
       Nominal and freeze-vcu are re-run after this change.
+17. **Defect found by re-verification, recorded with its recovery (2026-10-23 about 01:13).**
+    - **What happened:** the baseline run `baseline-…011253` followed two Lite runs whose guard had restored,
+      per DLG-11, the recorded pre-run state. That state was the unexplained synchronous start-up state with
+      frame 0 and no tick owner.
+    - **Effect:**
+      - the legacy `virtual_vehicle.py` could not get a ticking world, so the stimulus exited `no-clock`;
+      - the legacy process ignored SIGINT and SIGTERM, and the script's `wait` hung until `timeout`;
+      - the legacy vehicle's `ego_vehicle` actor (id 30) was left behind.
+    - **Manual recovery, recorded in that run directory:**
+      - SIGKILL of the hung legacy process (pid 1582975, started by this session);
+      - world set asynchronous;
+      - actor 30 destroyed by ID; no vehicles remained.
+    - **Repairs:**
+      - **DLG-11a:** the preflight records whether the frame advances, and the guard restores a recorded
+        synchronous state only when it had a tick owner, otherwise asynchronous, with the reason recorded.
+      - The baseline normalizes an ownerless synchronous world to asynchronous as a declared setup step.
+      - The baseline has a cleanup trap and a bounded stop: INT, then TERM, then KILL, then `wait`.
