@@ -1007,3 +1007,45 @@ engineering stabilization candidate: not M1, not AEB evidence.
       - **O2. The readiness window under load.** A unit's start deadline is also clipped by the next health scan
         (`dispatcher._end`). The 2 s window is a measured choice, not a proof.
       - **O3.** The re-pins (the compat platform lock and the authority digest) wait for the merges, as finding 40 says.
+42. **S1c-2 part 2 development runs on the platform stack `d747f1e0c` (runs 23:25–23:33, CARLA instance 16, dev driver
+    venv `.x-verse-build/cache/xverse-lite-live-s1stack`; written at 23:33:52 2026-10-23, before any repair).**
+    - **Revisions.** Blueprints `c53dbc9`, compat `b8403a3`. Evidence: `runs/lite-stabilization-s1/s1c2-part2-dev-20261023`
+      (`SHA256SUMS`).
+
+      | Run | Audit | Result | Load |
+      | --- | --- | --- | --- |
+      | nominal `232543` | see below | succeeded | 4.5 |
+      | freeze-vcu | PASS | succeeded | 6.1 |
+      | cancel-paused | PASS | `ML-SCHEDULE-CANCELLED` | 5.8 |
+      | long-run (two runs) | PASS | succeeded | 5.8–6.1 |
+      | no-carla `233239` | FAIL | `ML-PROBE-NOT-READY` | 6.0 |
+
+    - **Graceful stop.** All four units, including the legacy VCU, stopped `exited-on-term` in nominal, freeze-vcu and
+      both long runs. Every unit was `forced` in cancel-paused, as designed: CANCEL freezes first (DR-7).
+    - **Readiness.** The owned units became ready through `nonce-marker`. The adapter needed its 2nd or 3rd and last
+      attempt, so the margin is thin (finding 41, O2).
+    - **stderr.** The VCU's stderr was captured privately (37,892 bytes).
+    - **Long-run terminal report on S1a-3:** publish 0.415 s and close 0.81 s. Before S1a-3 it was 0.80 s, and 1.98 s
+      with a timeout (S-D9).
+    - **nominal `232543`.** The audit flagged P1 residue: five sockets in `/run/user/1000/xverse-lite/`
+      (`test-ready-*`, `measure-*`) created at 23:15–23:16, before the run.
+      - The `test-ready-*` socket comes from `tests/live/test_readiness.py:193`, which does not remove its socket.
+        That is a defect. The `measure-*` sockets came from the implementing agent's ad-hoc timing script.
+      - The five named files were removed. All later runs had no residue.
+    - **no-carla `233239`: a new failure mode.** This is the open issue O1, but the outcome is worse than expected.
+      - The adapter never became ready, after 3 failed marker attempts (no simulator), giving
+        `ML-PROBE-NOT-READY`.
+      - The closure is `ML-CLOSURE-WORKLOAD-WAIT-UNKNOWN`, `cleanupComplete` false and `persistenceFailure`
+        `ML-PERSIST-CHILD`.
+      - The broker cancel result is `issuer_dead: true` with no native confirmation: a revoke.
+      - The Maestro root stays `open`, with CORRUPT and MUTATED reasons.
+      - The units were stopped and there was no unit residue. The host is clean (no processes, no sockets).
+      - Before S1b (findings 21, 23, 35) no-carla ended in `ML-RUN-CHILD-EXIT` with a clean closure.
+      - **The cause is not established.** The failure path calls `owner.cancel("dispatcher-failed")` with no caller
+        deadline, so an expired deadline does not explain the revoke. It is handed to a platform diagnosis, recorded
+        in the platform log on `candidate/lite-stabilization-s1a3-20261023`.
+    - **Consequences.**
+      - P4 (no-carla) cannot pass on the stack until the platform diagnosis is done.
+      - P4's expected diagnostic changes from `ML-RUN-CHILD-EXIT` to `ML-PROBE-NOT-READY` once owned units declare
+        readiness. That is an author decision, to be raised with the diagnosis.
+      - The readiness test leaks sockets; it is repaired after this record.
