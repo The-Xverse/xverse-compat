@@ -64,6 +64,7 @@ class LiteVehicleLoop:
                  max_ticks: int, wall_deadline: float, freshness_ns: int = 100_000_000, deadline_ns: int = 200_000_000,
                  cancelled: Callable[[], bool] = lambda: False, deadline_frames: int = 1, listener: Any = None,
                  host_freshness_ns: int = 200_000_000) -> None:
+        self.listener = listener
         self.link, self.command_source, self.record, self.on_motion = link, command_source, record, on_motion
         self.tick_period_s, self.max_ticks, self.wall_deadline = tick_period_s, max_ticks, wall_deadline
         self.cancelled, self.deadline_frames = cancelled, deadline_frames
@@ -136,6 +137,9 @@ class LiteVehicleLoop:
         else:
             result.end_reason = "max-ticks"
         result.receivers = {f: r.summary() for f, r in self.receivers.items()} if self.activated else {}
+        if self.listener is not None and self.activated:  # one Argus summary event per flow, as the platform harness does
+            for flow_id, receiver in self.receivers.items():
+                self.listener.summary(receiver.binding, result.receivers[flow_id])
         if latencies:
             ordered = sorted(latencies)
             result.host_latency = {"domain": "host-monotonic", "boundNs": self.host_freshness_ns, "ticks": len(ordered),

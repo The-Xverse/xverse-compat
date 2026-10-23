@@ -177,3 +177,16 @@ The work is an engineering integration only: not AEB validation, not a scientifi
     - The guard reads it, holds owned vehicles with a server-side `ApplyVehicleControl` batch addressed by ID
       before un-pausing, and destroys the registry actors by ID with `DestroyActor`.
     - The list-based destroy and the verification stay as they are.
+16. **Re-verification from clean commits (compat `6fd7f28`, blueprints `085983b`; 2026-10-23 01:07–01:10).**
+    - **Runs:** baseline, nominal, freeze-vcu, cancel-paused and no-carla were all re-run. One nominal attempt
+      failed at Maestro startup with `ML-CONTROLLER-TIMEOUT`, before any unit, and was re-run.
+    - **Guard:** in cancel-paused it held the ego by ID while the world was still paused (`held [52]`), then
+      destroyed the three owned actors via the registry, with none remaining.
+    - **Two follow-ups found in the final evidence:**
+      - The nominal Argus flow run was empty. With the repaired activation there are no anomalies, and no
+        summary events were written. Repair: the loop writes one `FlowEvidence.summary` event per flow, as the
+        platform harness does.
+      - The report did not find the fault events, which are under the `io.xverse.faults` extension. Repair: the
+        lookup checks any extension.
+
+      Nominal and freeze-vcu are re-run after this change.
