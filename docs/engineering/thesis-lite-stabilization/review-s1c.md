@@ -426,3 +426,34 @@ engineering stabilization candidate: not M1, not AEB evidence.
       - LOW-4: report the start cycle separately from the steady-state mean and maximum.
       - LOW-1, LOW-2 and LOW-5: errata in this log, the comments and the README. The re-verification
         runs and `xverse-argus verify` output are recorded in the next finding.
+20. **Re-verification on blueprints `f19ae58` (2026-10-23 17:17–17:22, CARLA instance 11; recorded before any
+    repair).** Compat main `25e4e1f`, platform main `b28a2aacf`. The load average at run start and end is in
+    each `maestro-run.json`.
+    - **freeze-vcu `171706`** (load 4.9): P1. All markers present. `xverse-argus verify` reports both the
+      Maestro and the flow root closed and complete, with 571 events. Observe completed. Steady mean cycle
+      0.055 s.
+    - **nominal `…-nominal`** (load 5.2): P1, with both roots closed and complete.
+    - **cancel-paused `172145`** (load 7.3): **P3 not met, while the harness exited 0.**
+      - The outcome is `ML-SCHEDULE-CANCELLED` and every observe step completed.
+      - But `persistenceFailure` is `ML-PERSIST-CHILD` (kind `schedule`, stage `receive`, sequence 452). That
+        request started 0.4 ms after `entry.stop` returned (13.713 s), and the worker child had exited 2.6 ms
+        later.
+      - `cleanupComplete` false, with `ML-CLOSURE-WORKLOAD-WAIT-UNKNOWN`. The 4 native units have no retired or
+        reaped facts. The writer is `rpc-unresolved`. `dispatchTerminal` is null.
+      - The Maestro Argus root keeps its initial open manifest (0 events) beside a 269-line stream. `verify`
+        reports CORRUPT, MUTATED and WRITER-STATE.
+      - The host is clean: no residue processes or sockets. The guard held the ego to standstill and destroyed
+        the 3 owned actors.
+      - Cancel run `170215`, on `0d69bd7`, had closed consistently: writer failed, 297 events, and `verify`
+        gives only the WRITER-STATE reason, as DR-2 allows.
+    - **Defects.**
+      - (a) The cancel-paused assertions check the path, but not the P3 closure facts.
+      - (b) A platform cancel race after S1a. It is recorded in the platform log (S1a successor, finding 18)
+        and is not repaired here.
+    - **Repair plan (blueprints).** cancel-paused also asserts:
+      - `persistenceFailure` is null;
+      - `cleanupComplete` is true;
+      - every native unit is issued, retired and reaped;
+      - every closure writer ends `failed` or `closed` (DR-2).
+
+      The run still records everything before any assertion.
