@@ -184,3 +184,19 @@ engineering stabilization candidate: not M1, not AEB evidence.
        marker, could lose the record.
      - **S1c-R3-5.** A signal between the baseline's `mkdir` and the EXIT trap leaves no exit file, which
        contradicts the README.
+10. **Repairs for review 3 (finding 9).**
+    - **R3-1 (MEDIUM, blueprints `14ebce9`).** `run-live.sh` uses `trap cleanup EXIT` with
+      `trap 'exit 130' INT` and `trap 'exit 143' TERM`, as the baseline does. A signal at any point now
+      ends the script through `cleanup` and never resumes the run.
+      - **Check (reduced copy with the same trap lines):** SIGINT to the process group during a preflight
+        step without `|| exit`, then a second SIGINT during the cleanup. The log shows the guard start and
+        `guard-done`, no `AFTER-PREFLIGHT` line, and `script exit=130`.
+    - **R3-2.** `cleanup` records `local rc=$?`, and the last line now reads
+      `maestro-harness exit=$PYTEST script exit=$rc`.
+    - **R3-3 (compat).** `commitTickRaisedAttempts` lists the attempt numbers whose commit tick raised;
+      the un-pause time belongs to attempt 1. Documented in the docstring.
+    - **R3-4 (blueprints).** The marker loop catches `(OSError, ValueError)`, and a non-object marker is
+      recorded as unreadable.
+    - **R3-5 (blueprints).** The baseline installs its traps before `mkdir` and the log, and `on_exit`
+      writes the exit file only when the run directory exists.
+    - Compat suite: 206 passed, 39 subtests.

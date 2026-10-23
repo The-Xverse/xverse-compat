@@ -5,7 +5,8 @@ destroy the actors it spawned. The run command executes this guard after every r
 actors whose ``role_name`` begins with ``xverse-lite-`` (listed, or read from the adapter's owned-actor
 registry) and the world's synchronous-mode settings. It prints one JSON line:
 ``{before, target, after, applyAttempts, held, holdFailed, standstill, holdMonotonicNs, unpauseMonotonicNs,
-unpauseReason, commitTickRaised, destroyMonotonicNs, destroyed, destroyFailed, remaining, restored, wallNs,
+unpauseReason, commitTickRaisedAttempts (attempt numbers whose commit tick raised; the un-pause time belongs to attempt
+1), destroyMonotonicNs, destroyed, destroyFailed, remaining, restored, wallNs,
 monotonicNs}``.
 
 Order (review 1 R-7, DLG-11, findings 06 and 21): hold every owned ego (throttle 0, brake 1, hand brake) by id
@@ -91,7 +92,7 @@ def restore(world, carla=None, settings_to=None, client=None, registry=None) -> 
     """
 
     before = _settings(world)
-    held, hold_failed, destroy_failed, tick_raised = [], [], [], False
+    held, hold_failed, destroy_failed, tick_raised = [], [], [], []
     registered = [a for a in (registry or {}).get("actors", []) if str(a.get("roleName", "")).startswith(ROLE_PREFIX)]  # N-8
     if carla is not None and client is not None and registered:  # by id, server-side: no stale client list (finding 06)
         hold = carla.VehicleControl(throttle=0.0, brake=1.0, steer=0.0, hand_brake=True)
@@ -121,7 +122,7 @@ def restore(world, carla=None, settings_to=None, client=None, registry=None) -> 
                 try:
                     world.tick(5.0)  # a synchronous world applies new settings on the next tick (live finding 02)
                 except RuntimeError:
-                    tick_raised = True  # recorded: the un-pause time below is then an upper bound of the attempt
+                    tick_raised.append(attempts)  # recorded per attempt (S1c finding 9, R3-3)
             if unpause_ns is None:
                 unpause_ns, unpause_reason = time.monotonic_ns(), None  # after the first apply-and-commit (S1 FR-022)
             now = _settings(world)
@@ -161,7 +162,7 @@ def restore(world, carla=None, settings_to=None, client=None, registry=None) -> 
     matches = after["synchronousMode"] == bool(target["synchronousMode"]) and delta_ok  # review 2 N-8: the step too
     return {"before": before, "target": target, "after": after, "applyAttempts": attempts, "held": held, "standstill": standstill,
             "holdMonotonicNs": hold_ns, "unpauseMonotonicNs": unpause_ns, "unpauseReason": unpause_reason,
-            "commitTickRaised": tick_raised, "holdFailed": hold_failed, "destroyMonotonicNs": destroy_ns,
+            "commitTickRaisedAttempts": tick_raised, "holdFailed": hold_failed, "destroyMonotonicNs": destroy_ns,
             "destroyed": destroyed, "destroyFailed": destroy_failed, "remaining": remaining,
             "restored": matches and not remaining and standstill["ok"]}
 
