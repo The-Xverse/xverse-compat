@@ -43,7 +43,7 @@ def restore(world, carla=None, settings_to=None, client=None, registry=None) -> 
 
     before = _settings(world)
     held = []
-    registered = list((registry or {}).get("actors", []))
+    registered = [a for a in (registry or {}).get("actors", []) if str(a.get("roleName", "")).startswith(ROLE_PREFIX)]  # N-8
     if carla is not None and client is not None and registered:  # by id, server-side: no stale client list (finding 06)
         hold = carla.VehicleControl(throttle=0.0, brake=1.0, steer=0.0, hand_brake=True)
         vehicles = [a["id"] for a in registered if str(a.get("typeId", "")).startswith("vehicle.")]
@@ -80,7 +80,10 @@ def restore(world, carla=None, settings_to=None, client=None, registry=None) -> 
         pass
     after = _settings(world)
     remaining = [a.id for a in _owned(world)]
-    matches = after["synchronousMode"] == bool(target["synchronousMode"])  # noqa: E501 (target may carry a reason)
+    delta_ok = target["fixedDeltaSeconds"] is None and after["fixedDeltaSeconds"] is None or (
+        target["fixedDeltaSeconds"] is not None and after["fixedDeltaSeconds"] is not None
+        and abs(after["fixedDeltaSeconds"] - target["fixedDeltaSeconds"]) < 1e-6)
+    matches = after["synchronousMode"] == bool(target["synchronousMode"]) and delta_ok  # review 2 N-8: the step too
     return {"before": before, "target": target, "after": after, "held": held, "destroyed": destroyed, "remaining": remaining,
             "restored": matches and not remaining}
 

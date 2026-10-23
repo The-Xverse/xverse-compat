@@ -253,3 +253,37 @@ The work is an engineering integration only: not AEB validation, not a scientifi
       - The registry destroy does not check the role prefix.
       - The report revision is not recorded.
       - The tick-rate range in the README is wrong (0.069 s per tick was seen).
+20. **Repairs for review 2 (2026-10-23 about 01:35).**
+    - **N-1, the history that was missing.**
+      - `lite-…011855-freeze-vcu` (compat `f2b9088`, blueprints `cc5774f`, clean) succeeded, but its freeze
+        (ticks 16 to 24, 0.40 s of host time) fell in the stimulus's idle second. A 0.15 s stale window was
+        observed, with no effect on motion. It was superseded for that reason.
+      - The fault duration was changed from 8 to 20 ticks (blueprints `6666953`), and CARLA server instance 4
+        was started (01:20:53).
+      - That instance's start state was again synchronous at frame 0 with no tick owner (finding 05).
+      - The case was re-run as `lite-…012125`.
+      - The final set from item 18 therefore spans server instances 3 and 4. The run index now gives 011855 a
+        specific disposition.
+    - **N-2.**
+      - Correction to item 18: cancel-paused (`…011934`) restored asynchronous mode because its pre-run state
+        *was* asynchronous and advancing. DLG-11a applied only in freeze `…012125`.
+      - The README is updated: preflight, guard order and registry, DLG-11 to DLG-13, the wall time base, the
+        ÷1.2 damping, and the contract notes.
+      - `report.md` gains an actuated and commanded throttle column.
+    - **N-3.** The cancel case now pauses at 4 s, inside the throttle segment.
+    - **N-4.** The harness records the marker contents and `markersOk`, and nominal success requires them; the
+      report adds `allOwnedUnitsSucceeded`.
+    - **N-5.** The guard is skipped when `world-before.json` is absent.
+    - **N-6.** The baseline traps EXIT, INT and TERM. It destroys a leftover `ego_vehicle` that did not exist
+      before the run, and exits non-zero on a stimulus failure or residue.
+    - **N-7.** Any CARLA client except `moshi-hook` blocks the run, including connections without a `users:`
+      field. The advancing-synchronous branch of DLG-11a is noted as normally unreachable, because preflight
+      blocks a connected tick owner; it is kept as a safety net.
+    - **N-8.**
+      - The log label is corrected to `wall_epoch_ns`.
+      - `restored` also compares `fixedDeltaSeconds`.
+      - Registry entries must carry the `xverse-lite-` role prefix.
+      - The report records its own revision.
+      - The README tick range is corrected to 0.07–0.7 s per tick.
+
+    Every case is re-run from the new commits (item 21).
