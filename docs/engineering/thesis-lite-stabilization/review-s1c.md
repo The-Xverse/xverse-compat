@@ -1091,3 +1091,34 @@ engineering stabilization candidate: not M1, not AEB evidence.
         unit's ready latency (ready-file mtime minus challenge mtime) in `maestro-run.json`. Re-measure before the
         soak.
       - L4: assert that each started unit has `stderr-g1` of at most its declared maximum.
+45. **Part 2 re-verification on blueprints `66e745b`, platform stack `b049585bf` (dev venv s1stack-b; runs 00:41–00:52,
+    CARLA instance 17; written at 00:53:35 2026-10-24, before any repair).**
+    - **Evidence.** `runs/lite-stabilization-s1/s1c2-part2-dev2-20261024` (`SHA256SUMS`). The identities now record
+      the dev venv's wheel, `2efbd893` (M1 repaired).
+
+      | Run | Result | Load |
+      | --- | --- | --- |
+      | nominal | PASS; ready latency 0.29–1.31 s (adapter 1.311 s); all units `exited-on-term` | 6.5 |
+      | long-run | PASS; latency 0.35–0.42 s | 7.9 |
+      | freeze-vcu | **FAIL** | 8.4 |
+      | cancel-paused | **FAIL** | 8.7 |
+
+    - **freeze-vcu: lite-driver readiness failed at start-up.**
+      - Probe attempts came at 3.41 s and 5.04 s. The third attempt (planned at about 6.66 s) was dropped because the
+        outer start deadline cut the window. No ready file was written, giving `ML-PROBE-NOT-READY`.
+      - Then `persistenceFailure: ML-PERSIST-CHILD` (validation, at 5.92 s), with the broker cancel revoked
+        (`issuer_dead`) and the closure `ML-CLOSURE-WORKLOAD-WAIT-UNKNOWN`.
+      - The 3.5 s window of finding 44 appears to push the start step past the authority's lease. That is the
+        expired-lease residual declared in S1a-5 (platform S1b finding 18, LOW-2), which is now reachable.
+      - The driver's readiness at load 8.4 took more than 1.6 s, against 0.3–0.5 s at load 6.
+    - **cancel-paused: closure lost at the cancel.**
+      - `persistenceFailure: ML-PERSIST-CLOSED`, kind `schedule`, stage `validation` (before any send), at the exact
+        cancel time (15.484 s).
+      - The broker cancel was confirmed natively, but no terminal events follow tick 116.
+      - `cleanupComplete` false, native facts unattested, closure `ML-CLOSURE-WORKLOAD-WAIT-UNKNOWN`.
+      - Earlier cancel runs (load 5.8–7.3) closed cleanly. A plain `PersistenceError` refusal at validation means
+        the client was already `_failed`, so a before-send cancel race (S1a-1 territory) may still fail storage under
+        load.
+    - **Host clean.** No residue, no vehicles, the world restored.
+    - **Both failures go to a platform diagnosis before any repair:** (A) readiness against the start deadline and
+      the lease under load; (B) the persistence state at a cancel.
