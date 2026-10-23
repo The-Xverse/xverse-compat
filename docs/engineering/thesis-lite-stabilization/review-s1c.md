@@ -474,3 +474,62 @@ engineering stabilization candidate: not M1, not AEB evidence.
       - The flow root stays `open` because the driver is killed. That is outside P4.
     - **Consequence.** With `fed431e`, a recurrence of the race makes cancel-paused fail visibly. VS-09 and
       the S1d P3 criterion therefore depend on the platform diagnosis.
+22. **Independent review 7, of S1c-2a at blueprints `fed431e` (2026-10-23 about 18:00): PASS, no HIGH, with 2 MEDIUM
+    and 6 LOW. Recorded before any repair.**
+    - **MEDIUM-1.** The freeze's lower margin is not analysed.
+      - In freeze-vcu `171706` the freeze applied at 4.893 s, and the throttle segment started at 4.81 s
+        (`stimulus.jsonl`): an 83 ms margin.
+      - Across the other CARLA runs, tick 40 minus the throttle start is +0.70 to +0.89 s. A fast start, like
+        no-carla `173434` (first tick 1.54 s, start cycle 1.0 s), would put the freeze in the idle second.
+      - The case would still pass, because freeze-vcu asserts only success and markers.
+    - **MEDIUM-2.** The P3 Argus conditions are evaluated under an interpretation that is not recorded.
+      - In every cancel run the flow root (`driver/argus-flows`) is open, with 0 events and CORRUPT and
+        MUTATED reasons: the driver unit is SIGKILLed.
+      - DR-2 forbids the WRITER-STATE reason, but a `failed` writer always produces it. Findings 20 and 21
+        call it "as DR-2 allows".
+      - Read literally, every passing cancel run fails P3. An explicit reading needs an author decision.
+    - **LOW-1.** `cancellerAliveAfterJoin` is recorded but not asserted. A late `cancelReturnedMonotonicNs`
+      can then exist only in memory.
+    - **LOW-2.** The harness encodes only part of P3 and P4. It does not assert:
+      - Maestro-root CORRUPT or MUTATED reasons;
+      - the guard;
+      - residue;
+      - that the no-carla writer is `failed`.
+
+      `README.md` overstates this as "as P3 requires". No cancel, nominal or freeze run was made at
+      `fed431e`, and the finding-21 replay is not recorded as evidence.
+    - **LOW-3.** The new runs fall outside the comment's ranges: the first tick came at 1.54–2.82 s and the
+      start cycle took 0.995–2.14 s.
+    - **LOW-4.** `SHA256SUMS` excludes `maestro-tmp/`, which holds the raw Maestro Argus roots, `m3.jsonl` and
+      the markers.
+    - **LOW-5.** Some claims are stronger than the evidence supports.
+      - "Host clean" for `172145` covers only the 4 unit command lines, not the Maestro helpers or the
+        persistence worker.
+      - The 1-in-7 rate pools 3 revisions and 2 paths. On `f19ae58` alone it is 1 in 5.
+      - Platform finding 18 cites `xverse-argus verify` output for runs `164544` and `170215`, which have
+        only manifests.
+      - "S1a acceptance evidence is unaffected" is not supported.
+    - **LOW-6.** Timestamps.
+      - Finding 20 (17:23:48) refers to platform finding 18, which was committed at 17:35:04.
+      - Platform finding 18 is headed 17:22, but it holds analysis and runs from 17:26–17:33.
+      - The erratum file says 17:20; its mtime is 17:15.
+    - **Platform (review analysis, recorded as platform finding 19).** The code supports a native kill chain:
+      a cancel that collides with a health QUERY on the authority connection is revoked (SIGKILL of the
+      authority), and the bootstrap root then kills the persistence worker. Only `172145`'s cancel fell
+      inside a health scan. This is a hypothesis, not proven.
+    - **Repair plan (blueprints).**
+      - MEDIUM-1: move the freeze to tick 60, about +1.1 to +1.9 s into the throttle at the floor. freeze-vcu
+        records the overlap of the freeze with the throttle (from the Argus fault events and
+        `stimulus.jsonl`) and fails unless it is positive.
+      - MEDIUM-2: propose DR-6 to the author (see the thesis record). The harness checks the Maestro root
+        with `xverse-argus verify` for every case:
+        - nominal and freeze-vcu: closed and complete;
+        - cancel-paused and no-carla: writer `failed` or `closed`, and no reason other than WRITER-STATE.
+      - LOW-1: assert that `cancellerAliveAfterJoin` is absent.
+      - LOW-2: narrow the README wording to what the harness asserts. The guard, residue and full P1–P8
+        audit stay with S1-T15a. Verification runs of every case on the repaired head follow.
+      - LOW-3: correct the comment ranges.
+      - LOW-4: include `maestro-tmp/` in `SHA256SUMS`.
+      - LOW-5 and LOW-6: these items are the errata. The scope of "host clean" is the 4 unit command lines.
+        The rate is 1 of 5 on `f19ae58` and 1 of 7 pooled. Runs `164544` and `170215` are manifest-only.
+        The S1a statement is withdrawn. The timestamps are as listed above.
