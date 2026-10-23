@@ -402,3 +402,21 @@ The work is an engineering integration only: not AEB validation, not a scientifi
         - (b) a legacy process that needed TERM (exit 143) counts as failed;
         - (c) the baseline exit code is inferred from `baseline-status.txt` and is not written to a file;
         - (d) a traceback appears when the server hangs (it still fails closed).
+28. **Author acceptance (2026-10-23 about 07:39 WEST).** The author wrote "I accept accept Phase 7". This is
+    recorded as AD-01 of the thesis Phase 8 plan (`specs/002-assured-aeb/decisions.md`): the Phase 7 contract
+    is accepted, including D7-5 (the D6-11 assembled-system flow verification is carried to Phase 8) and D7-6
+    (the README deviations are accepted for the baseline).
+    - **Accepted content.** The code is this candidate at `f6d4a3b`, with documentation-only commits after it.
+      The blueprints code is `xverse-blueprints` `320a284`, with the documentation-only `8805ec5` after it. The
+      evidence is the item 26 final set.
+    - **Pre-merge check (about 07:41, load about 3.5, GPU idle).** The suite on `9542f25` gave 197 passed and
+      39 subtests, run against `/dev/shm/compat-p6-venv`, whose installed platform wheel equals main
+      `8b3d8c8e8`. The commits after `f6d4a3b` change only this log.
+    - **Carried, not repaired.** These are disclosed LOW follow-ups for a successor change:
+      - T-2, T-3 and T-5 (a)–(d) from item 27;
+      - the platform findings, which are outside this repository: Maestro persistence append latency grows
+        with stream length (live finding 03, run horizon about 80 ticks), post-cancel closure and the Argus
+        manifest are incomplete, readiness is checked by liveness only, and units are stopped by SIGKILL.
+    - **Unchanged.** Execution remains non-M1 (DLG-7) and `executionAuthority` stays absent. Command echo is
+      not evidence of braking, and `brakeStatus` and `wheelSpeedEscStatus` stay blocked (G2). Lane
+      activation, M1 admission, factory runs and scientific claims stay closed.
