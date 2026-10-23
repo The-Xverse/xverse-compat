@@ -319,3 +319,30 @@ engineering stabilization candidate: not M1, not AEB evidence.
       - the finding-15 assertions kept;
       - the per-tick timing recorded in `maestro-run.json`.
       - FR-018's long-run case (S-D1, 600 ticks) and its episode and stimulus extension stay in S1c-2.
+17. **Development runs 2–4 on blueprints `1de5dc2` (2026-10-23 16:39–16:46, load 5.8–7.9, CARLA instance 10;
+    recorded before any repair).** All runs use compat main `25e4e1f` and platform main `b28a2aacf`.
+    - **nominal** (`dev-s1c2a-…-nominal`): succeeded with all markers. 401 ticks, mean cycle 0.061 s, last
+      tick at 26.8 s.
+    - **cancel-paused** (`dev-s1c2a-…-cancel-paused`): meets P3 as revised by DR-2.
+      - `ML-SCHEDULE-CANCELLED`, with the cancel 6.0 s after the pause seen and the run ending 1.4 s later.
+      - Writer open → failed (abort completed), reader `ARGUS2-MISSING-ARTIFACT` only (the uncollected
+        markers), no CORRUPT, MUTATED or WRITER-STATE reason, persistence failure null.
+      - `cleanupComplete` true. The 4 native units are issued, retired and reaped, so DR-3 needs no
+        RunClosure STOP/RETIRE.
+      - The guard held the ego to standstill and destroyed the 3 owned actors, with none remaining. No
+        residue.
+    - **freeze-vcu** (`dev-s1c2a-…-freeze-vcu`): failed with `ML-SCHEDULE-SERVICE-DEADLINE` at the thaw tick
+      140.
+      - The VCU's last health success was at 5.20 s and the freeze applied at 6.64 s. Health scans ran about
+        every 1.6 s; the frozen VCU is not probed.
+      - The thaw came at 10.85 s, after the VCU's 5 s freshness had lapsed (10.20 s). The tick-140 step was
+        refused before dispatch.
+      - Phase 7's 20-tick freeze stayed inside that window. The 80-tick (4.2 s) freeze of finding 16 does not.
+    - **Defect.** The finding-16 freeze length ignores the constraint that a freeze plus the time since the
+      unit's last health success must stay under its 5 s freshness. The scan interval is up to about 1.6 s, so
+      a freeze must last ≤ about 3 s.
+    - **Repair.** `FREEZE_TICKS = 40`: about 2.4 s at the measured mean, and about 3.2 s at a 0.08 s cycle.
+      The freeze stays at tick 60.
+    - **Observation for the platform (not repaired here).** A thaw after the frozen unit's freshness has
+      lapsed ends the run as a service deadline, not as a health failure of that unit. This is recorded for
+      the S1b and Phase 8 fault planning.
