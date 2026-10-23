@@ -667,3 +667,15 @@ engineering stabilization candidate: not M1, not AEB evidence.
         (S1a-2 finding 24).
     - **Order.** Each part is reviewed independently before any soak run. The soak itself (S1-T16) waits for
       the accepted mains of S1a-2, S1b and S1c-2.
+29. **The platform content lock drifted after the S1a merge (written at 19:43:16 2026-10-23, before the re-pin).**
+    - `platform-api.lock.json` pins platform `8b3d8c8e8` (surface `2696645d…`, 26 files). Its roots are
+      `pyproject.toml`, `src/xverse_xdl`, `xdl/profiles` and `xdl/schemas`.
+    - S1a changed `src/xverse_xdl/lifecycle.py` (`FileEvidenceJournal._reload`, the verified-prefix cache). So
+      `test_provider_conformance.py::test_platform_dependency_source_matches_content_lock` fails against platform
+      main `b28a2aacf`. That is true for compat main `bb07492` too, since the S1a merge.
+    - The S1c-1 and S1c-2a suites passed because they ran before platform main moved.
+    - Log a: `verification-20261023-s1c2-a.log` (1 failed, 208 passed) is the state before the re-pin. It also
+      includes the new long-run stimulus test.
+    - **Repair, as in Phase 6 (`c2557ed`).** Re-pin the lock to `b28a2aacf` and rebuild the admission record
+      with `scripts/admit_phase4.py`, against a suite log taken after the re-pin. The review fields stay pending
+      until S1c-2's own review and acceptance.

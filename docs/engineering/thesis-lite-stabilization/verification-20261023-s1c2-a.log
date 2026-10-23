@@ -1,0 +1,47 @@
+........................................................................ [ 34%]
+..................................................................................................F......... [ 86%]
+............................                                          [100%]
+=================================== FAILURES ===================================
+_ ProviderConformanceTests.test_platform_dependency_source_matches_content_lock _
+
+self = <tests.test_provider_conformance.ProviderConformanceTests testMethod=test_platform_dependency_source_matches_content_lock>
+
+    def test_platform_dependency_source_matches_content_lock(self) -> None:
+        """Prove the mutable local source exactly matches the reviewed content pin."""
+    
+        manifest_path = ROOT / "platform-api.lock.json"
+        source_root = ROOT.parent / "xverse-platform"
+>       manifest = verify_platform_pin(manifest_path, source_root)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_provider_conformance.py:214: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+manifest_path = PosixPath('/home/jefferson/xverse-compat-worktrees/stabilization-s1c2-20261023/platform-api.lock.json')
+source_root = PosixPath('/home/jefferson/xverse-compat-worktrees/xverse-platform')
+
+    def verify_platform_pin(manifest_path: Path, source_root: Path) -> dict[str, Any]:
+        """Verify exact package version, file set, and content against a reviewed manifest.
+    
+        @param manifest_path Public-safe JSON content-lock manifest.
+        @param source_root Root of the local platform source used by uv.
+        @return Parsed manifest after successful validation.
+        @raises PlatformPinError If the version, file count, or digest differs.
+        """
+    
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        pyproject = (source_root / "pyproject.toml").read_text(encoding="utf-8")
+        expected_version = f'version = "{manifest["packageVersion"]}"'
+        if expected_version not in pyproject:
+            raise PlatformPinError("platform package version differs from the reviewed pin")
+        file_count, digest = platform_tree_digest(source_root)
+        if file_count != manifest["fileCount"]:
+            raise PlatformPinError("platform package file set differs from the reviewed pin")
+        if digest != manifest["treeSha256"]:
+>           raise PlatformPinError("platform package content differs from the reviewed pin")
+E           xverse_compat.platform_pin.PlatformPinError: platform package content differs from the reviewed pin
+
+src/xverse_compat/platform_pin.py:63: PlatformPinError
+=========================== short test summary info ============================
+FAILED tests/test_provider_conformance.py::ProviderConformanceTests::test_platform_dependency_source_matches_content_lock
+1 failed, 207 passed, 39 subtests passed in 13.97s
