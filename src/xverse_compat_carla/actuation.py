@@ -19,10 +19,11 @@ from .descriptors import SensorDescriptors
 class CommandTracker:
     """Validate, apply and acknowledge brake commands."""
 
-    def __init__(self, d: SensorDescriptors) -> None:
-        """Create the tracker."""
+    def __init__(self, d: SensorDescriptors, protocol: int = 1) -> None:
+        """Create the tracker; protocol 2 commands also carry ``throttle`` (Phase 7 successor, carla-items/2)."""
 
         self._d = d
+        self._protocol = protocol
         self._seen: set[str] = set()
         self._pending: list[dict] = []
         self._open: list[dict] = []
@@ -37,8 +38,14 @@ class CommandTracker:
             raise CarlaRefusal(COMMAND, "brake outside [0, 1]")
         if type(frames) is not int or not 1 <= frames <= self._d.deadline_frames:
             raise CarlaRefusal(COMMAND, "deadlineFrames outside [1, descriptor]")
+        entry = {"commandId": cid, "brake": float(brake), "deadlineFrames": frames}
+        if self._protocol == 2:
+            throttle = command.get("throttle")
+            if type(throttle) not in (int, float) or not math.isfinite(throttle) or not 0 <= throttle <= 1:
+                raise CarlaRefusal(COMMAND, "throttle outside [0, 1]")
+            entry["throttle"] = float(throttle)
         self._seen.add(cid)
-        self._pending.append({"commandId": cid, "brake": float(brake), "deadlineFrames": frames})
+        self._pending.append(entry)
 
     def take_pending(self) -> list[dict]:
         """Return and clear the commands to apply at this tick."""

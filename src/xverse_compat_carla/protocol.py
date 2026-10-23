@@ -23,6 +23,10 @@ from .settings import check_settings
 from .timeconv import seconds_to_ns
 
 PROTOCOL_ID = "xverse-compat.carla-items/1"
+#: Protocol 2 (Phase 7 successor): protocol 1 plus a required ``throttle`` command member; used with the
+#: Unix-socket transport because Maestro gives units ``/dev/null`` standard streams.
+PROTOCOL_IDS = {1: PROTOCOL_ID, 2: "xverse-compat.carla-items/2"}
+COMMAND_MEMBERS = {1: {"type", "commandId", "brake", "deadlineFrames"}, 2: {"type", "commandId", "brake", "throttle", "deadlineFrames"}}
 MAX_LINE = 65536
 FLOWS = ("camera", "radar-adas", "radar-vc", "vehicle-motion")
 FORBIDDEN = ("xverse_compat", "xverse_xdl")
@@ -63,7 +67,7 @@ class StrictLines:
             yield line
 
 
-def parse_inbound(line: str) -> dict:
+def parse_inbound(line: str, protocol: int = 1) -> dict:
     """Validate one platform -> adapter line (rules 1, 4)."""
 
     if len(line.rstrip("\n").encode("utf-8")) > MAX_LINE:  # the terminator is not counted (review 3 nit)
@@ -74,7 +78,7 @@ def parse_inbound(line: str) -> dict:
         raise ProtocolViolation(f"inbound line is not JSON: {error}") from error
     if not isinstance(message, dict) or message.get("type") not in ("start", "tick", "command", "stop"):
         raise UnknownInbound("unknown inbound message type")
-    if message["type"] == "command" and set(message) != {"type", "commandId", "brake", "deadlineFrames"}:
+    if message["type"] == "command" and set(message) != COMMAND_MEMBERS[protocol]:
         raise UnknownInbound("command members differ from the schema")
     if message["type"] in ("start", "tick", "stop") and set(message) != {"type"}:
         raise UnknownInbound(f"{message['type']} carries extra members")
@@ -136,12 +140,12 @@ def _frame_items(fd, d, builder: ItemBuilder, out: _Out) -> float | None:
     return accel
 
 
-def run(source, descriptors, stdin, stdout, stderr, *, carla_version=None, ground_truth=None) -> int:
+def run(source, descriptors, stdin, stdout, stderr, *, carla_version=None, ground_truth=None, protocol=1) -> int:
     """Serve the protocol until stop/EOF; return the exit code (0, 2 or 3)."""
 
     out = _Out(stdout)
     builder = ItemBuilder(FLOWS)
-    tracker = CommandTracker(descriptors)
+    tracker = CommandTracker(descriptors, protocol)
     try:
         exporter = GroundTruthExporter(ground_truth) if ground_truth else None
     except OSError as error:  # review 2 L-b: an unwritable export path ends the run before any protocol
@@ -157,7 +161,7 @@ def run(source, descriptors, stdin, stdout, stderr, *, carla_version=None, groun
         return code
 
     try:
-        out.send({"type": "hello", "protocol": PROTOCOL_ID, "carlaVersion": carla_version,
+        out.send({"type": "hello", "protocol": PROTOCOL_IDS[protocol], "carlaVersion": carla_version,
                   "python": ".".join(str(v) for v in sys.version_info[:3]), "source": "live" if carla_version else "fake",
                   "flows": list(FLOWS)})
         try:
@@ -173,14 +177,14 @@ def run(source, descriptors, stdin, stdout, stderr, *, carla_version=None, groun
         if not first:
             return done(0)
         try:
-            is_start = parse_inbound(first)["type"] == "start"
+            is_start = parse_inbound(first, protocol)["type"] == "start"
         except UnknownInbound:
             is_start = False
         if not is_start:
             raise ProtocolViolation("first inbound message must be start")
         for line in stdin:
             try:
-                message = parse_inbound(line)
+                message = parse_inbound(line, protocol)
                 if message["type"] == "start":  # only the handshake may carry start (review M1)
                     raise UnknownInbound("start after the handshake")
             except UnknownInbound as error:

@@ -22,6 +22,7 @@ from typing import Any
 
 MAX_LINE = 65536
 PROTOCOL_ID = "xverse-compat.carla-items/1"
+PROTOCOL_ID_2 = "xverse-compat.carla-items/2"  # Phase 7 successor: Unix-socket transport, throttle commands
 SRC = Path(__file__).resolve().parents[1]
 STATUS = ("running", "ticked", "draining", "done")
 FLOWS = ("camera", "radar-adas", "radar-vc", "vehicle-motion")
@@ -69,7 +70,7 @@ def _value_ok(flow: str, value) -> bool:
     return False
 
 
-def parse_outbound(line: str, flows: tuple[str, ...] = FLOWS) -> dict:
+def parse_outbound(line: str, flows: tuple[str, ...] = FLOWS, protocol_id: str = PROTOCOL_ID) -> dict:
     """Validate one adapter -> platform line (contract rules 1-3; ground truth is not a type).
 
     @param flows The flows announced in ``hello``; an item or refusal of any other flow is a violation.
@@ -83,7 +84,7 @@ def parse_outbound(line: str, flows: tuple[str, ...] = FLOWS) -> dict:
         raise CarlaProtocolError(f"outbound line is not JSON: {error}") from error
     kind = message.get("type") if isinstance(message, dict) else None
     if kind == "hello":
-        ok = (set(message) == {"type", "protocol", "carlaVersion", "python", "source", "flows"} and message["protocol"] == PROTOCOL_ID
+        ok = (set(message) == {"type", "protocol", "carlaVersion", "python", "source", "flows"} and message["protocol"] == protocol_id
               and message["flows"] == list(FLOWS) and message["python"] == PYTHON
               and ((message["source"] == "fake" and message["carlaVersion"] is None)
                    or (message["source"] == "live" and message["carlaVersion"] == CARLA_VERSION)))
@@ -152,6 +153,7 @@ class CarlaAdapterProcess:
         self._lines: queue.Queue = queue.Queue()
         self._awaiting = False
         self._last_tick_frame: int | None = None
+        self.protocol_id = PROTOCOL_ID
 
     def start(self) -> dict:
         """Launch the child, read ``hello``, answer ``start``; return the hello."""
@@ -191,7 +193,7 @@ class CarlaAdapterProcess:
         if line is None:
             return None
         try:
-            return parse_outbound(line.rstrip("\n"), tuple(self.hello["flows"]) if self.hello else FLOWS)
+            return parse_outbound(line.rstrip("\n"), tuple(self.hello["flows"]) if self.hello else FLOWS, self.protocol_id)
         except CarlaProtocolError:
             self.kill()
             raise
@@ -293,3 +295,98 @@ class CarlaAdapterProcess:
         if self._proc is not None and self._proc.poll() is None:
             self._proc.kill()
             self._proc.wait(timeout=5)
+
+
+class SocketAdapterLink(CarlaAdapterProcess):
+    """Platform side of ``carla-items/2`` over a Unix socket (Phase 7 successor, DLG-8).
+
+    Maestro launches the adapter as its own unit with ``/dev/null`` standard streams, so the adapter
+    connects to this listener instead. Validation, pacing, ordering and the violation rules are those of
+    ``CarlaAdapterProcess``; on a violation the link is closed (the adapter process belongs to Maestro,
+    so it is not killed here; the adapter ends on end-of-file and restores the world).
+    """
+
+    def __init__(self, socket_path: str | os.PathLike, descriptors: str | os.PathLike, *, timeout_s: float | None = None) -> None:
+        """Bind and listen on ``socket_path`` (mode 0600; a stale socket file is replaced)."""
+
+        import socket  # noqa: PLC0415
+
+        if timeout_s is None:
+            timeout_s = json.loads(Path(descriptors).read_text(encoding="utf-8"))["sensorWaitMs"] / 1000.0 + 5.0
+        self.argv = []
+        self.timeout_s = timeout_s
+        self.hello = None
+        self.stderr = deque(maxlen=1)
+        self._proc = None
+        self._lines = queue.Queue()
+        self._awaiting = False
+        self._last_tick_frame = None
+        self.protocol_id = PROTOCOL_ID_2
+        self.path = Path(socket_path)
+        if self.path.is_socket():
+            self.path.unlink()
+        self._listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        previous = os.umask(0o177)  # the socket is created 0600, with no window of wider access (review 1 R-16)
+        try:
+            self._listener.bind(str(self.path))
+        finally:
+            os.umask(previous)
+        self._listener.listen(1)
+        self._conn = None
+        self._writer = None
+
+    def start(self, accept_timeout_s: float = 30.0) -> dict:
+        """Accept the adapter's connection, read ``hello``, answer ``start``; return the hello."""
+
+        self._listener.settimeout(accept_timeout_s)
+        try:
+            self._conn, _ = self._listener.accept()
+        except OSError as error:
+            raise CarlaProtocolError(f"adapter did not connect: {error}") from error
+        self._conn.settimeout(None)
+        self._writer = self._conn.makefile("w", encoding="utf-8", newline="\n")
+        threading.Thread(target=self._pump, args=(self._conn.makefile("r", encoding="utf-8", newline="\n"), self._lines), daemon=True).start()
+        self.hello = self._read()
+        if self.hello is None or self.hello.get("type") != "hello":
+            self.kill()
+            raise CarlaProtocolError("first message is not hello")
+        self._send({"type": "start"})
+        return self.hello
+
+    def _send(self, message: dict) -> None:
+        try:
+            self._writer.write(json.dumps(message, separators=(",", ":")) + "\n")
+            self._writer.flush()
+        except (BrokenPipeError, ConnectionResetError, ValueError):
+            pass  # the adapter already ended; its last messages are still readable
+
+    def command(self, command_id: str, brake: float, deadline_frames: int, throttle: float = 0.0) -> None:
+        """Send a throttle/brake command (applied at the next tick)."""
+
+        self._send({"type": "command", "commandId": command_id, "brake": brake, "throttle": throttle, "deadlineFrames": deadline_frames})
+
+    def stop(self) -> tuple[None, TickResult]:
+        """Send ``stop`` and collect the acks and ``done``; the adapter then closes the connection."""
+
+        self._send({"type": "stop"})
+        result = self._collect(TickResult(), ("done",))
+        self.kill()
+        return None, result
+
+    def wait(self) -> None:
+        """No owned process: the adapter is a Maestro unit."""
+
+    def kill(self) -> None:
+        """Close the connection and the listener (the adapter sees end-of-file)."""
+
+        for closer in (self._writer, self._conn, self._listener):
+            try:
+                if closer is not None:
+                    closer.close()
+            except OSError:
+                pass
+        try:
+            if self.path.is_socket():
+                self.path.unlink()
+        except OSError:
+            pass
