@@ -786,3 +786,31 @@ engineering stabilization candidate: not M1, not AEB evidence.
       - Finding 33: the runs were 20:42:41–20:44:07. "Passed at load 6.3" is not supported by the audit: no
         long-run has an audit PASS under the final tooling.
       - The thesis S-D9 record: the bench measured 445 and 507 ms at 600 ticks.
+35. **The finding-34 repairs (blueprints commit after `b1c43b0`; written at 20:57:17 2026-10-23).**
+    - **H1.** The P8 guard window is taken by frame: from the first frame after the un-pause to the last frame that
+      still shows the ego. Replay: `173336` now passes.
+    - **H2.** P6 adds `noPersistenceFailure` and reads `persistenceFailure` and `closureDiagnostics`. A terminal
+      call at 0.98 × 2 s or more fails. Replay: the finding-32 run `203658` now fails P6 on the timeout.
+    - **M1 and M2.** `Soak._restart` and `_carla_run` handle every INVALID run, including those in repeats.
+      - Each one counts as a server failure and restarts the server.
+      - A failed restart counts again and is retried. More than 3 server failures stop the soak.
+      - Every server event is recorded in the manifest.
+      - A repeat at the end of a block that passes at a load above 10 is queued as an observation.
+    - **M3.** A failed after-cleanup health check with `synchronousMode: true` is a restore failure: FAIL, not
+      INVALID.
+    - **M4.** A run passes only if the audit passes and the harness also exited 0.
+    - **LOW items.**
+      - The report gives the P8 path counts per case, the flow-root states (DR-6 c) and the server events.
+      - `--dispersion` uses passing runs only, with the throttle time summed from the driver ticks.
+      - The realizations are written in the runner's docstring and proposed as thesis DR-11 and DR-12.
+      - `audit.py` runs from the pinned blueprints checkout. The runner must equal the pinned copy, and the
+        driver-venv wheels are hashed into the pins.
+      - `XVERSE_PLATFORM_SRC` is removed from the child environment.
+      - The health check's timeout is caught.
+      - The comment now reads 1.3 MB.
+    - **New `soak/test_run_soak_logic.py`** (offline fakes, no CARLA): 5 passed. It covers the predeclared counts,
+      a stop on the first failure, an INVALID repeat at the end of its block, a stop after more than 3 server
+      failures, and a failed restart counted as a server failure.
+    - **Replay of `audit.py`** over the 31 recorded runs: the only rejections are the known failures and the runs
+      without `argus-verify.txt`.
+    - **Errata of finding 34** apply to findings 31–33 as listed there.
