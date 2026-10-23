@@ -1065,3 +1065,29 @@ engineering stabilization candidate: not M1, not AEB evidence.
     - **Proposed (thesis DR-14, flagged for the author).** P4 accepts `ML-PROBE-NOT-READY` or `ML-RUN-CHILD-EXIT` as
       the start-failure diagnostic. Everything else in P4 is unchanged: cleanup complete, the writer `failed` with
       WRITER-STATE only, and no residue. The harness assertion and `audit.py` follow.
+44. **Independent review of S1c-2 part 2 (compat `b6ffa93`..`1354d4c`, blueprints `c53dbc9` and `eb64781`; written at
+    23:58:59 2026-10-23): PASS, 3 MEDIUM and 5 LOW. Recorded before the repairs.**
+    - **M1.** `run-live.sh` hashes the pinned wheels even when `XVERSE_LIVE_DRIVER_VENV` names a dev venv. The
+      finding 42 and 43 `identities.txt` therefore name the right venv path but the wrong wheel hashes: `6ff39689`
+      was recorded, while `d0fed3d1` (s1stack) and `2efbd893` (s1stack-b) ran. The soak is unaffected.
+    - **M2.** The evidence seal of `s1c2-part2-dev-20261023` is broken. `runs.txt` was appended (runs `234951` and
+      `234959`) after `SHA256SUMS` was written, and finding 43 names no evidence manifest.
+    - **M3 (O2).** The 2 s owned readiness window is thin, and the variance is not explained by load. The adapter
+      needed its last attempt only in the lowest-load run.
+    - **LOW items, accepted with notes.**
+      - **L1.** `exited-on-term` also counts a default-action death after TERM, so a clean handler exit is shown only
+        offline. Accepted: the markers catch a protocol-time death.
+      - **L2.** The driver ignores TERM during `accept` (up to 12 s). No scheduled path reaches this, since failure
+        stops are forced (DR-7). Accepted.
+      - **L3.** The adapter has no TERM handler before its protocol ends. The guard cleans up, and FR-021 holds.
+        Accepted.
+      - **L4.** Nothing is asserted on the private stderr records. Repaired.
+      - **L5.** The DR-13 and DR-14 headings carry impossible times. Corrected.
+    - **Repair plan.**
+      - M1: hash the wheels next to the venv in use.
+      - M2: `runs.txt` grew only by appending, so its sealed prefix is checked. A second manifest,
+        `SHA256SUMS-finding43`, covers the two later runs and the current `runs.txt`, and is referenced here.
+      - M3: owned readiness window 3.5 s (attempts at 0, 1.625 and 3.25 s), within the 5 s cap. Record each owned
+        unit's ready latency (ready-file mtime minus challenge mtime) in `maestro-run.json`. Re-measure before the
+        soak.
+      - L4: assert that each started unit has `stderr-g1` of at most its declared maximum.
