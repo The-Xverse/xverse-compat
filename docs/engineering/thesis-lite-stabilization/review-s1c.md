@@ -371,3 +371,58 @@ engineering stabilization candidate: not M1, not AEB evidence.
     - **Observation for the S1b and Phase 8 fault planning (not repaired here).** The admissible freeze length
       is bounded by about `cadence − health_scan_seconds −` (the time since the last success). A longer freeze
       fails the run as a service deadline, not as a unit health failure.
+19. **Independent review 6, of S1c-2a at blueprints `0d69bd7` (2026-10-23 about 17:15): PASS with 3 MEDIUM and
+    6 LOW. Recorded before any repair.**
+    - **Verified evidence on `0d69bd7`** (all dirty=0, `SHA256SUMS` verifies):
+      - freeze-vcu `165447` and nominal `165835`: P1, writer closed and complete;
+      - cancel-paused `170215`: P3 (with DR-2);
+      - no-carla `170253`: P4.
+    - **Verified root causes.** The review confirmed findings 16–18 against the code: the cycle floor, the
+      thaw bound of cadence − `health_scan_seconds` = 3.48 s, and the 1.58 s scan spacing. The measured
+      retained sizes are ≤ 0.96 MB against the 4 MiB declaration.
+    - **MEDIUM-1.** freeze-vcu and no-carla still pass silently: only nominal and cancel-paused are asserted.
+      Development runs `164220` and `165012` exited 0 with `ML-SCHEDULE-SERVICE-DEADLINE`. This is the class of
+      finding 15(b), left unrepaired for those two cases.
+    - **MEDIUM-2.** The freeze margin is thin.
+      - The worst-case thaw interval is about 1.58 s + one cycle + 20 cycles, which must stay ≤ 3.48 s minus a
+        round trip. It fails at a mean cycle above about 0.09 s, and there is no post-S1a cycle data above
+        load 7.9.
+      - At about 0.078 s per cycle, tick 60 falls after the throttle segment ends (about 8.7 s after start).
+      - The host load is not in the run evidence.
+      - The horizon's upper bound is about 0.12 s per cycle, not 0.13 s.
+    - **MEDIUM-3.** The observe step at tick 200 falls inside the cancel window (about 14.0–14.4 s after start
+      at the floor). The two S1c-2a cancel runs cancelled observe; Phase 7 completed it. The case's path is
+      therefore not deterministic.
+    - **LOW-1 (erratum to finding 15 and `VS09-RESULT.md`).**
+      - The 13.22 s is `monotonicEndNs`, which includes the old canceller's 5 s join. The 80-tick schedule's
+        last tick was at 7.44 s, 0.25 s after the pause (7.20 s), not 6.02 s after it.
+      - In Phase 7 `075253` the cancel came at tick 59 of 80: that race was won by 2 s or more, not about
+        60 ms.
+    - **LOW-2 (errata to findings 16–18, the comments and the README).**
+      - Tick 80 of the nominal run on the mains was at 8.58 s; 9.15 s is its last event.
+      - Cycle spikes reach 0.57 s.
+      - Tick 0 comes 1.49–2.69 s after start.
+      - The freeze lands 4.4–4.7 s after tick 0 (the tick-0 start cycle is 1.3–1.7 s).
+      - The README states the 3.48 s thaw bound as a fact rather than as a bound.
+    - **LOW-3.** The cancel assertion compares against `monotonicEndNs`, which is taken after the join, not when
+      `entry.start` returned. `cancelNotIssued` is set by the join timeout even when the cancel was issued.
+      Thread writes made after `maestro-run.json` is written are lost from the file.
+    - **LOW-4.** `tickTiming` includes the tick-0 start cycle in `maxCycleS` and `meanCycleS`.
+    - **LOW-5.** This log does not record the verifying runs on `0d69bd7`, and no `xverse-argus verify` output
+      is recorded for P1.
+    - **LOW-6.** Findings 17 and 18 were committed only 27 ms and 115 ms before their repairs. The commit order
+      is met, but the repairs were already written. From this finding on, the finding is committed before
+      the repair is written.
+    - **Repair plan (S1c-2a, blueprints only).**
+      - MEDIUM-1: assert freeze-vcu as nominal, and no-carla as `ML-RUN-CHILD-EXIT` with cleanup complete.
+      - MEDIUM-2: a freeze of 10 ticks at tick 40, giving a worst-case thaw interval ≤ 3.48 s up to a mean
+        cycle of about 0.17 s, with the freeze start inside the throttle segment up to about 0.1 s per cycle.
+        The 1/5/15-minute load at start and end is recorded in `maestro-run.json`, and the horizon comment
+        is corrected.
+      - MEDIUM-3: observe at tick 60, before the cancel up to about 0.15 s per cycle. cancel-paused asserts that
+        every observe step completed.
+      - LOW-3: record `startReturnedMonotonicNs` before `run_ended` is set. Assert the cancel against it. Set
+        `cancelNotIssued` only when no cancel was requested.
+      - LOW-4: report the start cycle separately from the steady-state mean and maximum.
+      - LOW-1, LOW-2 and LOW-5: errata in this log, the comments and the README. The re-verification
+        runs and `xverse-argus verify` output are recorded in the next finding.
