@@ -367,3 +367,20 @@ The work is an engineering integration only: not AEB validation, not a scientifi
       - the baseline verifies the leftover destroy by listing the world again;
       - its exit status includes the virtual-vehicle, VCU and observer exit codes, any vehicles remaining
         after the run, the stimulus outcome and residue.
+26. **Re-run after the M-2 to M-5 repairs (2026-10-23 04:06–04:13). The final evidence set replaces item 23.**
+    - **First attempt, invalid:** CARLA server instance 6 hung. It was listening on 2000, but every client
+      timed out after 15 s, at 0% CPU (`carla-server-6/HUNG.txt`). The baseline `…040604` was correctly
+      reported FAILED (legacy vehicle exit 137, no clock), and the Lite preflights `…040739`, `…040750` and
+      `…040801` correctly BLOCKED ("cannot read the world settings"). All four are INVALID because the
+      external dependency failed. The instance was replaced by instance 7.
+    - **Final set:** blueprints `320a284`, compat `f6d4a3b`, clean trees, all on instance 7.
+
+    | Run | Result |
+    | --- | --- |
+    | `baseline-…041014` | normalized the ownerless synchronous start-up state with **2 apply attempts**, the review-log 21 case now handled; the world listed again after normalization has no vehicles; exit 0 with full status (stimulus ok, virtual vehicle 0, VCU 0, observer 0, no vehicles left, no residue); peak 23.74 km/h at actuated throttle 0.5 for 3.48 s |
+    | `lite-…041029-nominal` | Maestro succeeded; `markersOk`; peak 28.82 km/h at 0.6 for 3.45–3.5 s |
+    | `lite-…041108-freeze-vcu` | Maestro succeeded; commanded throttle shortened to 2.05 s by the freeze; peak 18.67 km/h |
+    | `lite-…041146-cancel-paused` | `ML-SCHEDULE-CANCELLED`; guard held ego 35 by ID before un-pausing, destroyed 3 owned actors, restored with 1 attempt |
+    | `lite-…041222-no-carla` | `ML-RUN-CHILD-EXIT`; cleanup complete |
+
+    `report-final` and `run-index.json` (69 runs) are regenerated. End state: CARLA stopped; `zenohd` running.
