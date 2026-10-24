@@ -127,3 +127,40 @@ bit-exact tests (blueprints `docs/review-wp13-imageops-np.md`).
      4. The script duplicates the WP-09 #3 script body. A shared helper would remove the duplication, but would touch
         two reviewed scripts, so it is not done here.
    - **Status.** Candidate only. The independent review, acceptance and the merge are pending.
+
+3. **Independent read-only review by Codex (2026-10-24), PASS WITH NOTES.**
+   - **Input.** Candidate `efd5b6a9330b1b32bf4acaf91b60e0885a107c4d` (product `b395644`), the entire change from
+     `34b514d`, the WP-13 design §5, the decided "U2/U3 numpy" and "WP-09 #3 unit isolation" rows, and findings 1–2.
+     No product repair was made. The NumPy port is a separate blueprints increment; its acceptance does not substitute
+     for this environment review.
+   - **Lock and install:** the sole requirement is byte-identical to the U4 numpy 2.5.4 line and uses the same SHA-256.
+     The script admits exactly one matching wheel per requirement and installs only the lock under `--no-index
+     --require-hashes --no-deps --no-compile`, into a venv created without pip. The other files in the reused U4
+     wheelhouse are provenance inventory, not extra install requirements.
+   - **Isolation and provenance:** the import uses the real CPython 3.13.13 with `-S -s -B`, an explicit site path,
+     bytecode disabled, and fixed NumPy thread settings. The network refusal precedes creation/import. Freeze runs
+     before the bytecode check. The identity schema records lock/wheels, interpreter and runtime library, the
+     environment trees, installing pip and base `.pth` hooks, with those host hooks explicitly outside unit imports.
+     `--record-only` does not install or rebuild the existing venv.
+   - **Checks performed independently now:** `bash -n tools/sensor/make-sensor-env.sh`, Python AST parsing of
+     `tests/sensor/test_sensor_env.py`, and `git diff --check`; all pass. Exercised the script's early network refusal
+     on this host using `--record-only` and deliberately nonexistent environment/wheel paths: **exit 6** with the
+     expected refusal diagnostic and **no record created**. This did not reach a NumPy import or touch a venv.
+   - Read the existing `/dev/shm/xverse-aeb-sensor-20261024/identity.json` without rewriting it. Its lock hash matches
+     this candidate, and every small recorded `.pth` hash matches the current file. It records schema
+     `xverse-compat.sensor-env-record/1`, import return code 0, interfaces `["lo"]`, only `numpy==2.5.4` installed,
+     and repository revision `b39564466674b9a2ff2de1f778cc4dda38b67e62`. This is an inspection of the existing
+     identity metadata, not a new import or whole-tree rehash.
+   - **Verification explicitly deferred:** no pytest, NumPy/torch/ONNX Runtime import, full wheel/environment rehash,
+     venv build or live run was performed while the platform full regression is active. Finding 2's **5 sensor tests**,
+     **540 full-suite tests / 39 subtests**, and no-venv skips remain its recorded evidence. After assembling with
+     current compat main, run `tests/sensor` and the complete owning suite on the quiet host with
+     `XVERSE_COMPAT_SENSOR_ENV=/dev/shm/xverse-aeb-sensor-20261024`; the two environment tests must execute and recheck
+     their tree/import evidence, rather than silently skip. The separate NumPy-port equivalence probe must continue
+     using this exact NumPy pin.
+   - **Carried:** finding 2 residuals 1–4, especially the unbuilt durable loop10 environment, its distinct identity at
+     that build path, and the U2/U3 command/evidence selection. The unit-entry increment must declare its thread
+     settings consistently with this verification environment; no per-frame D-4c budget is inferred.
+   - No issue requiring a source repair was found. This finding is **not acceptance, a merge, a push, approval to
+     build the loop10 cache now, a unit-launch result or a scientific claim**. The next step is the coordinator's
+     acceptance/assembly decision, followed by the deferred assembled-suite verification when the host is available.
