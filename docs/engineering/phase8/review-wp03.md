@@ -424,3 +424,16 @@ verified offline only: not M1, not AEB evidence, live behaviour unverified (E8-3
      - LOW-A goes to the thesis side: commit `decisions.md`, cross-reference AD-38, ED-15 and FR-030 to
        the amendment, and correct the "resumes" wording.
      - LOW-B is informational.
+
+## 7. Acceptance (written at 11:12:13 2026-10-24)
+
+- **Accepted** under the author's delegation of 2026-10-24 (thesis `specs/002-assured-aeb/decisions.md` §G and
+  §H, the AD-38 amendment and the AD-38 latch-scope rows). It is flagged for the author's review.
+- **Basis:** findings 3 and 6, both PASS WITH NOTES with no blocker. The compat suite gives 359 passed and 39
+  subtests. Verification is offline only; the live check is D-1 under E8-3a.
+- **MEDIUM-A (finding 6), decided.** The latch has no minimum request size or duration. An unneeded activation is
+  classified by WP-17 and AD-14, and the remainder of such a run is scored as fixed by AD-27.
+- **LOW-A, resolved thesis-side:** FR-030, AD-38 and ED-15 are cross-referenced, and the amendment row's wording is
+  corrected.
+- **LOW-B is carried to D-1:** report the count of stale ticks.
+- **Merged** into compat main and pushed (see the merge commit).
