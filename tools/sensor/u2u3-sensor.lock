@@ -1,0 +1,5 @@
+# U2/U3 sensor venv lock (Phase 8 WP-13 #4; docs/engineering/phase8/review-wp13-sensor-venv.md). CPython 3.13 manylinux x86_64.
+# The numpy line is byte-identical to tools/inference/u4-inference.lock (a test asserts it); the wheel is the one already
+# in the U4 wheelhouse (no new download).
+# Installed with: pip --python <venv> install --no-index --find-links <wheeldir> --require-hashes --no-deps --no-compile -r u2u3-sensor.lock
+numpy==2.5.4 --hash=sha256:6ffa07666f8da0eef81d149934a626d0d95fbd6838432a33e66245423a9062c0
