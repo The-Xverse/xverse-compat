@@ -1204,3 +1204,28 @@ engineering stabilization candidate: not M1, not AEB evidence.
         26 files). Log d: 244 passed. The admission record was rebuilt against log d, and a rerun gave 244 passed.
       - The soak's pinned environment `xverse-lite-live-20261022` was rebuilt from `ee91697a4` (wheel
         `a54844d3…`). The `b28a2aacf` copies are kept as `*-b28a2aacf`; nothing was deleted.
+49. **Freeze placement confirmed; a unit stalled in an fsync on loop10 (blueprints `5f3e3ba`, the pinned environment
+    rebuilt from platform main `ee91697a4`, no overrides; CARLA instance 21; runs 04:33–05:0x; written at
+    04:51:11 2026-10-24, before any change).**
+    - **Evidence.** `runs/lite-stabilization-s1/s1c2-part2-dev5-20261024`.
+    - **Results.**
+      - freeze-vcu PASS three times. The freeze lies inside the throttle segment, with start margins of 0.95–1.22 s
+        and end margins of 1.78–2.05 s (finding 48's prediction: at least 0.94 and 0.96 s).
+      - Cold nominal PASS, with the adapter ready at 1.681 s on its third attempt. Warm nominal PASS, and long-run
+        PASS.
+    - **cancel-paused FAIL at start-up: `ML-PROBE-NOT-READY` for lite-driver,** the first unit, over an uncut
+      1.95 s window. The failure was fail-closed and clean: `cleanupComplete` true and reap codes 0.
+      - The broker cancel reported `ML-RUN-FREEZE-UNRESOLVED` (14 of 15 frozen). The driver was forced to stop.
+      - **Cause.** The driver's challenge was created at 04:42:53.699 and its Argus run at
+        `<run>/driver/argus-flows` at 04:42:54.119. There it left `manifest.json.tmp-1` and never renamed it.
+        The driver was stalled in the manifest write and `fsync` on the loop10 disk (97% full, a loop-mounted
+        image), before `announce_ready`.
+      - A task in an uninterruptible fsync cannot be frozen, so the platform correctly reported the freeze as
+        unresolved and then forced the cleanup.
+      - This is the H2 stall named in platform finding 22. Maestro's own tree is already on tmpfs
+        (`--basetemp`), but the units' run directory (`XVERSE_LIVE_RUN_DIR`) is on loop10. The rate is 1 in 7
+        runs here, and a 140-run soak would stop on it.
+    - **Proposed repair (H2).** `run-live.sh` stages the units' run directory on tmpfs
+      (`/dev/shm/xverse-lite-run-<run>`). `cleanup()` copies it into the loop10 evidence directory (`cp -a`, the
+      stage removed only after a successful copy). The copy comes after the residue listing and before the restore
+      guard, which reads the copied owned-actor registry. The evidence still ends on loop10.
