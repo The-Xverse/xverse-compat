@@ -1528,3 +1528,19 @@ engineering stabilization candidate: not M1, not AEB evidence.
         - The cold-start adapter latencies recorded so far are 1.31, 1.36, >1.45, 1.74, 1.68, >1.70 and 1.28 s.
         - At 1.7 s (last attempt at 1.45 s), about half of the S1d warm-ups are therefore expected to fail cleanly
           and be excused. This is not a regression.
+55. **Re-pin to platform main `a9db0ac39` (S1a-6, DR-20 merged and pushed; written at 06:53:44 2026-10-24).**
+    - **Platform.** S1a-6 was reviewed in platform finding 32 (PASS WITH NOTES), with its LOW items applied in
+      finding 33.
+      - Decisive run `platform-regression-20261024g-1`: 2945 passed and 1 skipped (the usual lane-admission skip),
+        maximum load 6.69. DV12 accepted (code `69118482`). CAPA step 15 is `6be1a184` (56 records and 749
+        bindings, with step 14 preserved).
+      - Merged as platform main `a9db0ac39`, whose tree is identical to the candidate, and pushed.
+    - **The pinned environment** `xverse-lite-live-20261022` was rebuilt from `a9db0ac39` (wheel `cea5ced4…`).
+      The `ee91697a4` copies are kept as `*-ee91697a4`. The test venv `/dev/shm/compat-p6-venv` has the same
+      wheel.
+    - **The lock is unchanged in content.** The pinned platform-API surface (`pyproject.toml`, `src/xverse_xdl`,
+      `xdl/profiles`, `xdl/schemas`) is the same `ce779e57…`, because S1a-6 changed only
+      `src/xverse/maestro/coverage.py`. Only `platformRevision` moved, to `a9db0ac39`.
+    - **Logs e and f** both gave 244 passed. My first admission call passed log e with the counts of a pre-re-pin
+      run (243 and 1), in error. The record was rebuilt at once against log f (244 passed, 0 failed, with the
+      command actually run), and that is the committed record. A rerun gave 244 passed.
