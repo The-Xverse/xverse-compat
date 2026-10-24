@@ -100,3 +100,87 @@ faults, live behaviour unverified (E8-3a, D-4c).
      - the contract from the `5f71cde` form.
    - **Out of scope.** Faults and the relay (increment #4, after platform option (A)); the U2 unit entry point and
      the Maestro wiring (increment #5); the role units (WP-13, WP-14).
+2. **Implementation of finding 1 (2026-10-24 12:19:18).**
+   - **Change.**
+     - `src/xverse_compat/live/hub_topology.py` (new): `SCHEMA`, `from_system_document` and `validate`.
+     - `src/xverse_compat/live/hub.py` (new): `HubSchedule`, `UnitLinks`, `Hub`, `HubResult`, `HubInvalidRun`
+       and `HubProtocolError`.
+     - `tests/live/fixtures/wp10-topology-mloc-5f71cde.json`: a byte-identical copy of blueprints `5f71cde`
+       `automotive/assured-aeb/xdl/mloc/topology/system.json`, SHA-256
+       `f982be829441aab0c9f621e9119cbb4929928f3606d39850570f2eca0bab07af`.
+     - No existing module changed; `live/loop.py`, `live/driver.py` and `live/frames.py` are untouched.
+   - **Contract from the real form (MLOC arm).**
+     - 20 hub-relevant flows (18 `flows` plus the `returnFlows` F04 and F15b; intra-unit messages excluded),
+       with hub unit `vehicle-loop-unit` and adapter unit `carla-adapter-unit`.
+     - Delay points `{F04, F14, F15b, F17}`, one step each, as the WP-12 carry-forward row states.
+     - Adapter-link flows F01 to F04; every other flow is hub-routed.
+   - **Implementation notes, refining finding 1.**
+     - The start-up deadline is checked **after** a step's delivery rounds, so an F17 delivered in the deadline
+       step counts.
+     - A producer that **disconnects** gets its lost verdicts and an `invalid` record, and the run continues, so
+       the degraded path still receives `lost`. A **missed wait bound** raises `HubInvalidRun`, as designed.
+     - F04's one-step delay is the adapter link's own semantics: the command decided after step `k` is sent with
+       the tick request for `k+1` (compat review-wp03 R-5). The hub therefore does not schedule F04, and its
+       `hubDelaySteps` is carried in the contract for the record.
+     - Determinism has two sources: the round's outputs are collected in unit-id order, and each round's
+       deliveries are sorted by `(flow, source unit, sequence)`.
+   - **Tests.** `tests/live/test_phase8_hub.py`: 40 tests, offline. Fake units are threads speaking
+     `hub-units/1` over real Unix sockets.
+     - Contract: the `5f71cde` form pins the four delay points and the adapter-link set; four inconsistent forms
+       are refused.
+     - Schedule:
+       - rounding (`deliverAtNs` at `T_0`, `T_0+20 ms` and `T_0+60 ms` delivered at steps 0, 1 and 2 with
+         a 50 ms step);
+       - the delay points (a delayed flow at step 1; F17 at `T_0+20 ms` plus its delay at step 2);
+       - five refused stamps (future origin, deliver before origin, wrong unit, unknown flow, bool sequence) and a
+         repeated sequence.
+     - Hub:
+       - **determinism**: identical delivery logs with units answering in two different seeded jitter orders;
+       - same-step rounds and the one-step delay points;
+       - **the real topology**: with fake units for front-zone, adas-hpc, vc-functional and vc-assurance, every
+         hub flow's first delivery is at step 0, except F14, F15b and F17 at step 1;
+       - **late binding**: ticks without a frame give no step; the origin is the first frame's time; every unit
+         receives `origin` before its first round; a different second origin is refused;
+       - **lost verdicts**: after a producer disconnects, the local F17 consumer gets `mark_lost` once, the remote
+         consumer receives `lost`, and the run is recorded invalid;
+       - **start-up deadline**: no F17 gives one lost verdict at the deadline step, and an F17 in time is not lost;
+       - required parameters: the F17 deadline (4 cases) and the three bounds (12 cases) have no default; a flow to
+         the hub unit without a local consumer is refused;
+       - the wait bound: a silent unit raises `HubInvalidRun`, and the frame receiver is still closed; it is also
+         closed on success;
+       - the bounded `hold`.
+     - End to end: the pinned 3.10 adapter on the fake `nominal` source with `--frames`, through
+       `SocketAdapterLink` and the WP-06 `FrameReceiver`. 4 steps, every frame `verified`, the local camera
+       consumer bound once to the origin 10 000 000 000 ns, and the receiver's socket removed by `close()`.
+     - The file was run 5 times with no failure.
+   - **Mutation checks (not committed; restored).** Each fails tests:
+     - no hub delay: 3;
+     - no `deliverAtNs` rounding: 1;
+     - no deadline check: 1;
+     - no `FrameReceiver.close`: 3;
+     - no `origin` sent to units: 1.
+   - **Suite.** 459 passed, 39 subtests (base `95e9e7a`: 419).
+   - **Residuals.**
+     - R-1. The hub delay is **additive** to the rounded AD-30 delivery point. Its relation to the AD-30
+       declaration is `TODO: author decision (AD-30)`.
+     - R-2. Flow verification and evidence are not yet applied to hub flows. They have only producer-sequence
+       monotonicity and the delivery log. The Phase 6 `FlowReceiver` and `FlowEvidence` (Argus) for hub flows,
+       and for the adapter flows that `LiteVehicleLoop` verifies today (K-12), are for increment #5 and WP-13.
+       Lost verdicts come only from a disconnect, a protocol error or the start-up deadline, not from receiver
+       gap verdicts.
+     - R-3. No frozen set exists in this increment, so any missed wait bound is an invalid run. Increment #4 adds
+       the declared frozen units and the handshake, using `hold`.
+     - R-4. Values (`TODO`):
+       - the wait bound and hold bound: D-4c;
+       - the F17 start-up deadline: AD-07 and WP-13, in simulation time;
+       - the frame wait: D-4c.
+     - R-5. U2's own elements are passed as local consumers and producers. A producer runs once per step after
+       the adapter items, and U2's intra-unit messages (the driver profile, the motion-sensor model) are wired by
+       the U2 entry point (increment #5).
+     - R-6. The unit transport relies on mode 0600 and the expected unit list; peer credentials are not checked.
+       The 65 536-byte line limit means that payloads must be digests or small records.
+     - R-7. Only the MLOC form is checked in. The comparator and ablation forms use the same derivation and have
+       other unit sets; their fixtures come with increment #5.
+     - R-8. Live behaviour, the D-4c bounds and the integration with Maestro are unverified (increment #5,
+       E8-3a).
+   - **Status.** Candidate for independent review. Not accepted, not merged, not pushed.
