@@ -293,3 +293,20 @@ faults, live behaviour unverified (E8-3a, D-4c).
      - **Proposed additions:**
        - **R-9.** Unbounded unit writes and `end` on close (M1); to repair before increment #4.
        - **R-10.** The rule for deliveries on a flow already lost (M2).
+4. **Disposition of finding 3 (2026-10-24 15:15:51; decided by the coordinator under the author's delegation of
+   2026-10-24, flagged for the author's review). Recorded before repair.**
+   - **M1, repair.** Bound every hub-to-unit send with a timeout. In `UnitLinks.close()`, shut the socket down
+     before sending `end`, or send `end` non-blocking with a bound, so that the close is bounded. Add a test with a
+     unit that never reads: it cannot block `send` or `close` beyond the bound.
+   - **M2, repair to the new rule.** `decisions.md` "Lost-flow rule" (15:15, under the delegation): a lost flow is a
+     barrier. The hub discards every pending message on it, records the discarded messages as evidence, never
+     delivers after the verdict, and the flow stays lost for the rest of the run. Test the queued-ahead F17 case.
+   - **LOWs.**
+     - L1: a round-cap and chaining test.
+     - L2: make the adapter-link ownership explicit, with a test or corrected wording.
+     - L3: type-check the `messages` field.
+     - L4: add the outgoing 64 KiB line check.
+     - L5: make the step-boundary source explicit, and refuse or flag a missing vehicle-motion item.
+     - L6: cite the "Hub delay semantics" row in R-1.
+     - L7: close the frame receiver and the listener even if `run()` is never called.
+   - **Residuals.** Add R-9 (M1) and R-10 (M2).
