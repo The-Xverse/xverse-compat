@@ -157,3 +157,106 @@ verified offline only: not M1, not AEB evidence, live behaviour unverified (E8-3
        in U2 that ends the run.
      - R-8. Spawn-at-speed (AD-38 C, GA-33) is not implemented; finding 1 lists its needs.
    - **Status.** Candidate for independent review. Not accepted, not merged, not pushed.
+3. **Independent review of findings 1 and 2 (2026-10-24 11:05:54).**
+   - **Reviewer and method.** An independent reviewer who did not write the code.
+     - Read `c8c418c` and `7ab8fc4` against base `372e6b7`, and `live/loop.py` 54–148 and
+       `live/driver.py` 37–58 at the base.
+     - Checked them against thesis FR-030, AD-38 (decision text and `review/decision-proposals-20261024.md`
+       option B), ED-15 (`decisions.md` 107), §H, §J and `design/wp11-unit-allocation.md` E-5 and U2.
+     - Ran the offline suite and three behaviour probes on the module under the venv's CPython 3.13.13.
+       U2 is a CPython 3.13 unit (§J).
+     - The worktree was not changed except for this entry.
+   - **Verdict: PASS WITH NOTES. Nothing blocks the merge.** The module has no caller yet: wiring is B-1
+     to B-4, under WP-12. MEDIUM-1 and MEDIUM-2 should be repaired or decided before that wiring, and
+     MEDIUM-3 before any run in which an AEB release can occur before the horizon ends. The merge still
+     awaits the author's acceptance.
+   - **Evidence.**
+     - Suite: 356 passed, 39 subtests.
+     - Phase 7 is unchanged: `git diff --quiet 372e6b7 -- src/xverse_compat/live/driver.py
+       src/xverse_compat/live/stimulus.py src/xverse_compat/live/loop.py src/xverse_compat_carla`
+       succeeds. The candidate changes only the new module, its test and this log.
+     - PI law (driver_profile.py 66–88).
+       - `dt` comes from successive `sim_s` only, and a decreasing or non-finite time is refused.
+       - The output is clamped to `[0, throttleMax]`.
+       - Conditional integration: a step is kept only if the unclamped output stays in band, and the
+         integrator is reset on every forced tick.
+       - This is a sound, bounded anti-windup: the integrator cannot grow while saturated, and the clamp
+         bounds the output regardless.
+     - Parameters (39–55). The record has exactly five members, with the schema checked. Values must be
+       finite, not bools, with `targetSpeedMps > 0`, `kp > 0`, `ki ≥ 0` and `0 < throttleMax ≤ 1`, and
+       there is no default. Eighteen refusal cases pass.
+     - Arbitration (99–112, 128–142).
+       - The command's brake is only ever the request or the held request; the driver contributes 0.
+       - There is no steering member, and the adapter holds steer at 0 (K-3).
+       - The module only returns the one command that `LiteVehicleLoop` sends (`loop.py` 94–96), so the
+         adapter stays the single writer.
+     - Determinism. The module imports only `dataclasses`, `hashlib`, `json`, `math` and `typing`. The
+       state is the integrator, the previous `sim_s`, the held brake and a counter, so equal inputs give
+       equal outputs, and the host-clock patch test pins this.
+     - R-5 is accurate. `loop.py` 94 decides with the previous frame's `sim_s` and motion, and 115 then
+       advances `sim_s`. The first two decisions are both at 0.0, with `dt` 0, and a tick with no items
+       repeats the decision time.
+   - **Issues (none blocks the merge).**
+     - **MEDIUM-1: a stale motion item is treated as a valid speed.**
+       - Where: driver_profile.py 91–96 and 132; `loop.py` 105–106, 115 and 123–124.
+       - `LiteVehicleLoop` keeps the last motion item while later ticks carry none. The adapter omits
+         motion on a stale snapshot (`sources.py` 222). `sim_s` still advances from the other items'
+         `originNs`.
+       - The driver therefore keeps integrating on a frozen speed. Probe: speed frozen at 2.0 m/s for
+         5 s of simulation time gave throttle `throttleMax` (0.8) throughout, while the real vehicle
+         would accelerate. A frozen speed just below the target winds the integrator up to the same
+         output.
+       - The "no motion means throttle 0" rule (finding 1) covers only the time before the first item.
+       - An AEB request still overrides it, so this is a scenario-validity issue, not an AEB-safety one.
+       - Proposed fix: give zero throttle and no integration when the item's `originNs` has not advanced
+         while `sim_s` has. Equivalently, pass the loop's `vehicle-motion` receiver verdict through
+         B-1. Otherwise, declare it as a residual with D-1 detection.
+     - **MEDIUM-2: an out-of-range brake request gives no braking, which differs from Phase 7.**
+       - Where: driver_profile.py 107–109 and 130.
+       - Phase 7 `VcuCommands` (`driver.py` 56) clamps a fresh brake into [0, 1]. This module refuses any
+         value outside [0, 1] and holds the last valid brake.
+       - Probe: a valid 0.0 followed by 1.0000001 (a float-rounding overshoot) and then 1.2 commanded
+         `(0, 0)` both times. The AEB asked for full braking, and the vehicle coasted.
+       - Throttle 0 is safe, but a request above 1 is still an unambiguous request to brake. Refusing it
+         is not the safe direction for the brake channel, and it is not "the rule of the Phase 7 stale
+         path" (R-3), which concerns staleness, not range.
+       - Proposed fix: treat finite values above 1 as 1.0 with a recorded `requestClamped`, as Phase 7
+         does, and keep NaN, infinities, bools and negatives invalid. Otherwise, declare in R-3 that
+         WP-04's contract guarantees [0, 1] and that a violation fails D-1, not just a counter.
+     - **MEDIUM-3: R-4 is honest but understates the release behaviour.**
+       - Where: driver_profile.py 78–79 and 87; finding 2, R-4.
+       - Because the integrator is reset at release, the first tick after release is the P term alone.
+         After an AEB stop the error equals the target speed.
+       - Probe: release from standstill gave throttle `throttleMax` (0.8) on the next tick. The driver
+         re-accelerates at full authority toward the stationary target (WP-02).
+       - FR-030 and AD-38 B ("inattentive driver") permit this, but the paired outcome (FR-037: collision
+         or not, minimum gap) then depends on behaviour after the release.
+       - R-4 should state the immediate `throttleMax` re-acceleration, and it should gate the latch or
+         end-at-standstill decision (AD-25 horizon, AD-14 outcome window, AD-27) before any evaluation
+         run in which a release can precede the horizon end. That decision cannot wait until after the
+         runs.
+     - **LOW-1: the meta does not show that an invalid request is holding a brake.**
+       - Where: driver_profile.py 133 and 138–141.
+       - An invalid request that holds a non-zero brake records `aebActive: false` with `brake > 0`.
+         The reason `invalid-request` explains it, but D-1 latency tooling that keys on `aebActive` would
+         miss held braking.
+       - Optional: add `brakeHeld: true`.
+     - **LOW-2: the digest depends on how numbers are written in the record.**
+       - Where: driver_profile.py 54.
+       - `8` and `8.0` give different digests for the same parameters. That is acceptable for
+         identifying a record, but it needs stating once WP-17 binds the digest to the AD-27 record.
+     - **LOW-3: B-3 does not say what the request source returns with no AEB output.**
+       - A source that returns `None` before the WP-04 node's first message makes every tick invalid, so
+         the throttle stays 0 and the approach never starts. That is fail-closed, but it would read as a
+         driver failure.
+       - Add to B-3 that the source returns 0.0 when no request is active and `None` only for a stale or
+         lost source. B-1 should also carry the motion freshness of MEDIUM-1.
+   - **Wiring B-1 to B-4.** Complete for the module, with the LOW-3 and MEDIUM-1 additions. B-4 correctly
+     leaves the Phase 7 harness, its `units.py` and the soak untouched.
+   - **Residuals R-1 to R-8.** R-1, R-2, R-5, R-6, R-7 and R-8 are accurate. R-3 needs MEDIUM-2's range
+     point, and R-4 needs MEDIUM-3. Missing: the stale-motion behaviour of MEDIUM-1.
+   - **Recommendation.**
+     - Merge after the author's acceptance, recording MEDIUM-1 to MEDIUM-3 in a disposition.
+     - MEDIUM-1 and MEDIUM-2 are small code repairs on this branch and are best done before B-1.
+     - MEDIUM-3 is a thesis-side decision (AD-25, AD-14, AD-27) before evaluation runs.
+     - LOW-1 to LOW-3 are optional.
