@@ -1705,3 +1705,174 @@ engineering stabilization candidate: not M1, not AEB evidence.
         stop rather than as INVALID. This is safe, but the cause is attributed in the finding instead.
       - LOW-4: the guard does not run after a BLOCKED preflight or in baseline runs. Those runs are already FAIL,
         and their consoles carry the reason.
+60. **Soak attempt 2 stopped by the operator; the runner has no SIGTERM handler (written at 08:37:36
+    2026-10-24, before the change).**
+    - **Attempt 2.** It started at 08:10 from compat `f0f31f9`, blueprints `9b21d5b` and platform `a9db0ac39`.
+      - The 3 gap no-carla runs PASS.
+      - Server 1 was healthy, with `tickProbe: skipped-synchronous`, so the DR-21 repair held live. Its warm-up
+        PASS, in `warmup-20261024T081607-nominal` (adapter 1.285 s).
+      - The first round then waited about 15 minutes at the load gate (load 6.7–7.2, from idle CARLA plus other host
+        processes).
+      - At the author's request ("I want you to run the soak overnight") the operator stopped it at about 08:36.
+        It is kept as `runs/lite-stabilization-s1/s1d-soak-20261024-attempt2` (`SHA256SUMS`,
+        `STOPPED-BY-OPERATOR.txt`). This is not a criterion failure.
+    - **Defect (LOW).** `run_soak.py` installs no SIGTERM handler. Python's default TERM action ended the process
+      without running `execute()`'s `finally` block, so the CARLA server stayed up and the manifest still says
+      `running`. The operator stopped the server and recorded it.
+    - **Repair.** A SIGTERM or SIGINT handler raises `SystemExit`, so the `finally` block stops the server. The
+      manifest records `stopped` with `operator signal`. This gets a test.
+    - **Next.** The soak restarts from zero at 00:00 on 2026-10-25, the author's choice, from clean worktrees of the
+      repaired mains.
+61. **Independent review of the operator-signal repair (blueprints `cb67e4e`, branch
+    `candidate/lite-stabilization-s1d2-20261024`; S1c finding 60; written at 08:44:44 2026-10-24).**
+    - **Verdict: PASS WITH NOTES.** The repair is correct for the case it was written for: a SIGTERM or SIGINT
+      sent to the runner's PID. The flag-only handler never interrupts a run, every `OperatorStop` path ends with
+      a `stopped` manifest and a stopped server, and a pending signal never turns into a criterion failure on its
+      own. There are two MEDIUM issues. A signal sent to the whole process group can still be misattributed, and
+      the stop can wait through a full server start. Neither blocks the overnight soak if the stop procedure below
+      is declared. The test proves less than its docstring says.
+    - **Checked.**
+      - **The run in progress is not interrupted.**
+        - The handler (`run_soak.py:435-436`) only sets `_signal`.
+        - Under PEP 475, the `waitpid` and `communicate` of `subprocess.run(["timeout", "900", …])` (`:331`) are
+          retried after the handler returns.
+        - GNU `timeout` (coreutils 8.32 on this host) moves itself and `run-live.sh`/`run-baseline.sh` into their
+          own process group (no `--foreground`), so a group-delivered SIGINT or SIGTERM does not reach the script.
+        - Probe (scratchpad, a session of its own; `killpg` while `subprocess.run` waits): the `timeout`-wrapped
+          child finished with rc 0 and full stdout, and the handler flag was set.
+        - Raising `SystemExit` from the handler, as finding 60's "Repair" proposed, would have been wrong.
+          `subprocess.run` SIGKILLs its child on an exception. That child is `timeout`, which then cannot forward
+          anything, so `run-live.sh` would be orphaned mid-run. The flag is the better design. Record it as the
+          disposition of finding 60.
+      - **Where the flag is acted on.** At the start of `_wait_load` and every 15 s inside it (`:306`, `:308`;
+        `time.sleep` resumes after the handler), and at the start of `run_one` (`:314`), before `_check_pins`.
+        - The warm-up calls `_wait_load` (`:376`) before `_warming = True`, and the `finally` at `:380-381`
+          resets the tag. A stop never leaves `_warming` set.
+      - **Server stopped.** Every `OperatorStop` propagates to `execute()` (`:444-445`). From a gap, from a round,
+        from a block-end repeat, from an observation repeat, and from `_warm_up` inside `_start` or inside a nested
+        `_restart`, nothing between the raise and `execute()` catches it.
+        - The `finally` (`:446-448`) stops the server in the current slot whenever `carla_pids()` is non-empty.
+        - `start_server` is never interrupted, so there is no window in which a server was spawned but is not yet
+          visible to `carla_pids()`.
+      - **Manifest.** `_stop` (`:295-298`) appends the stop entry and saves `stopped` with
+        `operator signal SIGTERM|SIGINT (stopped between runs; finding 60)`.
+        - When the stop comes from inside `_restart`, the server failure and `serverEvent` already recorded remain.
+          This is accurate.
+      - **Precedence.** If a run in progress returns FAIL, or a warm-up raises `CriterionStop`, while a signal is
+        pending, the criterion stop wins (`:476-478`, `:442-443`). The run did fail, so this is correct.
+        - The DR-11 and server-failure-limit stops likewise win when `_restart` returns `None`.
+      - **Tests.** The given command gives 41 passed (80.8 s).
+        - Scratchpad mutations against the new test:
+          - Killed: removing both `_wait_load` checks, and dropping the `stopped` save.
+          - Survived: removing the `run_one` check (`:314`), and removing the handler restore (`:449-450`). See
+            LOW-1.
+    - **MEDIUM-1 (`run_soak.py:105-112`, `:160`, `:212-223`, `:227`, `:290`, `:345-347`). A signal delivered to the
+      runner's process group kills its unshielded children, so an operator stop can be misattributed.**
+      - Only the run script is behind `timeout`'s own process group. `audit.py`, `health_check.py`, `git`, `ps`,
+        `ss` and `nvidia-smi` run in the runner's group.
+      - Ctrl-C in a foreground terminal, `kill -INT|-TERM -<pgid>`, or a cgroup-wide stop therefore kills them.
+        The probe confirms this: a plain `subprocess.run` child got rc -2 or -15 and empty stdout.
+      - Consequences:
+        - **Signal during the post-run audit.** The result is `audit produced no verdict` (`:111-112`), which
+          `classify` makes FAIL (`:127-128`). The soak then stops with "criterion failure in … (FR-020)" (`:476-478`,
+          `:461`), or with `CriterionStop` in a warm-up. **This is an operator stop misreported as a criterion
+          failure.**
+        - **Signal during the before- or after-health check.** The result is no JSON, so unhealthy, then INVALID
+          (`:125-126`). That counts a server failure and causes a needless `_restart` (`:412-413`), which includes a
+          full server start before the stop.
+        - **Signal during `_check_pins`.** `git rev-parse` dies, and the `CalledProcessError` from `_git` (`:160`)
+          is caught nowhere. The `finally` stops the server, but the manifest stays `running`, which is finding 60's
+          defect again.
+      - A cgroup-wide stop (for example `systemctl stop` or `systemd-run`'s default `KillMode`) also signals
+        `run-live.sh` and its units directly, so the run in progress *is* interrupted.
+      - **Blocks the overnight soak?** No, provided the stop procedure is declared before the restart:
+        - the soak runs detached (`setsid` or `nohup`, not a foreground terminal and not a systemd unit with a
+          cgroup kill);
+        - an operator stop is `kill -TERM <runner PID>` only.
+        - Otherwise yes.
+      - **Code fix (after the soak, or before the re-pin if the bytes change anyway).** Pass
+        `start_new_session=True` to the audit, health, `git`, `ps`, `ss` and `nvidia-smi` calls.
+    - **MEDIUM-2 (`run_soak.py:357-370`, `:391-404`, `:465`, `:493`, `:235-254`). The stop can wait through a full
+      server start.**
+      - There is no check before `_start()`, and `start_server` itself takes up to 180 + 200 + 40 s plus a 90 s health
+        check, about 510 s.
+        - A signal during the last no-carla run of a gap therefore leads to a full server start before the block's
+          warm-up `_wait_load` acts on it.
+        - A signal during a run that ends INVALID leads to a stop, a start and, if that start is unhealthy, a second
+          stop and start (`:403`).
+      - Worst case after the signal:
+        - about 21.5 min for the run in progress: 900 s run, 90 s health and 300 s audit (by design);
+        - plus about 9 min per start, or about 18 min with a failed start;
+        - roughly 40 min in all, with no output.
+      - An operator or agent that escalates to SIGKILL after a shorter wait skips the `finally`, and the server stays
+        up.
+      - Fix: `self._check_signal()` at the top of `_start()`, before `server_index += 1` (`:360`), and in `_restart`
+        before `_start()` (`:401`).
+        - Do **not** check inside `start_server` after the `Popen` (`:239`): a `CarlaUE4` that has not appeared yet
+          would escape the `finally`'s `carla_pids()`.
+      - Does not block. Declare that an operator stop may take up to about 40 min and must not be escalated to
+        SIGKILL.
+    - **LOW-1 (`test_run_soak_logic.py:257-282`). The test proves the gap-path `_wait_load` stop and the
+      `finally` stop only.**
+      - The fixture replaces `Soak.run_one` (`:52`, and again in the test), so the real check at `run_soak.py:314`
+        is never executed. Its mutation survives.
+      - The last assertion (`:282`) is vacuous: `on_signal` is callable, so it passes when the handlers are not
+        restored. The mutation survives.
+      - The signal is raised synchronously after the fake run returned. The "run in progress completes" property
+        is not exercised, and nor are SIGINT, the block path, the warm-up and the `_restart` path.
+      - The "server running" state is simulated during a gap, where no server is ever up.
+      - Suggest four test changes:
+        - assert `signal.getsignal(signal.SIGTERM) is previous`, where `previous` is captured before `execute()`;
+        - call the real `run_one` with `_signal` set and expect `OperatorStop` before `_check_pins`;
+        - raise the signal inside a fake `start_server` of block 1, and assert no warm-up or CARLA run, a stopped
+          manifest, and one `stop_server`;
+        - parametrize over SIGINT.
+      - Does not block.
+    - **LOW-2 (`run_soak.py:435-438`, `:447`). A second signal is silent.**
+      - Repeated signals only re-set the flag. This protects the stop path, including the manifest write and
+        `stop_server`, which is the right choice.
+      - However, nothing acknowledges the first signal on stderr. With MEDIUM-2's wait, an operator sees no reaction,
+        and the only forcing action left is SIGKILL, which reintroduces finding 60.
+      - A second group-delivered Ctrl-C that lands during the `ps` of `:447` makes `carla_pids()` return `[]`. The
+        server is then left up with no `stopped-at.txt`. The window is narrow, a few tens of ms.
+      - Suggest one stderr line on receipt, for example "operator signal …: stopping after the current step;
+        do not SIGKILL".
+      - Does not block.
+    - **LOW-3 (`run_soak.py:283-287`, `:513-518`). A pending signal leaves no trace when another outcome wins.**
+      - This happens when a criterion stop, a DR-11 stop or the server-failure limit wins. It also happens when the
+        signal arrives after the last run, during `summarize` or `dispersion`, where the soak still completes as
+        `complete`.
+      - Suggest an `operatorSignal` field in `_save`. Does not block.
+    - **LOW-4 (`run_soak.py:438`). SIGHUP is not handled.** Closing a terminal, tmux or screen session ends the
+      runner without the `finally`, which is finding 60's defect for HUP. Declare `nohup` or `setsid` with a
+      redirect for the launch (MEDIUM-1), or add SIGHUP to the handled set. Does not block.
+    - **LOW-5 (pre-existing; `run_soak.py:267-269`, `:446-450`). `os.kill(pid, 9)` is not guarded against
+      `ProcessLookupError`.**
+      - A server that exits between the 30 s wait and the kill raises inside the `finally`. The manifest is
+        already saved, but the remaining PIDs are not killed and the handler restore at `:449-450` is skipped.
+      - Guard the kill as at `:260-263`, and restore the handlers before `stop_server`. Does not block.
+    - **Restart.** No issue requires a code change before the 2026-10-25 00:00 restart, provided the stop procedure
+      of MEDIUM-1 and MEDIUM-2 is declared:
+      - a detached launch;
+      - `kill -TERM <runner PID>` only;
+      - wait for exit with no SIGKILL;
+      - up to about 40 min.
+      - The soak must be pinned to a blueprints commit that contains `cb67e4e`, because `runnerMatchesPinned`
+        compares the runner's bytes. Any of the code fixes above is a new commit to re-pin before the restart from
+        zero (FR-020), not after it.
+62. **Dispositions of finding 61 (written at 08:48:09 2026-10-24; blueprints, see the merge).**
+    - **Repaired.**
+      - **MEDIUM-1.** Every helper subprocess of the runner runs in its own session (`start_new_session=True`):
+        audit, health check, `git`, `ps`, `ss` and `nvidia-smi`. A process-group signal therefore reaches only
+        the runner, and `run-live.sh` is already in its own group under `timeout`.
+      - **MEDIUM-2.** `_start()` acts on a pending stop before a start, which can take about 510 s.
+      - **LOW-1.** New tests cover the real `run_one` refusing to start after a signal (no subprocess), a pending
+        SIGHUP stopping the soak before the first server start, and the restored handlers (`SIG_DFL`).
+      - **LOW-2.** A second signal is acknowledged on stderr and the stop stays graceful.
+      - **LOW-4.** SIGHUP is handled.
+      - **LOW-5.** The SIGKILL of a server that has already exited is guarded.
+      - Tests: 43 passed.
+    - **Declared.** LOW-3: a pending signal leaves no trace when another outcome wins (a FAIL, a DR-11 stop, or
+      completion). The outcome itself is recorded.
+    - **Stop procedure for the overnight soak.** `kill -TERM <runner PID>`. It may take up to about 15 minutes, for a
+      run or a start already in progress. Never send SIGKILL.
