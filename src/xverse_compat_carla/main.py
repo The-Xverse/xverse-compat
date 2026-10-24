@@ -67,7 +67,13 @@ def _main(argv) -> int:
     parser.add_argument("--carla-site", default=None, help="site-packages of the pinned carla environment")
     parser.add_argument("--linger", action="store_true", help="after the protocol ends, stay alive until stopped (Maestro unit)")
     parser.add_argument("--marker", default=None, help="write this collection marker when the protocol ends")
+    parser.add_argument("--frames", default=None, help="unix:<path> of the camera raw-frame side channel (protocol 2; WP-06)")
+    parser.add_argument("--frame-format", default=None, help="declared frame-format record (AD-02; required with --frames)")
     args = parser.parse_args(argv)
+    if (args.frames is not None or args.frame_format is not None) and (args.frames is None or args.frame_format is None):
+        parser.error("--frames and --frame-format are required together")
+    if args.frames is not None and (args.protocol != 2 or not args.frames.startswith("unix:")):
+        parser.error("--frames must be unix:<path> and requires --protocol 2")
     if (args.connect is not None or args.scenario is not None) and args.protocol != 2:
         parser.error("--connect and --scenario require --protocol 2")
     if args.connect is not None and not args.connect.startswith("unix:"):
@@ -77,6 +83,13 @@ def _main(argv) -> int:
     carla_version = None
     try:  # every construction failure exits 3 with one stderr line before any protocol (review L2, review 2 L-b)
         descriptors = load_descriptors(args.descriptors)
+        frame_format = None
+        if args.frame_format is not None:  # WP-06: declared, never defaulted; it must match the camera descriptor
+            from .frames import load_format  # noqa: PLC0415
+
+            frame_format = load_format(json.loads(open(args.frame_format, encoding="utf-8").read()))
+            if (frame_format["width"], frame_format["height"]) != (descriptors.width, descriptors.height):
+                raise ValueError("the declared frame format differs from the camera descriptor geometry")
         if args.source.startswith("fake:"):
             source = FakeSource(args.source[len("fake:"):])
         else:  # pragma: no cover - live execution is gated to Phase 7
@@ -117,6 +130,16 @@ def _main(argv) -> int:
     else:
         # strict decoding: under ``env -i`` the interpreter runs in UTF-8 mode with surrogateescape (review 2 L-a)
         stdin = StrictLines(sys.stdin.buffer)
+    publisher = None
+    if args.frames is not None:  # WP-06 side channel; after the link, before readiness
+        try:
+            from .frames import FramePublisher  # noqa: PLC0415
+
+            publisher = FramePublisher(_connect(args.frames[len("unix:"):], args.connect_timeout_s), frame_format)
+        except OSError as error:
+            _close(source, quiet=True)
+            print(f"XVERSE-COMPAT-CARLA-SOURCE: frames connect failed: {type(error).__name__}: {error}", file=sys.stderr)
+            return 3
     try:  # S1b nonce marker (a no-op without a challenge): CARLA, the owned scenario and the link are set up
         announce_ready()
     except OSError as error:
@@ -125,8 +148,10 @@ def _main(argv) -> int:
         return 3
     try:
         code = run(source, descriptors, stdin, stdout, sys.stderr, carla_version=carla_version, ground_truth=args.ground_truth,
-                   protocol=args.protocol)
+                   protocol=args.protocol, frames=publisher)
     except Exception as error:  # noqa: BLE001 - e.g. a broken stdout: one stderr line, exit 3 (review 5 N1)
+        if publisher is not None:
+            publisher.close(timeout_s=1.0)
         _close(source, quiet=True)
         print(f"XVERSE-COMPAT-CARLA-SOURCE: {type(error).__name__}: {error}", file=sys.stderr)
         _discard_stdout()
@@ -134,6 +159,8 @@ def _main(argv) -> int:
     except BaseException:
         _close(source, quiet=True)
         raise
+    if publisher is not None:
+        publisher.close()  # sends the end record (offered, sent, dropped) when the channel is healthy
     closed = _close(source, quiet=code == 2)  # always closed; exit 2 keeps its single stderr line (review 5 L1)
     return code or closed
 

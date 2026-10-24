@@ -92,3 +92,76 @@ behaviour unverified (E8-3a).
      - Unchanged: without `--frames` the hello, items and statuses are identical to a base run.
    - **Out of scope.** The corruption stage (GA-36) and the U3 self-checks (FR-034) are blueprint increments.
      The U2 entry point and loop integration belong to WP-12. Live use is under E8-3a.
+2. **Implementation of finding 1 (2026-10-24 11:48:04).**
+   - **Change.**
+     - `src/xverse_compat_carla/frames.py` (new; 3.10, standard library only): `load_format`,
+       `format_sha256`, `FramePublisher` (depth-2 queue, one writer thread, `offer` never blocks,
+       `close` sends `end`).
+     - `protocol.py`: `run(..., frames=None)` and `_frame_items(..., frames)` offer the camera frame before
+       its item is sent. `main.py`: `--frames unix:<path>` and `--frame-format <file>`, both required
+       together and only with protocol 2. The format is validated, and must equal the descriptor geometry,
+       before the protocol (exit 3). The publisher connects after the link and before readiness, and is
+       closed on the normal and exception paths.
+     - `src/xverse_compat/live/frames.py` (new; 3.13): `FrameReceiver` (`start`, `take`, `summary`,
+       `reconcile`, `close`), `FrameResult` and `FrameChannelError`.
+     - `FLOWS`, `camera_value`, the item schema and `carla_client` are unchanged.
+   - **Defects found by the new tests before commit, and repaired in this commit.**
+     - (a) **Regression, caught by `test_wp06_without_the_side_channel_the_link_is_unchanged`.** The first
+       edit of `main.py` attached the stdio `else:` branch to `if args.frames` instead of
+       `if args.connect`. Without `--frames`, protocol 2 then read standard input and ended with `done`
+       before the first tick. Repaired by placing the publisher block after the link `if/else`. The test
+       compares every link message with and without the side channel.
+     - (b) `FrameReceiver.close` did not release the connection while the reader's `makefile` still held
+       the descriptor. The adapter therefore saw no error, and counted queue-full drops instead. Repaired with
+       `shutdown(SHUT_RDWR)` and by closing the reader file.
+     - (c) A design consequence, now explicit. A frame that the adapter drops last is announced only by the
+       next frame header or by `end`, so until then its `take` times out as `missing`. `reconcile`
+       therefore checks `dropped + missing + lost == end.dropped`, with no unaccounted sequence gap (R-1).
+   - **Tests.** `tests/live/test_phase8_frames.py`: 33 tests.
+     - Format: 10 malformed or undeclared records refused on both sides; the shared protocol constants; the
+       3.10 module's standard-library imports.
+     - In process, over a real Unix socket:
+       - verified frames, with the bytes returned and absent from `record()`;
+       - a mismatch with no bytes returned;
+       - backpressure with 1.92 MB frames: 12 offers return in under 2 s, the drops are counted at the
+         adapter, every take is `verified`, `dropped` or `missing`, and `reconcile` is ok;
+       - a failed socket: an error, and `offered = sent + dropped`;
+       - a hello with another format refused; bytes of the wrong length refused;
+       - `missing` after the bound, `skipped`, and the buffer holding exactly 2 while a third frame waits;
+       - an unreported sequence gap: `lost`, and `reconcile` not ok;
+       - four protocol violations: `failed`, and `reconcile` not ok.
+     - End to end with the pinned 3.10 adapter on the fake `nominal` source:
+       - all 4 camera items verified (fill bytes 0 to 3), with `end` reporting `offered 4, sent 4, dropped 0`
+         and `forbiddenModulesLoaded` `[]`;
+       - **no pixels in evidence:** camera values have exactly the 5 K-8 members, every link message, take
+         record and reconciliation serialises below 1 KiB against a 1 920 000-byte frame, and no record holds
+         bytes;
+       - **unchanged link:** identical messages with and without `--frames`;
+       - argument refusals (exit 2); invalid and mismatching formats refused before the protocol (exit 3).
+     - The file was run 4 times with no failure.
+   - **Mutation checks (not committed; restored).**
+     - no hash comparison in `take`: 1 test fails;
+     - a blocking `put` in `offer`: the backpressure test fails (the tick path blocks);
+     - queue-full drops not counted: 2 tests fail.
+   - **Suite.** 410 passed, 39 subtests (base `855878a`: 377).
+   - **Residuals.**
+     - R-1. A frame dropped by the adapter is known to U2 only from the next header or from `end`. Under the
+       WP-12 lockstep, U2's `take` returns `missing` after its bounded wait, and the run record must treat a
+       `missing` camera frame as a camera-input event. Its effect on run validity, and the bound (D-4c), are
+       WP-12 and FR-042 items.
+     - R-2. The live path (`LiveSource` with `--frames`) is not exercised offline beyond the shared
+       `_frame_items` code: live CARLA `raw_data`, the host cost at 38 MB/s and kernel-buffer behaviour are
+       E8-3a and D-4c items.
+     - R-3. No frame-format file is shipped. AD-02 fixes the input fidelity and therefore both the camera
+       descriptor and this record; the freeze binds the format's digest. The 3.10 adapter does not resize or
+       transcode, so a model input resolution other than the sensor's is a U2 or U4 stage, outside this
+       channel.
+     - R-4. Socket paths must fit the 107-byte `sun_path` limit, as for the link (`/run/user/<uid>/…` in the
+       tests). WP-12 chooses the run-scoped path.
+     - R-5. Out of scope: the U2 entry point and loop integration (WP-12), the corruption stage (GA-36,
+       blueprint), the U3 self-checks (FR-034, blueprint), and the contract note
+       `docs/engineering/thesis-lite-phase7-live/carla-items-2.md`. That note still describes protocol 2
+       without the side channel; an amendment is proposed with the blueprint increment.
+     - R-6. The depth-2 queue and the 2-frame buffer are engineering constants based on the lockstep; they
+       are not measured.
+   - **Status.** Candidate for independent review. Not accepted, not merged, not pushed.

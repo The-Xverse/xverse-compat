@@ -105,8 +105,12 @@ class _Out:
         self._stream.flush()
 
 
-def _frame_items(fd, d, builder: ItemBuilder, out: _Out) -> float | None:
-    """Emit the items/refusals of one frame in flow order; return the forward acceleration if known."""
+def _frame_items(fd, d, builder: ItemBuilder, out: _Out, frames=None) -> float | None:
+    """Emit the items/refusals of one frame in flow order; return the forward acceleration if known.
+
+    ``frames``: an optional ``frames.FramePublisher`` (Phase 8 WP-06). The camera frame is offered on the side
+    channel before its item is sent; the item itself is unchanged.
+    """
 
     accel = None
     for flow in FLOWS:
@@ -118,6 +122,8 @@ def _frame_items(fd, d, builder: ItemBuilder, out: _Out) -> float | None:
                 frame, origin = sensor_origin(fd.camera, fd.frame, flow)
                 builder.check(flow, frame, origin)
                 value = camera_value(fd.camera, d, flow, frame)
+                if frames is not None:
+                    frames.offer(frame, bytes(fd.camera.raw_data))  # never blocks; a refused frame is counted
             elif flow.startswith("radar"):
                 if fd.radar is None:
                     continue
@@ -140,7 +146,7 @@ def _frame_items(fd, d, builder: ItemBuilder, out: _Out) -> float | None:
     return accel
 
 
-def run(source, descriptors, stdin, stdout, stderr, *, carla_version=None, ground_truth=None, protocol=1) -> int:
+def run(source, descriptors, stdin, stdout, stderr, *, carla_version=None, ground_truth=None, protocol=1, frames=None) -> int:
     """Serve the protocol until stop/EOF; return the exit code (0, 2 or 3)."""
 
     out = _Out(stdout)
@@ -222,7 +228,7 @@ def run(source, descriptors, stdin, stdout, stderr, *, carla_version=None, groun
             frame = fd.frame
             tracker.opened(commands, frame)
             try:
-                accel = _frame_items(fd, descriptors, builder, out)
+                accel = _frame_items(fd, descriptors, builder, out, frames)
                 # tick level, after the frame's flows (which stand, design §9.10): an episode reset is caught even
                 # when no flow carries the elapsed time (review 3 L3)
                 if (type(fd.elapsed_seconds) in (int, float) and math.isfinite(fd.elapsed_seconds) and fd.elapsed_seconds >= 0
