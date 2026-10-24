@@ -1561,3 +1561,147 @@ engineering stabilization candidate: not M1, not AEB evidence.
     - **S1c-2 acceptance.** S1c-2 (findings 28–56) is accepted under the author's acceptance of 2026-10-24
       (thesis `author-decisions-20261023.md`, "Author acceptance"), which names S1c-2 acceptance. It is merged into
       compat and blueprints main and pushed.
+57. **S1d soak attempt 1 stopped by the soak's own health check (written at 07:56:06 2026-10-24, before any
+    repair).**
+    - **The attempt.** It started at 07:20 WEST from the clean detached main worktrees (compat `e05d467`, blueprints
+      `aceb5ae`) on platform `a9db0ac39`, with the pinned environment.
+      - The three gap no-carla runs PASS.
+      - Server 1 then failed its initial health check, and so did the restart, server 2.
+      - DR-11 stopped the soak at 07:23 (server failures 2; both servers were killed after ignoring TERM, and
+        recorded).
+      - Evidence: `runs/lite-stabilization-s1/s1d-soak-20261024-attempt1` (`SHA256SUMS`).
+    - **Cause.**
+      - `soak/health_check.py` waits passively for a frame (`wait_for_tick(5.0)`).
+      - A freshly started CARLA server on this host is synchronous (`fixedDeltaSeconds` 0.05) with no tick owner.
+        Every recorded first run after a server start shows `world-before.json` `synchronousMode: true`, across
+        eleven sets (Phase S1c dev to dev8, and VS-09).
+      - So no frame comes, and the check times out (`RuntimeError: time-out of 5000ms …`).
+      - The live harness handles this state: the adapter owns the ticks during a run, and the restore guard
+        restores a synchronous state with no tick owner to asynchronous (DLG-11a).
+      - The soak runner's server start was never exercised live before attempt 1, and the offline tests replace
+        it with fakes.
+    - **This is a soak-tooling defect.** It is not the stack or the harness run path.
+    - **Proposed repair (thesis DR-21).**
+      - In a synchronous world the health check never ticks. It is healthy if the server answers `get_world`,
+        `get_settings`, the map, the actor listing and a non-blocking `get_snapshot`, and it records
+        `tickProbe: skipped-synchronous`.
+      - In an asynchronous world it is unchanged.
+      - `classify()`: an after-cleanup check that reports a synchronous world is a restore failure (FAIL) whether
+        or not it is healthy. This is stricter than DR-12.
+      - Tests come with a fake `carla` module. Then a live check of the start and the runs, and the soak restarts
+        from zero (FR-020).
+58. **Independent review of the S1d health-check repair (blueprints `ad14eec`, branch
+    `candidate/lite-stabilization-s1d-20261024`; thesis DR-21; written at 08:07:00 2026-10-24).**
+    - **Verdict: PASS WITH NOTES.** The code is correct and fail-closed. One MEDIUM concerns the predeclared
+      wording: `get_snapshot()` and the actor listing are not server answers in an un-ticked synchronous world.
+      No issue requires a code change before the soak restart. The text amendments below are best made before the
+      restart, because FR-019 fixes the protocol before the first run and `runnerMatchesPinned` pins the
+      runner's bytes.
+    - **Checked.**
+      - **Read-only, both branches.** `health_check.py:35-51` calls only `Client`, `set_timeout`,
+        `get_world`, `get_settings`, `get_map`, `get_actors().filter`, and `get_snapshot` (synchronous)
+        or `wait_for_tick(5.0)` (asynchronous). It never ticks, applies settings, or spawns or destroys actors.
+        - Live corroboration: `s1d-health-check-20261024`. After the `skipped-synchronous` check, the next
+          run's preflight passed `carla_clients`. Its `world-before.json` was still synchronous with
+          `frameAdvancing: false`, so the check left the world untouched and did not tick.
+      - **Timeout.** `client.set_timeout(15.0)` (`health_check.py:36`) is set before `get_world` and applies
+        to every RPC of that client. `wait_for_tick` has its own 5 s bound. `get_snapshot` makes no RPC. The
+        runner's 90 s subprocess timeout (`run_soak.py:205-208`) bounds the sum and fails closed as unhealthy.
+      - **Guard records.** All 86 `restore-guard.json` under `runs/lite-stabilization-s1/*/*/` have target
+        asynchronous, `after.synchronousMode: false` and `restored: true`. Every first run after a server start
+        in `s1c2-part1-dev`, `s1c2-part2-dev` to `dev8`, `vs09-20261023`, `vs09-20261024` and
+        `s1d-health-check` has `world-before` synchronous at 0.05 s with `frameAdvancing: false`, restored to
+        asynchronous under DLG-11a.
+        - Soak attempt 1: both `initial-health.json` show `synchronousMode: true` and the 5 s
+          `wait_for_tick` time-out. The diagnosis of finding 57 holds.
+      - **`classify`** (`run_soak.py:111-121`). DR-21 (2) adds only one case: healthy and synchronous after
+        the cleanup, now FAIL. Unhealthy and synchronous was already FAIL under DR-12.
+        - For no-carla, `carla=False` disables the restore test and `after=None` becomes `{}`; the
+          `test_run_soak_logic.py:133` case still gives PASS. No regression.
+        - A synchronous before-health is legitimate only on the first run after a server start, which is always
+          the warm-up. Every later run follows an after-check that must be asynchronous, or the soak has stopped,
+          and every restart goes through `_start` and a warm-up. It is handled: the check is healthy and the run's
+          guard restores the world (DLG-11a).
+      - **Tests.** 37 passed (the given command). Scratchpad mutations of `health_check.py` against
+        `test_health_check.py`:
+        - Killed: a tick in the synchronous branch, a tick in the asynchronous branch, a tick whose exception is
+          swallowed, and `apply_settings`. The `ticked` counter and the missing fake methods catch them.
+        - Survived: removing `set_timeout(15.0)`, and replacing `get_map()` with a constant.
+        - Reverting `classify` to the DR-12 rule fails the new case at `test_run_soak_logic.py:126`.
+    - **MEDIUM-1 (`health_check.py:9-11`, `:42`, `:45`; plan.md:124-125; DR-21 (1)). `get_snapshot()` and the
+      actor listing are client-local in an un-ticked synchronous world, so they cannot fail on a hung server.**
+      - Live record: `s1d-health-check-20261024/health.jsonl` line 1 has `frame: 0` and `vehicles: 0`. A
+        fresh client that has received no world tick reports frame 0, so the snapshot is its initial local state,
+        not a server reply. This is also my understanding of the 0.9.15 client, though I did not verify it against
+        the LibCarla source, which is not on this host.
+      - The actor listing likewise resolves only actor ids already received, so in that state it lists nothing,
+        whatever the world contains.
+      - The server-side evidence in the synchronous branch is therefore `get_world` (version, episode and
+        settings RPCs), `get_settings` and `get_map`. These run on the server's game thread, so a hung game
+        thread still times out and is unhealthy. A hung server is not masked.
+      - What is untested before the warm-up is frame production: a server that answers RPCs but cannot complete a
+        tick passes. See LOW-2.
+      - **Amendment (text only).** In DR-21 (1), plan.md:124-125 and the `health_check.py` docstring, replace
+        "the settings, the map, the actor listing and a non-blocking `get_snapshot()`" with:
+        - "`get_world`, `get_settings` and `get_map` answer within the 15 s client timeout";
+        - "the actor count and the snapshot frame are recorded but, in a world no client has ticked, are the
+          client's local view (frame 0, no actors) and are not evidence of server responsiveness".
+      - Does not block the code; amend before the restart.
+    - **LOW-2 (residual, declare).** A fresh server that answers RPCs but cannot tick now passes `initial-health`
+      and the warm-up's before-check.
+      - In the warm-up, the guard's commit tick would then raise (`restore.py:121-125`) and the world would stay
+        synchronous. That gives `restored: false`, P1 `worldRestoredNoVehicles` false (outside
+        `WARM_UP_EXCUSED_CHECKS`) and a synchronous after-check, so FAIL and `CriterionStop`.
+      - Such a server fault is therefore classified as a criterion stop rather than INVALID plus a restart. This is
+        fail-closed (the soak stops, and FR-020 requires a finding), so it is only an attribution risk.
+      - Declare it next to the DR-21 amendment. Does not block.
+    - **LOW-3 (`run_soak.py:25-27`, `health_check.py:13-14`). Stale docstrings.**
+      - The runner's "Declared realizations" still state the DR-12 rule ("after-cleanup health check fails while
+        the world reports synchronous mode").
+      - `health_check.py` says a failure "makes a run INVALID", but a failed or healthy after-check reporting
+        synchronous mode is FAIL (DR-12, DR-21).
+      - Replace the first with the DR-21 (2) rule, and qualify the second ("INVALID, unless the after-cleanup
+        check reports a synchronous world: FAIL, DR-21"). Does not block; it is cheapest before the restart re-pin.
+    - **LOW-4 (`run_soak.py:112-113`). "The guard always ends asynchronous" is true for guarded runs under the soak
+      preconditions, not universally.**
+      - No guard runs after a BLOCKED preflight (`run-live.sh:40`, the world-before file is absent or removed at
+        `:92`) or in a baseline (`run-baseline.sh` normalises only at the start, `:54-57`). A synchronous after
+        there is classified as a "restore failure". The status would be FAIL anyway (non-zero exit or a changed
+        world), so only the attribution differs.
+      - The guard targets synchronous when `world-before` is synchronous with `frameAdvancing: true`
+        (`restore.py:182-185`). That needs a foreign tick owner, which the preflight refuses (`run-live.sh:88`).
+        It is consistent with 86 of 86 guard records.
+      - Suggest recording `restoreFailure: true` (or the classification reason) in the manifest entry, so that a
+        FAIL from this rule is distinguishable from an audit FAIL. Does not block.
+    - **LOW-5 (`test_health_check.py:39-52`, `:72-76`). The tests do not prove the "must answer" half.**
+      - The unanswering-server test injects its time-out at `get_snapshot`, a call that cannot time out in the
+        real client (MEDIUM-1). No test makes `get_settings` or `get_map` fail in the synchronous branch.
+      - The fake `Client.set_timeout` is not asserted, so removing the 15 s timeout passes.
+      - Suggest moving the injection to `get_map` (or `get_settings`), asserting `set_timeout(15.0)`, and
+        adding `world.ticked == 0` to the asynchronous tests. The never-tick property is covered. Does not block.
+    - **LOW-6 (`health_check.py:50-51`). Field semantics in the synchronous branch.**
+      - `waitForTickS` (0.0) and `frame` (0) are recorded although no tick was awaited and the frame is local.
+      - Suggest `frame: null` or a `frameSource: client-local` marker, and `waitForTickS` only in the
+        asynchronous branch, so that a reader of the soak manifest does not take frame 0 as a server frame. Does
+        not block.
+    - **Restart.** I see no blocker to the soak restart on `ad14eec` behaviour. If the MEDIUM-1 and LOW-3 text
+      amendments are made, they change `health_check.py` and `run_soak.py` bytes. They then need a new
+      blueprints commit, pinned before the restart from zero (FR-020), not after it.
+59. **Dispositions of finding 58 (written at 08:07:43 2026-10-24, before the change).**
+    - **MEDIUM-1, corrected text.** The `health_check.py` docstring, the plan.md amendment and an erratum to DR-21 (1)
+      now say what counts as evidence.
+      - Only `get_world`, `get_settings` and `get_map` are evidence that the server answers. These are server
+        requests under the 15 s client timeout.
+      - The actor count and the snapshot come from the client's local view in a world nobody has ticked. They are
+        recorded but are not evidence.
+    - **LOW-3.** The `run_soak.py` protocol docstring and the `health_check.py` INVALID sentence are updated to
+      DR-21.
+    - **LOW-6.** In the synchronous branch the check now records `localSnapshotFrame` instead of `frame` and
+      `waitForTickS`.
+    - **LOW-5.** The tests inject the failure at `get_settings` and at `get_map`, and assert that
+      `set_timeout(15.0)` is used.
+    - **Declared.**
+      - LOW-2: a server that answers but cannot tick passes the before-check, then fails the warm-up as a criterion
+        stop rather than as INVALID. This is safe, but the cause is attributed in the finding instead.
+      - LOW-4: the guard does not run after a BLOCKED preflight or in baseline runs. Those runs are already FAIL,
+        and their consoles carry the reason.
