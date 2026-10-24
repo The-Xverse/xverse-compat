@@ -1860,3 +1860,19 @@ engineering stabilization candidate: not M1, not AEB evidence.
       - The soak must be pinned to a blueprints commit that contains `cb67e4e`, because `runnerMatchesPinned`
         compares the runner's bytes. Any of the code fixes above is a new commit to re-pin before the restart from
         zero (FR-020), not after it.
+62. **Dispositions of finding 61 (written at 08:48:09 2026-10-24; blueprints, see the merge).**
+    - **Repaired.**
+      - **MEDIUM-1.** Every helper subprocess of the runner runs in its own session (`start_new_session=True`):
+        audit, health check, `git`, `ps`, `ss` and `nvidia-smi`. A process-group signal therefore reaches only
+        the runner, and `run-live.sh` is already in its own group under `timeout`.
+      - **MEDIUM-2.** `_start()` acts on a pending stop before a start, which can take about 510 s.
+      - **LOW-1.** New tests cover the real `run_one` refusing to start after a signal (no subprocess), a pending
+        SIGHUP stopping the soak before the first server start, and the restored handlers (`SIG_DFL`).
+      - **LOW-2.** A second signal is acknowledged on stderr and the stop stays graceful.
+      - **LOW-4.** SIGHUP is handled.
+      - **LOW-5.** The SIGKILL of a server that has already exited is guarded.
+      - Tests: 43 passed.
+    - **Declared.** LOW-3: a pending signal leaves no trace when another outcome wins (a FAIL, a DR-11 stop, or
+      completion). The outcome itself is recorded.
+    - **Stop procedure for the overnight soak.** `kill -TERM <runner PID>`. It may take up to about 15 minutes, for a
+      run or a start already in progress. Never send SIGKILL.
