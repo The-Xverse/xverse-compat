@@ -260,3 +260,22 @@ verified offline only: not M1, not AEB evidence, live behaviour unverified (E8-3
      - MEDIUM-1 and MEDIUM-2 are small code repairs on this branch and are best done before B-1.
      - MEDIUM-3 is a thesis-side decision (AD-25, AD-14, AD-27) before evaluation runs.
      - LOW-1 to LOW-3 are optional.
+4. **Disposition of finding 3 (2026-10-24 11:07:48; decided by the coordinator under the author's delegation of
+   2026-10-24, flagged for the author's review). Recorded before repair.**
+   - **Thesis input.** `decisions.md` now holds the AD-38 amendment (11:07, under the delegation, flagged
+     for review; basis this review's MEDIUM-3). After the first AEB intervention, meaning the first tick
+     with a brake request above 0, the driver's throttle latches at 0 for the rest of the run. This
+     replaces FR-030's "resumes" wording; option C is unchanged.
+   - **Repairs, with tests.**
+     - MEDIUM-1, stale motion: when the motion item's `originNs` does not advance, zero throttle and no
+       integration, with `motionStale` in the meta.
+     - MEDIUM-2, brake range: a finite request above 1 is clamped to 1.0, with `brakeClamped` recorded,
+       as Phase 7 does (`driver.py` 56). NaN, infinities, bools and negatives stay invalid.
+     - MEDIUM-3, the AD-38 amendment: the throttle latch, with `latched: true` in the meta; the design and
+       the FR-030 note in this log are updated.
+     - LOW-1: `aebActive` is true whenever the commanded brake is above 0, including a held brake under an
+       invalid request.
+     - LOW-2: numbers are canonicalized in the parameter digest, so that 8 and 8.0 give the same digest;
+       the rule is recorded.
+   - **Documentation.** LOW-3 goes into B-3: the request source returns 0.0 while no AEB request is active,
+     including before the first message.
