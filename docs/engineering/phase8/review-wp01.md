@@ -273,3 +273,24 @@ unverified (E8-3a).
    - **Recommendation.** Merge after the author's acceptance. Record MEDIUM-1, MEDIUM-2 and LOW-1 as
      residuals, in a repair entry or in the acceptance record. LOW-2 to LOW-6 are optional before the
      blueprint wiring (R-2).
+4. **Disposition of finding 3 (2026-10-24 10:38:23; decided by the coordinator under the author's delegation of
+   2026-10-24, flagged for the author's review). Recorded before repair.**
+   - **Repairs on this branch.**
+     - MEDIUM-2: record each tracked actor's extent read-only, once per role at resolution, with a frame
+       stamp: `bounding_box.extent` and its location offset. With a test.
+     - LOW-2: the isolation tests also scan the runtime-entry import closure for dynamic imports and for
+       subprocess or `os.exec*` launches of the observer (`importlib`, `__import__`, `subprocess`,
+       `os.exec*` with `observe`). A probe must show that an injected `importlib` use is caught; the
+       probe is then restored.
+     - LOW-3: the forbidden-call list gains `apply_batch`, `apply_batch_sync`, `load_world`,
+       `reload_world`, `set_weather`, `get_trafficmanager`, `listen`, `set_simulate_physics`,
+       `set_autopilot`, `set_target_velocity`, `add_impulse` and `enable_constant_velocity`.
+     - LOW-4: while a role is unresolved, actors are listed at most once per declared period, not on
+       every frame. The period is recorded in the header, with a test.
+     - LOW-6: tests for the SIGINT stop and for a failed write or close.
+   - **Declared residuals (no code change).**
+     - R-8 (MEDIUM-1): frame coverage and `tickTimeouts` are a WP-17 oracle acceptance criterion; a
+       complete footer does not imply a complete run.
+     - R-9 (LOW-1): the cached control and the alive check come from the observer's latest view and are
+       not frame-aligned.
+     - LOW-5: R-7 is corrected to name `restore.py` 190 and `main.py` 88 as well.
