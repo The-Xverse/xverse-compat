@@ -219,13 +219,15 @@ class FaultRelay:
     """Arming, grid reports, message faults at the delivery point, and the step-hold handshake."""
 
     def __init__(self, topology: dict, maestro: MaestroEnd, *, step_ns: int, grid_tolerance_ns: int,
-                 expected_entries: list[str] | tuple[str, ...], arm_timeout_s: float, sim_bound: SimTimeBound | None = None,
+                 expected_entries: list[str] | tuple[str, ...], arm_timeout_s: float, stop_wait_s: float,
+                 sim_bound: SimTimeBound | None = None,
                  proposal_sets: ProposalSets | None = None, time_report_every: int | None = None,
                  host_ns: Callable[[], int] = time.monotonic_ns) -> None:
         if type(step_ns) is not int or step_ns <= 0 or type(grid_tolerance_ns) is not int or not 0 <= grid_tolerance_ns < step_ns:
             raise ValueError("step_ns > 0 and 0 <= grid_tolerance_ns < step_ns are required ints (no default; K-10, D-4c)")
-        if type(arm_timeout_s) not in (int, float) or not math.isfinite(arm_timeout_s) or arm_timeout_s <= 0:
-            raise ValueError("arm_timeout_s must be a finite number > 0 (no default)")
+        for name, value in (("arm_timeout_s", arm_timeout_s), ("stop_wait_s", stop_wait_s)):  # finding 6, L3
+            if type(value) not in (int, float) or not math.isfinite(value) or value <= 0:
+                raise ValueError(f"{name} must be a finite number > 0 (no default; D-4c, NEEDS DATA)")
         if time_report_every is not None and (type(time_report_every) is not int or time_report_every < 1):
             raise ValueError("time_report_every must be None or an int >= 1")
         expected = list(expected_entries)
@@ -234,7 +236,8 @@ class FaultRelay:
         self.topology, self.maestro = topology, maestro
         self.flows = {f["id"]: f for f in topology["flows"]}
         self.step_ns, self.grid_tolerance_ns, self.expected = step_ns, grid_tolerance_ns, expected
-        self.arm_timeout_s, self.sim_bound, self.proposal_sets = float(arm_timeout_s), sim_bound, proposal_sets
+        self.arm_timeout_s, self.stop_wait_s = float(arm_timeout_s), float(stop_wait_s)
+        self.sim_bound, self.proposal_sets = sim_bound, proposal_sets
         self.time_report_every, self._host_ns = time_report_every, host_ns
         self.entries: dict[str, Entry] = {}
         self.seed: int | None = None
@@ -288,7 +291,9 @@ class FaultRelay:
                         refusals.append(f"{entry}: freeze of {target} not armable alone (CC-1: every member, same onset and duration)")
                 else:
                     refusals.append(f"{entry}: freeze of {target} not armable")
-                if self.sim_bound is not None:
+                if self.sim_bound is None:  # finding 6, L1: no bound configured refuses every freeze
+                    refusals.append(f"{entry}: a freeze needs a configured SimTimeBound (none given)")
+                else:
                     problems = self.sim_bound.problems()
                     if problems:
                         refusals.append(f"{entry}: duration bound unknown ({'; '.join(problems)})")
@@ -504,14 +509,14 @@ class FaultRelay:
 
     def finish(self, step: int | None) -> None:
         """At the hub's own stop: close at once when settled; otherwise keep the channel open until Maestro closes
-        it, within ``arm_timeout_s``, then close and record the pending entries (ST-2: never close earlier)."""
+        it, within ``stop_wait_s``, then close and record the pending entries (ST-2: never close earlier)."""
 
         if self.maestro.closed:
             return
         if not self.settled:
             pending = sorted(e.entry_id for e in self.entries.values() if not e.done)
             self._record(None, "stopped-with-pending", step, pending=pending)
-            deadline = time.monotonic() + self.arm_timeout_s
+            deadline = time.monotonic() + self.stop_wait_s  # finding 6, L3: its own bound
             try:
                 while time.monotonic() < deadline:
                     if self.maestro.receive(max(0.0, deadline - time.monotonic())) is not None:

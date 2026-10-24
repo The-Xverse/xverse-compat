@@ -368,8 +368,8 @@ class Hub:
         # WP-10 #4 (R-9): a frozen unit gets no round, is not waited for and cannot be lost through a send timeout;
         # its deliveries and lost notices are queued in order and delivered at its first round after the thaw.
         self.frozen: set[str] = set()
-        self._queued: dict[str, list] = {}
-        self._queued_control: dict[str, list] = {}
+        # Finding 6 (M1): one ordered queue per frozen unit for control (``lost``) and delivery messages.
+        self._frozen_queue: dict[str, list[tuple[str, dict]]] = {}
 
     # ---- origin and verdicts ------------------------------------------------------------------------
 
@@ -407,7 +407,7 @@ class Hub:
         """A control message (``lost``) to ``unit``: queued while frozen; a failed send loses the unit at once (N2)."""
 
         if unit in self.frozen:
-            self._queued_control.setdefault(unit, []).append(message)
+            self._frozen_queue.setdefault(unit, []).append(("control", message))
         elif not self.units.send(unit, message):
             self._unit_gone(unit, f"send failed: {self.units.failed.get(unit, 'link closed')}", step)
 
@@ -462,6 +462,10 @@ class Hub:
     def _deliver(self, step: int, rnd: int, items) -> dict[str, list]:
         per_unit: dict[str, list] = {}
         for item in items:
+            if item.flow in self.schedule.lost:  # finding 6 (M1): the one Lost-flow barrier, for every item source
+                self.schedule.discarded.append(_discard_record(step, item.flow, item.source_unit, item.message,
+                                                               "after the lost verdict at the final delivery step"))
+                continue
             flow = self.schedule.flows[item.flow]
             self._delivered_flows.add(item.flow)
             for dest in flow["destinations"]:
@@ -481,19 +485,15 @@ class Hub:
     def _round(self, step: int, rnd: int, per_unit: dict, recipients) -> None:
         sim_ns = self.schedule.boundaries[step]
         for unit in sorted(u for u in per_unit if u in self.frozen and u in self.live):  # R-9: queued, in order
-            self._queued.setdefault(unit, []).extend(per_unit[unit])
+            self._frozen_queue.setdefault(unit, []).extend(("delivery", d) for d in per_unit[unit])
         targets = sorted(u for u in recipients if u in self.live and u not in self.frozen)
         deadline = time.monotonic() + self.wait_bound_s  # N1: one deadline covers the round's sends and its wait
         for unit in targets:
-            for control in self._queued_control.pop(unit, []):
-                if not self.units.send(unit, control, deadline=deadline):
-                    self._unit_gone(unit, f"send failed: {self.units.failed.get(unit, 'link closed')}", step)
-                    break
-            if unit not in self.live:
+            if not self._replay(unit, step, deadline):
+                self._unit_gone(unit, f"send failed: {self.units.failed.get(unit, 'link closed')}", step)
                 continue
-            deliveries = self._queued.pop(unit, []) + per_unit.get(unit, [])
-            if not self.units.send(unit, {"type": "round", "step": step, "round": rnd, "simNs": sim_ns, "deliveries": deliveries},
-                                   deadline=deadline):
+            if not self.units.send(unit, {"type": "round", "step": step, "round": rnd, "simNs": sim_ns,
+                                          "deliveries": per_unit.get(unit, [])}, deadline=deadline):
                 self._unit_gone(unit, f"send failed: {self.units.failed.get(unit, 'link closed')}", step)
         for unit in targets:
             if unit not in self.live:
@@ -517,6 +517,31 @@ class Hub:
                 for out in outputs:
                     self.schedule.admit(step, unit, out)
                 break
+
+    def _replay(self, unit: str, step: int, deadline: float) -> bool:
+        """After a thaw, send the unit's ordered queue: each ``lost`` in its place, consecutive deliveries as
+        ``backlog`` lines within the line limit (finding 6, M1 and L2). ``backlog`` needs no answer."""
+
+        queued = self._frozen_queue.pop(unit, [])
+        batch: list[dict] = []
+
+        def flush() -> bool:
+            if not batch:
+                return True
+            ok = self.units.send(unit, {"type": "backlog", "step": step, "deliveries": list(batch)}, deadline=deadline)
+            batch.clear()
+            return ok
+
+        for kind, message in queued:
+            if kind == "control":
+                if not flush() or not self.units.send(unit, message, deadline=deadline):
+                    return False
+                continue
+            if batch and len(_canonical({"type": "backlog", "step": step, "deliveries": batch + [message]})) + 1 > MAX_LINE:
+                if not flush():
+                    return False
+            batch.append(message)
+        return flush()
 
     def _rounds(self, step: int) -> None:
         cap = len(self.schedule.topology["units"]) + 1

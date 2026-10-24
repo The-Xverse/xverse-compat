@@ -99,8 +99,10 @@ class Proposals:
 
 def _relay(arms, expected=None, **kw):
     ours, theirs = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+    kw.setdefault("sim_bound", BOUND)  # finding 6, L1: a freeze needs a configured bound
     relay = FaultRelay(RECORD, MaestroEnd(ours, 1.0), step_ns=STEP, grid_tolerance_ns=kw.pop("tolerance", 1000),
-                       expected_entries=expected or [a["entry"] for a in arms], arm_timeout_s=kw.pop("arm_timeout_s", 2.0), **kw)
+                       expected_entries=expected or [a["entry"] for a in arms], arm_timeout_s=kw.pop("arm_timeout_s", 2.0),
+                       stop_wait_s=kw.pop("stop_wait_s", 2.0), **kw)
     return relay, theirs
 
 
@@ -319,9 +321,10 @@ def test_freeze_handshake_frozen_unit_gets_no_round_and_its_deliveries_are_queue
     assert result.invalid == [] and result.end_reason == "adapter-done"
     acks = [r["action"] for r in result.faults if r["entry"] == "fault:f"] if result.faults else []
     assert acks == ["armed", "hold-apply", "applied", "hold-clear", "cleared"]
+    queued = [(d["flowId"], d["sequence"]) for d in result.deliveries if d["to"] == "front-zone-unit" and d["step"] in (3, 4)]
+    assert queued and zone.backlog == [(5, queued)]  # finding 6: delivered as backlog, in order, before the round
     first_after = next(d for s, r, d in zone.rounds if s == 5 and r == 0)
-    queued = [d for d in result.deliveries if d["to"] == "front-zone-unit" and d["step"] in (3, 4)]
-    assert queued and [(f, q) for f, q in first_after[:len(queued)]] == [(d["flowId"], d["sequence"]) for d in queued]
+    assert all((f, q) not in queued for f, q in first_after)
     assert not [d for d in result.deliveries if d["from"] == "front-zone-unit" and d["step"] in (3, 4)]
 
 
@@ -345,7 +348,7 @@ def test_no_fault_identifier_reaches_a_unit():
     arms = [arm("fault:loss", "loss", "f09-radar-vc", 2, 4, {"every": 2}), arm("fault:frz", "freeze", "adas-hpc-unit", 3, 2)]
     result, units, _ = _run(arms)
     for unit in units:
-        assert set(unit.order) <= {"origin", "round", "lost", "end"}
+        assert set(unit.order) <= {"origin", "round", "lost", "backlog", "end"}
     assert not any("fault:" in json.dumps(d) for d in result.deliveries)
 
 
@@ -426,7 +429,7 @@ def test_st2_armed_precedes_every_step_report():
 def test_st2_a_settled_hub_closes_at_its_stop_and_an_unsettled_one_waits_for_maestro():
     _, _, settled = _run([arm("fault:a", "stale", "f09-radar-vc", 1, 1)], frames=4)
     assert settled.eof_at is not None and settled.eof_at - settled.frames[-1]["_at"] < 0.3
-    result, _, pending = _run([arm("fault:b", "stale", "f09-radar-vc", 2, 50)], frames=4, arm_timeout_s=0.6)
+    result, _, pending = _run([arm("fault:b", "stale", "f09-radar-vc", 2, 50)], frames=4, stop_wait_s=0.6)
     assert pending.eof_at is not None and pending.eof_at - pending.frames[-1]["_at"] >= 0.5
     stop = [r for r in result.faults if r["action"] == "stopped-with-pending"]
     assert stop and stop[0]["pending"] == ["fault:b"]
@@ -438,3 +441,83 @@ def test_r1_arming_completes_at_index_equal_to_count():
     relay.maestro.close()
     maestro.join(5)
     assert relay.armed and [f["entry"] for f in maestro.frames if f["kind"] == "armed"] == ["fault:a", "fault:b"]
+
+
+# ---- finding 6: the one Lost-flow barrier (M1), L1, L2, L3 --------------------------------------------------------
+
+def _lose_at(monkeypatch, flow, at_step):
+    from xverse_compat.live import hub as hub_module
+
+    monkeypatch.setattr(hub_module.Hub, "_check_deadlines", lambda self, step, sim_ns: (
+        self._mark_lost(flow, "test verdict", step) if step == at_step else None))
+
+
+def _after_verdict(result, flow, step):
+    return [d for d in result.deliveries if d["flowId"] == flow and d["step"] > step]
+
+
+def test_m1_delay_then_loss_delivers_nothing_held_after_the_verdict(monkeypatch):
+    _lose_at(monkeypatch, "f09-radar-vc", 3)
+    result, _, _ = _run([arm("fault:d", "delay", "f09-radar-vc", 2, 2, {"delay-ns": 2 * STEP})])
+    held = [r for r in result.faults if r["action"] == "delayed"]
+    assert held and all(r["releaseStep"] > 3 for r in held)
+    assert _after_verdict(result, "f09-radar-vc", 3) == []
+    stopped = [d for d in result.discarded if d["reason"] == "after the lost verdict at the final delivery step"]
+    assert sorted(d["sequence"] for d in stopped) == sorted(r["itemSequence"] for r in held)
+    assert all("payloadSha256" in d and "payload" not in d for d in stopped)
+
+
+def test_m1_an_injection_after_the_loss_is_stopped(monkeypatch):
+    _lose_at(monkeypatch, "f12-proposal", 2)
+    result, _, _ = _run([arm("fault:p", "assurance.proposal-unsafe", "f12-proposal", 4, 2)], proposal_sets=Proposals())
+    assert [r["step"] for r in result.faults if r["action"] == "injected"] == [4]
+    assert _after_verdict(result, "f12-proposal", 2) == []
+    assert any(d["sequence"] == 10_000 and d["flowId"] == "f12-proposal" for d in result.discarded)
+
+
+def test_m1_a_loss_during_a_freeze_keeps_its_place_in_the_frozen_queue(monkeypatch):
+    _lose_at(monkeypatch, "f05-camera-sensor-out", 4)
+    result, units, _ = _run([arm("fault:f", "freeze", "front-zone-unit", 3, 3)])
+    zone = next(u for u in units if u.unit == "front-zone-unit")
+    after_thaw = zone.order[zone.order.index("backlog"):]
+    assert after_thaw[:3] == ["backlog", "lost", "backlog"] and after_thaw[3] == "round"
+    (s1, before), (s2, after) = zone.backlog
+    assert s1 == s2 == 6 and zone.lost == ["f05-camera-sensor-out"]
+    assert ("f05-camera-sensor-out", 4) in before and all(f != "f05-camera-sensor-out" for f, _ in after)  # queued before the verdict
+    assert [f for f, _ in before] == ["f05-camera-sensor-out", "f06-radar-sensor-out"] * 2
+    assert result.invalid == []
+
+
+def test_l1_a_freeze_is_refused_without_a_configured_bound():
+    with pytest.raises(RelayInvalid, match="needs a configured SimTimeBound"):
+        _arm_only([arm("fault:a", "freeze", "front-zone-unit", 2, 2)], sim_bound=None)
+
+
+def test_l2_the_backlog_is_split_within_the_line_limit():
+    import types
+    from xverse_compat.live.hub import MAX_LINE, Hub
+
+    sent = []
+    big = {"flowId": "f05-camera-sensor-out", "from": "vehicle-loop-unit", "sequence": 0, "originNs": T0, "deliverAtNs": T0,
+           "payload": {"blob": "x" * 20_000}}
+    queue = [("delivery", dict(big, sequence=i)) for i in range(5)] + [("control", {"type": "lost", "flowId": "f05"})] + \
+            [("delivery", dict(big, sequence=9))]
+    stub = types.SimpleNamespace(_frozen_queue={"u": queue},
+                                 units=types.SimpleNamespace(send=lambda unit, message, deadline=None: sent.append(message) or True))
+    assert Hub._replay(stub, "u", 7, 0.0)
+    kinds = [m["type"] for m in sent]
+    assert kinds == ["backlog", "backlog", "lost", "backlog"]
+    assert all(len(json.dumps(m, sort_keys=True, separators=(",", ":"))) <= MAX_LINE for m in sent)
+    assert [d["sequence"] for m in sent if m["type"] == "backlog" for d in m["deliveries"]] == [0, 1, 2, 3, 4, 9]
+
+
+def test_l3_the_stop_wait_is_its_own_required_input():
+    ours, theirs = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+    common = dict(step_ns=STEP, grid_tolerance_ns=0, expected_entries=["fault:a"], arm_timeout_s=1.0)
+    with pytest.raises(TypeError):
+        FaultRelay(RECORD, MaestroEnd(ours, 1.0), **common)
+    with pytest.raises(ValueError, match="stop_wait_s"):
+        FaultRelay(RECORD, MaestroEnd(ours, 1.0), stop_wait_s=0, **common)
+    assert FaultRelay(RECORD, MaestroEnd(ours, 1.0), stop_wait_s=0.5, **common).stop_wait_s == 0.5
+    ours.close()
+    theirs.close()

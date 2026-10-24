@@ -408,3 +408,52 @@ end: not M1, no CARLA, no live run.
    - **L4 and L5** are obligations of other increments: L4 belongs to the F12 provider's owner (AD-11 sets, WP-15),
      and L5 to WP-10 #5, which maps Maestro-form element ids onto topology-form unit and flow ids. Both are recorded
      in the WP-10 #5 design record (thesis `design/wp10-5-wiring.md`). No compat code changes for them.
+
+7. **Repairs of finding 6 (M1, L1, L2 and L3) and the suite re-run (written at 15:53:03 2026-10-24).**
+   - **M1, the one Lost-flow barrier** (`hub.py` `_deliver`).
+     - Every item reaching the final delivery step is checked against `schedule.lost`. That covers schedule items,
+       relay-held delays, F12 injections and replacements, and `stale` replays.
+     - A stopped item is not delivered. It is appended to `discarded` (digest only), with the reason "after the lost
+       verdict at the final delivery step".
+     - **Frozen units.** Each frozen unit has one ordered queue of `("control", lost)` and `("delivery", …)` entries.
+       After the thaw, `_replay` sends the queue in order before the step's round, within the round's one deadline
+       (N1).
+     - **Correction to finding 6.** A delivery queued *before* the lost verdict is not checked again at replay. It
+       was already delivered in the hub's record at its step, and it goes out before the `lost` notice, which keeps
+       its place. Deliveries after the verdict cannot enter the queue, because the barrier stops them first.
+   - **L2, the backlog** (`_replay`).
+     - Consecutive queued deliveries go out as `backlog` lines (`{"type": "backlog", "step", "deliveries"}`), each
+       within the 64 KiB line limit.
+     - A `backlog` line needs no answer, like `origin` and `lost`. The thaw step's own `round` follows with the
+       step's deliveries only.
+     - A single delivery that alone exceeds the limit still raises `HubProtocolError` at send.
+     - **This adds the `backlog` message type to the unit protocol `xverse-compat.hub-units/1`.** No unit-side
+       implementation exists yet. The unit runtime (WP-10 #5b) must implement it.
+   - **L1.** Arming refuses every `freeze` when no `SimTimeBound` is configured ("a freeze needs a configured
+     SimTimeBound").
+   - **L3.** `FaultRelay` takes a new required input, `stop_wait_s`, which bounds only the unsettled-stop wait.
+     `arm_timeout_s` bounds only arming. Both are required and finite, with no default (D-4c, `NEEDS DATA`).
+   - **Tests.** `test_phase8_hub_relay.py` has 50 cases, 6 more than before:
+     - **Delay then loss.** No F09 delivery after the verdict, and every held sequence is discarded with digests.
+     - **An injection after a loss.** The F12 injection at step 4 is discarded after a loss at step 2.
+     - **A loss during a freeze.** The queue replays as `backlog` (the pre-verdict F05 and F06 items), then
+       `lost`, then `backlog` (F06 only), then the round.
+     - **L1.** A freeze is refused when no bound is configured.
+     - **L2.** `_replay` splits 6 deliveries of about 20 KB into lines within the limit, with the `lost` in its
+       place.
+     - **L3.** A missing `stop_wait_s` is a `TypeError`, and 0 is refused.
+
+     The existing freeze test now expects the queued items as one `backlog` line. The test helper `_relay` defaults
+     to the test bound (L1). The hub-core `FakeUnit` records `backlog` lines, as a test-helper addition.
+   - **Stability and controls.** The relay and hub-core files gave 101 passed in each of 3 consecutive runs. With
+     the barrier disabled, the delay and injection cases fail; the barrier was reverted, and the file is
+     byte-identical.
+   - **Suite.** The same command as finding 2 gives **585 passed, 39 subtests** (579 + 6), at a load of about 6–9
+     (`evidence-wp10-relay-suite-finding7.log`). No CARLA and no live run were used.
+   - **Residuals.**
+     - **R-10 (adopted, M1) is closed** for every item source at the hub.
+     - **New R-11:** the unit runtime must implement the `backlog` message (WP-10 #5b).
+     - L4 and L5 belong to the WP-10 #5 design record.
+     - R-3 and R-5 to R-9 are unchanged. R-8, the wire test against the platform with ST-2, is the gate before any
+       live run.
+   - **Status.** Candidate for independent re-review. Not accepted, not merged, not pushed.
