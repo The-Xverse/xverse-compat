@@ -1166,3 +1166,30 @@ engineering stabilization candidate: not M1, not AEB evidence.
         server start, not the stack.
     - **Disposition (thesis DR-18).** H1 = 1.95 s, inside the 1.99 s bound. The S1d soak declares one warm-up run
       per CARLA start, recorded and excluded from the statistics. Re-verification from a fresh cold start follows.
+48. **Cold-start confirmation on the final harness and the freeze placement (blueprints `c60fe14`, H1 = 1.95 s;
+    platform `a16fd1b78`, now merged as platform main `ee91697a4`; CARLA instance 20; runs 04:12–04:31; written
+    at 04:33:08 2026-10-24, before any change).**
+    - **Evidence.** `runs/lite-stabilization-s1/s1c2-part2-dev4-20261024`.
+    - **Results.**
+      - Cold nominal PASS: the adapter was ready at 1.74 s, on its third attempt (1.70 s). This is the slowest
+        cold value yet, and it confirms the DR-18 warm-up.
+      - cancel-paused PASS (load 8.9) and long-run PASS. Warm nominal PASS, with the adapter at 0.349 s.
+      - no-carla fails closed as designed.
+      - Every run shows cleanup complete, no persistence failure, an uncut window (W′ = 1.95 s) and clean reap facts.
+    - **freeze-vcu: the harness exited 1 at load 9.2,** although Maestro succeeded and the audit passed. The finding
+      24 LOW-1 assertion failed: the freeze ended 0.185 s after the stimulus throttle segment (`endMarginS`
+      −0.185).
+      - The freeze is tick-placed (tick 61, after the observe at 60). The throttle segment (3.5 s) is host-timed
+        from the stimulus start.
+      - Across the ten 3.5 s-window runs since the S1b adoption, tick 61 lies 2.79–3.84 s into the segment. The
+        end margins were 0.064, 0.133 and −0.185 s.
+      - This is a harness margin defect of finding 24's placement, made visible by load. It is not the stack.
+    - **Proposed repair (computed from the recorded Argus tick clocks and stimulus samples).**
+      - Freeze at tick 25 and observe at tick 24 (one tick before, as finding 24 MEDIUM-1 requires).
+      - Ticks 1 and later begin about 4.4 s after tick 0, after start-up, so every unit is running. The observe
+        step's own cost (0.17–0.39 s) is added before the freeze.
+      - Over the ten runs, the worst-case margins become 0.94 s at the start and 0.96 s at the end, instead of
+        −0.84 s.
+      - The VCU health-thaw bound (finding 18) does not depend on the placement.
+      - Cancel-paused's observe now comes earlier, about 5.6 s after start, which only widens its margin before
+        the cancel (finding 19).
