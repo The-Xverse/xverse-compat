@@ -266,3 +266,21 @@ behaviour unverified (E8-3a).
      - **R-7.** The order and bound of the adapter close (M1), to repair before E8-3a.
      - **R-8.** The unbounded hello read (L3) and the dropped close summary (L2).
      - **R-2** should name the extra per-tick copy and hash (L4).
+4. **Disposition of finding 3 (2026-10-24 11:53:56; decided by the coordinator under the author's delegation of
+   2026-10-24, flagged for the author's review). Repair before the merge. Recorded before repair.**
+   - **M1.** Close the CARLA source and its owned actors before the frame publisher (`main.py` 163–164).
+     Bound `publisher.close` to one total timeout (`frames.py` 123–127), with a socket `shutdown` so that a
+     stalled reader cannot extend it. Add a test with a non-reading receiver showing that the close takes no
+     longer than the timeout and that the source is closed first.
+   - **L1.** Race-free close accounting, so that `offered = sent + dropped` holds in the summary, with a test
+     that forces the timing.
+   - **L2.** Log the close summary through the adapter's existing result or stderr path.
+   - **L3.** Bound the receiver's `hello` read with a timeout.
+   - **L4.**
+     - Refuse repeated and non-increasing frame numbers.
+     - Give width and height a tool upper limit: a refusal bound, recorded as such, not a protocol value.
+     - Make `FrameResult` unable to dump pixel bytes through `asdict`.
+     - Record under R-2 the extra copy and hash of each frame on the tick path.
+   - **L5.** Add a base-golden test comparing the stdio protocol 1 and 2 output with fixtures captured from base
+     `855878a`. Correct "exit 3" to "exit 2" in finding 1.
+   - **Residuals.** Add R-7 (M1, repaired here) and R-8 (L2, L3).
