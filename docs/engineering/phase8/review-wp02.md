@@ -357,3 +357,86 @@ behaviour unverified (E8-3a).
        guard still covers any that remain.
    - **Status.** Candidate for re-review of the repair and for the author's acceptance. Not accepted,
      not merged, not pushed.
+6. **Independent re-review of the repair, findings 4 and 5 (2026-10-24 10:57:51).**
+   - **Reviewer and method.** The finding 3 reviewer.
+     - Read `fc68e6e` and `84e09fe` against `5c4ca7c`, `main.py` 95–177 for the exit path, and thesis
+       `implementation-plan.md` §5 for sequencing.
+     - Ran the offline suite, a CPython 3.10 import check, and two mutation probes in a scratch copy:
+       dropping the spawn-waypoint junction check, and a 5 m step.
+     - The worktree was not changed except for this entry. No CARLA, no live run.
+   - **Verdict: PASS WITH NOTES. Nothing blocks the merge.** The merge still awaits the author's
+     acceptance.
+   - **Evidence.**
+     - Suite: 327 passed, 39 subtests. `test_phase8_target.py` has 53 tests.
+     - CPython 3.10.12 (`env -i`, `-s -B`): `scenario`, `sources` and `main` import with
+       `forbidden_modules_loaded() == []`, `carla` not loaded; `target_of(shipped) is None`.
+     - Probes: dropping the spawn-waypoint junction check failed 1 test, and a 5 m step failed 7.
+   - **Items.**
+     - **LOW-1: closed** (scenario.py 23–29, 93–117).
+       - The walk refuses a lane end, a branch and a junction at any step, as well as a spawn waypoint in a
+         junction. The last step is the remainder, so the walk ends at the declared distance.
+       - A 1 m step cannot pass over a CARLA junction, which spans several metres.
+       - The tests place each refusal at a named step: a lane end at step 21, a branch at steps 15 and 40,
+         a junction at steps 10 and 38.
+       - **The 1000 m guard is defensible as a tool limit.**
+         - The walk uses the client-side `carla.Map` waypoint graph, so it stays bounded at 1000 local
+           steps.
+         - The bound lies an order of magnitude beyond the 100 m radar range (K-10) and the 120 m lane
+           (K-9). A real lane would refuse long before it, with a lane end, a branch or a junction.
+         - It is a refusal, never a default or a clamp, so no distance is invented.
+         - Because it is enforced in `target_of`, it is in effect a schema-2 bound. Finding 5 states it, so
+           the AD-27 freeze sees it.
+     - **LOW-3: closed** (scenario.py 63–73).
+       - Required: `schema`, `egoBlueprint` (a `vehicle.*` string), `spawnPointIndex` (an int, not a bool,
+         ≥ 0) and `map` (a non-empty string). `note` is optional and must be a string.
+       - All are checked before any spawn or waypoint query, and 13 new cases pin this. The finding 3
+         probes (`egoBlueprint` missing, giving a `KeyError`; `map: 42` accepted) are now refused with a
+         `ValueError`.
+     - **LOW-5: closed** (sources.py 231 and 243–259).
+       - Each destroy runs in its own `try`, the failures are recorded in `destroy_failed`, and the
+         settings are restored.
+       - A single `RuntimeError` is then raised, unless an earlier error from within `close` is in flight.
+       - On the normal path, `main._close` (169–177) turns it into exit 3 (`return code or closed`, 137).
+         The connect, readiness and run-error paths already exit 3.
+       - The test shows the camera, radar and ego destroyed after the target's failure, with the settings
+         restored. No test drives `main` end to end with a failing destroy. That is optional, because
+         `_close` is pre-existing and unchanged.
+     - **MEDIUM-1: recorded as required** (finding 5, "E8-3a and D-2 input").
+       - Criteria (a) to (g) are complete, and each tolerance and count is `TODO: measurement`, owned by
+         WP-17. No value is set. See LOW-A on the owner's sequencing.
+     - **R-2 and R-4, amended: accurate.**
+       - The R-2 gap formula now includes both WP-01 bounding-box offsets and the ego's along-lane offset
+         from the projected spawn waypoint.
+       - R-4 states that `get_waypoint` snaps to the nearest driving lane, that the off-lane refusal fires
+         only on fakes, and that lateral placement is the live criterion (d).
+       - R-5 is correctly kept, and the new R-8 is accurate.
+     - **Schema-1 compatibility: no regression.**
+       - The new member, type and distance checks sit after the schema-2 test (scenario.py 58), and
+         `target_transform` runs only with a target. Schema 1 makes no new CARLA call.
+       - `xdl/descriptors/aeb-sim/live-scenario.json` is unchanged from `d5d7be8`, and the Phase 7
+         scenario tests pass.
+       - The only change shared with schema 1 is the per-actor `try` at close. On success it destroys in
+         the same order with the same calls, so tonight's soak is unaffected. On failure it is strictly
+         better: the remaining actors are destroyed, and the exit is still 3.
+   - **New notes (LOW, none blocking).**
+     - **LOW-A: the owner of the MEDIUM-1 tolerances is sequenced after D-2.**
+       - `implementation-plan.md` §5 lists D-2 as needing WP-01, WP-02, WP-06 and WP-07. WP-17 depends on
+         WP-12 and is in order step 6, the last.
+       - With WP-17 as the owner, E8-3a D-2 either waits for WP-17 or runs before its tolerances are
+         declared.
+       - A thesis-side decision is needed before D-2. Either the D-2 characterisation design record
+         declares the hold-still tolerances, or the FR-039 characterisation-harness part of WP-17 is
+         sequenced before D-2 and the §5 D-2 row names it.
+     - **LOW-B: a near-integer distance gives a sub-nanometre last step** (scenario.py 110–111).
+       - For example, `distanceAheadM = 3.0000000000000004` gives 4 steps, with a last step of
+         4.4e-16 m.
+       - It is positive, so CARLA's `next(distance > 0)` precondition holds, and the placement is
+         unaffected. Optional: fold a remainder below an epsilon into the previous step.
+     - **LOW-C: a close failure in the bind-failure path masks the original error** (sources.py 186–188).
+       - `__init__` calls `close()` inside its `except` clause. A destroy failure there now raises the
+         aggregated `RuntimeError`, which replaces the bind error in `main`'s single stderr line. The
+         original error survives only as `__context__`.
+       - This is pre-existing: the old unguarded destroy masked it the same way. The exit stays 3.
+       - Optional: re-raise the bind error and attach `destroy_failed` to it.
+   - **Recommendation.** Ready for the author's acceptance. Before E8-3a D-2, settle LOW-A with a thesis
+     plan decision. LOW-B and LOW-C are optional.
