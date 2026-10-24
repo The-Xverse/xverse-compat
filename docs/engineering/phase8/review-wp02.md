@@ -440,3 +440,19 @@ behaviour unverified (E8-3a).
        - Optional: re-raise the bind error and attach `destroy_failed` to it.
    - **Recommendation.** Ready for the author's acceptance. Before E8-3a D-2, settle LOW-A with a thesis
      plan decision. LOW-B and LOW-C are optional.
+
+## 7. Acceptance (written at 10:58:48 2026-10-24)
+
+- **Accepted** under the author's delegation of 2026-10-24. The records are thesis
+  `specs/029-lite-stabilization/review/author-decisions-20261023.md` ("Author delegation of decisions") and
+  `specs/002-assured-aeb/decisions.md` §G and §H. It is flagged for the author's review.
+- **Basis:** findings 3 and 6, both PASS WITH NOTES with no blocker. The compat suite gives 327 passed and 39
+  subtests. Verification is offline only; the hold-still live check belongs to E8-3a with D-2.
+- **LOW-A (finding 6).** The D-2 characterisation design record owns the hold-still criteria (a)–(g) and their
+  tolerances. It is written before any D-2 run, and WP-17 then reuses them. The thesis plan's D-2 row is updated to
+  match.
+- **Declared:**
+  - LOW-B: a near-zero last walk step is harmless.
+  - LOW-C: a destroy failure during the bind clean-up masks the bind error in `main`'s single stderr line. This is
+    pre-existing, and the exit is still 3.
+- **Merged** into compat main and pushed (see the merge commit). `live-scenario.json` stays schema 1 with no target.
