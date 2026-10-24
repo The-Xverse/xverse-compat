@@ -1,0 +1,2546 @@
+{
+  "apiVersion": "xverse.io/xdl/v1alpha1",
+  "extensions": {
+    "io.xverse.assured-aeb": {
+      "arm": "mloc",
+      "commonCause": [
+        {
+          "exercise": "declared limit; one characterisation run freezes both units at once (AD-13, AD-20)",
+          "id": "cc-1",
+          "kind": "shared-host-node",
+          "members": [
+            "vc-functional-unit",
+            "vc-assurance-unit"
+          ]
+        },
+        {
+          "exercise": "through CC-3",
+          "id": "cc-2a",
+          "kind": "shared-process",
+          "members": [
+            "front-zone-unit"
+          ]
+        },
+        {
+          "exercise": "freeze of adas-hpc (M-07, AD-12, H4-04)",
+          "id": "cc-2b",
+          "kind": "shared-process",
+          "members": [
+            "adas-hpc-unit"
+          ]
+        },
+        {
+          "exercise": "no freeze alone; owned hooks H4-03 and H4-05 (ED-04)",
+          "id": "cc-2c",
+          "kind": "shared-process",
+          "members": [
+            "vc-functional-unit"
+          ]
+        },
+        {
+          "exercise": "freeze of vc-assurance (H4-01, H4-08)",
+          "id": "cc-2d",
+          "kind": "shared-process",
+          "members": [
+            "vc-assurance-unit"
+          ]
+        },
+        {
+          "exercise": "freeze of front-zone (H4-07)",
+          "id": "cc-3",
+          "kind": "shared-zonal-ecu",
+          "members": [
+            "front-zone-unit"
+          ]
+        }
+      ],
+      "degradedPath": {
+        "configuration": "C_DEGRADED_RADAR",
+        "dependencies": [
+          {
+            "dependency": "radar",
+            "elements": [
+              "smart-radar"
+            ],
+            "flows": [
+              "f02-radar-raw",
+              "f06-radar-sensor-out"
+            ]
+          },
+          {
+            "dependency": "front-zone",
+            "elements": [
+              "front-zone"
+            ],
+            "flows": [
+              "f09-radar-vc"
+            ]
+          },
+          {
+            "dependency": "network",
+            "elements": [
+              "loop-gateway"
+            ],
+            "flows": [
+              "f09-radar-vc",
+              "f10-motion-chassis",
+              "f17-brake-command"
+            ]
+          },
+          {
+            "dependency": "vehicle-control-hpc",
+            "elements": [
+              "vc-ingress",
+              "evidence-validator",
+              "radar-fallback",
+              "vehicle-state",
+              "functional-arbiter",
+              "configuration-manager",
+              "transition-verifier",
+              "fixed-fallback-supervisor"
+            ],
+            "flows": []
+          },
+          {
+            "dependency": "vehicle-motion",
+            "elements": [
+              "motion-sensor-model"
+            ],
+            "flows": [
+              "f03-motion-raw",
+              "f10-motion-chassis"
+            ]
+          },
+          {
+            "dependency": "chassis-zone-and-brake-path",
+            "elements": [
+              "chassis-zone",
+              "brake-esc-node",
+              "carla-client"
+            ],
+            "flows": [
+              "f17-brake-command",
+              "f04-actuation-command"
+            ]
+          }
+        ],
+        "notDependencies": [
+          "adas-hpc-unit",
+          "vc-assurance-unit"
+        ]
+      },
+      "excluded": [
+        "legacy-vcu",
+        "driver-stimulus",
+        "other-zonal-and-legacy-ecus",
+        "ground-truth-observer-instance",
+        "oracle-instance",
+        "zenoh-router"
+      ],
+      "freezeTargets": {
+        "admitted": [
+          "front-zone-unit",
+          "adas-hpc-unit",
+          "vc-assurance-unit"
+        ],
+        "admittedSets": [
+          [
+            "vc-functional-unit",
+            "vc-assurance-unit"
+          ]
+        ],
+        "refused": [
+          "carla-adapter-unit",
+          "vehicle-loop-unit"
+        ],
+        "refusedKinds": [
+          "crash"
+        ],
+        "rule": "process faults target unit instances only; element instances are not units"
+      },
+      "intraUnitMessages": [
+        {
+          "destination": "motion-sensor-model-motion-raw-in",
+          "interfaceId": "motion-raw",
+          "source": "loop-gateway-motion-raw-out"
+        },
+        {
+          "destination": "driver-profile-motion-raw-in",
+          "interfaceId": "motion-raw",
+          "source": "loop-gateway-motion-raw-out"
+        },
+        {
+          "destination": "loop-gateway-throttle-command-in",
+          "interfaceId": "throttle-command",
+          "source": "driver-profile-throttle-command-out"
+        },
+        {
+          "destination": "front-zone-smart-camera-evidence-in",
+          "interfaceId": "smart-camera-evidence",
+          "source": "smart-camera-smart-camera-evidence-out"
+        },
+        {
+          "destination": "front-zone-smart-radar-evidence-in",
+          "interfaceId": "smart-radar-evidence",
+          "source": "smart-radar-smart-radar-evidence-out"
+        },
+        {
+          "destination": "fusion-risk-aeb-perception-output-in",
+          "interfaceId": "perception-output",
+          "source": "perception-perception-output-out"
+        },
+        {
+          "destination": "proposer-proposal-basis-in",
+          "interfaceId": "proposal-basis",
+          "source": "fusion-risk-aeb-proposal-basis-out"
+        },
+        {
+          "destination": "proposer-goal-model-in",
+          "interfaceId": "goal-model",
+          "source": "goal-interpreter-goal-model-out"
+        },
+        {
+          "destination": "vehicle-state-motion-evidence-in",
+          "interfaceId": "motion-evidence",
+          "source": "chassis-zone-motion-evidence-out"
+        },
+        {
+          "destination": "evidence-validator-vehicle-state-record-in",
+          "interfaceId": "vehicle-state-record",
+          "source": "vehicle-state-vehicle-state-record-out"
+        },
+        {
+          "destination": "radar-fallback-radar-evidence-in",
+          "interfaceId": "radar-evidence",
+          "source": "vc-ingress-radar-evidence-out"
+        },
+        {
+          "destination": "evidence-validator-radar-evidence-in",
+          "interfaceId": "radar-evidence",
+          "source": "vc-ingress-radar-evidence-out"
+        },
+        {
+          "destination": "functional-arbiter-adas-cycle-in",
+          "interfaceId": "adas-cycle",
+          "source": "vc-ingress-adas-cycle-out"
+        },
+        {
+          "destination": "evidence-validator-adas-cycle-in",
+          "interfaceId": "adas-cycle",
+          "source": "vc-ingress-adas-cycle-out"
+        },
+        {
+          "destination": "functional-arbiter-qualified-evidence-in",
+          "interfaceId": "qualified-evidence",
+          "source": "evidence-validator-qualified-evidence-out"
+        },
+        {
+          "destination": "radar-fallback-qualified-evidence-in",
+          "interfaceId": "qualified-evidence",
+          "source": "evidence-validator-qualified-evidence-out"
+        },
+        {
+          "destination": "diagnostics-supervision-qualified-evidence-in",
+          "interfaceId": "qualified-evidence",
+          "source": "evidence-validator-qualified-evidence-out"
+        },
+        {
+          "destination": "fixed-fallback-supervisor-qualified-evidence-in",
+          "interfaceId": "qualified-evidence",
+          "source": "evidence-validator-qualified-evidence-out"
+        },
+        {
+          "destination": "fixed-fallback-supervisor-diagnostic-verdict-in",
+          "interfaceId": "diagnostic-verdict",
+          "source": "diagnostics-supervision-diagnostic-verdict-out"
+        },
+        {
+          "destination": "functional-arbiter-fallback-request-in",
+          "interfaceId": "fallback-request",
+          "source": "radar-fallback-fallback-request-out"
+        },
+        {
+          "destination": "configuration-manager-forced-command-in",
+          "interfaceId": "forced-command",
+          "source": "fixed-fallback-supervisor-forced-command-out"
+        },
+        {
+          "destination": "functional-arbiter-aeb-status-in",
+          "interfaceId": "aeb-status",
+          "source": "fixed-fallback-supervisor-aeb-status-out"
+        },
+        {
+          "destination": "chassis-zone-aeb-status-in",
+          "interfaceId": "aeb-status",
+          "source": "fixed-fallback-supervisor-aeb-status-out"
+        },
+        {
+          "destination": "functional-arbiter-selector-command-in",
+          "interfaceId": "selector-command",
+          "source": "configuration-manager-selector-command-out"
+        },
+        {
+          "destination": "transition-verifier-transition-request-in",
+          "interfaceId": "transition-request",
+          "source": "configuration-manager-transition-request-out"
+        },
+        {
+          "destination": "configuration-manager-transition-verdict-in",
+          "interfaceId": "transition-verdict",
+          "source": "transition-verifier-transition-verdict-out"
+        },
+        {
+          "destination": "fixed-fallback-supervisor-configuration-state-in",
+          "interfaceId": "configuration-state",
+          "source": "configuration-manager-configuration-state-out"
+        },
+        {
+          "destination": "chassis-zone-brake-request-in",
+          "interfaceId": "brake-request",
+          "source": "functional-arbiter-brake-request-out"
+        },
+        {
+          "destination": "brake-esc-node-brake-request-in",
+          "interfaceId": "brake-request",
+          "source": "chassis-zone-brake-request-out"
+        },
+        {
+          "destination": "chassis-zone-brake-status-in",
+          "interfaceId": "brake-status",
+          "source": "brake-esc-node-brake-status-out"
+        },
+        {
+          "destination": "safety-gate-assessment-in",
+          "interfaceId": "assessment",
+          "source": "safety-monitor-assessment-out"
+        }
+      ],
+      "kind": "system-architecture",
+      "returnFlows": [
+        {
+          "declaration": {
+            "deadline": "TODO: author decision (AD-07)",
+            "faultAdmission": [],
+            "freshness": "TODO: author decision (AD-06)",
+            "hubDelay": {
+              "unit": "simulator-step",
+              "value": 1
+            },
+            "intraUnit": false,
+            "kind": "flow-declaration",
+            "latencyKind": "actuation",
+            "modelledLatency": "TODO: author decision (AD-30)",
+            "schemaVersion": "0.1"
+          },
+          "destination": "carla-client-actuation-command-in",
+          "id": "f04-actuation-command",
+          "interfaceId": "actuation-command",
+          "networkId": "net-adapter-link",
+          "source": "loop-gateway-actuation-command-out"
+        },
+        {
+          "declaration": {
+            "deadline": "TODO: author decision (AD-07)",
+            "faultAdmission": [],
+            "freshness": "TODO: author decision (AD-06)",
+            "hubDelay": {
+              "unit": "simulator-step",
+              "value": 1
+            },
+            "intraUnit": false,
+            "kind": "flow-declaration",
+            "latencyKind": "network",
+            "modelledLatency": "TODO: author decision (AD-30)",
+            "schemaVersion": "0.1"
+          },
+          "destination": "proposer-configuration-state-in",
+          "id": "f15b-configuration-state-proposer",
+          "interfaceId": "configuration-state",
+          "networkId": "net-u4",
+          "source": "configuration-manager-configuration-state-out"
+        }
+      ],
+      "schemaVersion": "0.1"
+    }
+  },
+  "kind": "System",
+  "metadata": {
+    "description": "Bounded zonal AEB research topology, arm mloc (Note 21; WP-11; WP-12).",
+    "name": "assured-aeb-mloc",
+    "namespace": "org.xverse.assured-aeb",
+    "provenance": {
+      "limitations": [
+        "Topology declaration only: no unit program exists yet (WP-13 to WP-17).",
+        "All units run on one host: no hardware or network independence (ED-14)."
+      ],
+      "maturity": "architectural-target",
+      "revision": "wp12-v0.1",
+      "source": "xverse-blueprints/automotive/assured-aeb/topology.py"
+    },
+    "version": "0.1.0"
+  },
+  "spec": {
+    "componentInstances": [
+      {
+        "componentRef": {
+          "apiVersion": "xverse.io/xdl/v1alpha1",
+          "kind": "Component",
+          "name": "assured-aeb-unit-host",
+          "namespace": "org.xverse.assured-aeb"
+        },
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "hostedElements": [
+              "carla-client"
+            ],
+            "kind": "unit-host",
+            "schemaVersion": "0.1",
+            "unitClass": "environment"
+          }
+        },
+        "id": "carla-adapter-unit",
+        "nodeId": "simulation-environment"
+      },
+      {
+        "componentRef": {
+          "apiVersion": "xverse.io/xdl/v1alpha1",
+          "kind": "Component",
+          "name": "assured-aeb-unit-host",
+          "namespace": "org.xverse.assured-aeb"
+        },
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "hostedElements": [
+              "camera-imaging-stage",
+              "driver-profile",
+              "fault-relay",
+              "loop-gateway",
+              "motion-sensor-model",
+              "mrc-sink",
+              "objective-source"
+            ],
+            "kind": "unit-host",
+            "schemaVersion": "0.1",
+            "unitClass": "experiment-control"
+          }
+        },
+        "id": "vehicle-loop-unit",
+        "nodeId": "simulation-environment"
+      },
+      {
+        "componentRef": {
+          "apiVersion": "xverse.io/xdl/v1alpha1",
+          "kind": "Component",
+          "name": "assured-aeb-unit-host",
+          "namespace": "org.xverse.assured-aeb"
+        },
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "hostedElements": [
+              "front-zone",
+              "smart-camera",
+              "smart-radar"
+            ],
+            "kind": "unit-host",
+            "schemaVersion": "0.1",
+            "unitClass": "runtime"
+          }
+        },
+        "id": "front-zone-unit",
+        "nodeId": "front-zone-ecu"
+      },
+      {
+        "componentRef": {
+          "apiVersion": "xverse.io/xdl/v1alpha1",
+          "kind": "Component",
+          "name": "assured-aeb-unit-host",
+          "namespace": "org.xverse.assured-aeb"
+        },
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "hostedElements": [
+              "fusion-risk-aeb",
+              "goal-interpreter",
+              "perception",
+              "proposer"
+            ],
+            "kind": "unit-host",
+            "schemaVersion": "0.1",
+            "unitClass": "runtime"
+          }
+        },
+        "id": "adas-hpc-unit",
+        "nodeId": "adas-hpc"
+      },
+      {
+        "componentRef": {
+          "apiVersion": "xverse.io/xdl/v1alpha1",
+          "kind": "Component",
+          "name": "assured-aeb-unit-host",
+          "namespace": "org.xverse.assured-aeb"
+        },
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "hostedElements": [
+              "brake-esc-node",
+              "chassis-zone",
+              "configuration-manager",
+              "diagnostics-supervision",
+              "evidence-validator",
+              "fixed-fallback-supervisor",
+              "functional-arbiter",
+              "radar-fallback",
+              "transition-verifier",
+              "vc-ingress",
+              "vehicle-state"
+            ],
+            "kind": "unit-host",
+            "schemaVersion": "0.1",
+            "unitClass": "runtime"
+          }
+        },
+        "id": "vc-functional-unit",
+        "nodeId": "vehicle-control-hpc"
+      },
+      {
+        "componentRef": {
+          "apiVersion": "xverse.io/xdl/v1alpha1",
+          "kind": "Component",
+          "name": "assured-aeb-unit-host",
+          "namespace": "org.xverse.assured-aeb"
+        },
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "hostedElements": [
+              "safety-gate",
+              "safety-monitor"
+            ],
+            "kind": "unit-host",
+            "schemaVersion": "0.1",
+            "unitClass": "runtime"
+          }
+        },
+        "id": "vc-assurance-unit",
+        "nodeId": "vehicle-control-hpc"
+      },
+      {
+        "componentRef": {
+          "apiVersion": "xverse.io/xdl/v1alpha1",
+          "kind": "Component",
+          "name": "aeb-carla-client",
+          "namespace": "org.xverse.assured-aeb"
+        },
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "arms": [
+              "comparator",
+              "mloc",
+              "authorization-bypass",
+              "verification-bypass"
+            ],
+            "computeLatency": "TODO: author decision (AD-30)",
+            "hostUnit": "carla-adapter-unit",
+            "kind": "element-placement",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "carla-client",
+        "nodeId": "simulation-environment"
+      },
+      {
+        "componentRef": {
+          "apiVersion": "xverse.io/xdl/v1alpha1",
+          "kind": "Component",
+          "name": "aeb-loop-gateway",
+          "namespace": "org.xverse.assured-aeb"
+        },
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "arms": [
+              "comparator",
+              "mloc",
+              "authorization-bypass",
+              "verification-bypass"
+            ],
+            "computeLatency": "TODO: author decision (AD-30)",
+            "hostUnit": "vehicle-loop-unit",
+            "kind": "element-placement",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "loop-gateway",
+        "nodeId": "simulation-environment"
+      },
+      {
+        "componentRef": {
+          "apiVersion": "xverse.io/xdl/v1alpha1",
+          "kind": "Component",
+          "name": "aeb-fault-relay",
+          "namespace": "org.xverse.assured-aeb"
+        },
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "arms": [
+              "comparator",
+              "mloc",
+              "authorization-bypass",
+              "verification-bypass"
+            ],
+            "computeLatency": "TODO: author decision (AD-30)",
+            "hostUnit": "vehicle-loop-unit",
+            "kind": "element-placement",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "fault-relay",
+        "nodeId": "simulation-environment"
+      },
+      {
+        "componentRef": {
+          "apiVersion": "xverse.io/xdl/v1alpha1",
+          "kind": "Component",
+          "name": "aeb-camera-imaging-stage",
+          "namespace": "org.xverse.assured-aeb"
+        },
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "arms": [
+              "comparator",
+              "mloc",
+              "authorization-bypass",
+              "verification-bypass"
+            ],
+            "computeLatency": "TODO: author decision (AD-30)",
+            "hostUnit": "vehicle-loop-unit",
+            "kind": "element-placement",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "camera-imaging-stage",
+        "nodeId": "forward-camera"
+      },
+      {
+        "componentRef": {
+          "apiVersion": "xverse.io/xdl/v1alpha1",
+          "kind": "Component",
+          "name": "aeb-motion-sensor-model",
+          "namespace": "org.xverse.assured-aeb"
+        },
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "arms": [
+              "comparator",
+              "mloc",
+              "authorization-bypass",
+              "verification-bypass"
+            ],
+            "computeLatency": "TODO: author decision (AD-30)",
+            "hostUnit": "vehicle-loop-unit",
+            "kind": "element-placement",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "motion-sensor-model",
+        "nodeId": "chassis-zone-ecu"
+      },
+      {
+        "componentRef": {
+          "apiVersion": "xverse.io/xdl/v1alpha1",
+          "kind": "Component",
+          "name": "aeb-driver-profile",
+          "namespace": "org.xverse.assured-aeb"
+        },
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "arms": [
+              "comparator",
+              "mloc",
+              "authorization-bypass",
+              "verification-bypass"
+            ],
+            "computeLatency": "TODO: author decision (AD-30)",
+            "hostUnit": "vehicle-loop-unit",
+            "kind": "element-placement",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "driver-profile",
+        "nodeId": "simulation-environment"
+      },
+      {
+        "componentRef": {
+          "apiVersion": "xverse.io/xdl/v1alpha1",
+          "kind": "Component",
+          "name": "aeb-objective-source",
+          "namespace": "org.xverse.assured-aeb"
+        },
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "arms": [
+              "mloc",
+              "authorization-bypass",
+              "verification-bypass"
+            ],
+            "computeLatency": "TODO: author decision (AD-30)",
+            "hostUnit": "vehicle-loop-unit",
+            "kind": "element-placement",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "objective-source",
+        "nodeId": "simulation-environment"
+      },
+      {
+        "componentRef": {
+          "apiVersion": "xverse.io/xdl/v1alpha1",
+          "kind": "Component",
+          "name": "aeb-mrc-sink",
+          "namespace": "org.xverse.assured-aeb"
+        },
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "arms": [
+              "comparator",
+              "mloc",
+              "authorization-bypass",
+              "verification-bypass"
+            ],
+            "computeLatency": "TODO: author decision (AD-30)",
+            "hostUnit": "vehicle-loop-unit",
+            "kind": "element-placement",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "mrc-sink",
+        "nodeId": "simulation-environment"
+      },
+      {
+        "componentRef": {
+          "apiVersion": "xverse.io/xdl/v1alpha1",
+          "kind": "Component",
+          "name": "aeb-front-zone",
+          "namespace": "org.xverse.assured-aeb"
+        },
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "arms": [
+              "comparator",
+              "mloc",
+              "authorization-bypass",
+              "verification-bypass"
+            ],
+            "computeLatency": "TODO: author decision (AD-30)",
+            "hostUnit": "front-zone-unit",
+            "kind": "element-placement",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "front-zone",
+        "nodeId": "front-zone-ecu"
+      },
+      {
+        "componentRef": {
+          "apiVersion": "xverse.io/xdl/v1alpha1",
+          "kind": "Component",
+          "name": "aeb-smart-camera",
+          "namespace": "org.xverse.assured-aeb"
+        },
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "arms": [
+              "comparator",
+              "mloc",
+              "authorization-bypass",
+              "verification-bypass"
+            ],
+            "computeLatency": "TODO: author decision (AD-30)",
+            "hostUnit": "front-zone-unit",
+            "kind": "element-placement",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "smart-camera",
+        "nodeId": "forward-camera"
+      },
+      {
+        "componentRef": {
+          "apiVersion": "xverse.io/xdl/v1alpha1",
+          "kind": "Component",
+          "name": "aeb-smart-radar",
+          "namespace": "org.xverse.assured-aeb"
+        },
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "arms": [
+              "comparator",
+              "mloc",
+              "authorization-bypass",
+              "verification-bypass"
+            ],
+            "computeLatency": "TODO: author decision (AD-30)",
+            "hostUnit": "front-zone-unit",
+            "kind": "element-placement",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "smart-radar",
+        "nodeId": "forward-radar"
+      },
+      {
+        "componentRef": {
+          "apiVersion": "xverse.io/xdl/v1alpha1",
+          "kind": "Component",
+          "name": "aeb-perception",
+          "namespace": "org.xverse.assured-aeb"
+        },
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "arms": [
+              "comparator",
+              "mloc",
+              "authorization-bypass",
+              "verification-bypass"
+            ],
+            "computeLatency": "TODO: author decision (AD-30)",
+            "hostUnit": "adas-hpc-unit",
+            "kind": "element-placement",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "perception",
+        "nodeId": "adas-hpc"
+      },
+      {
+        "componentRef": {
+          "apiVersion": "xverse.io/xdl/v1alpha1",
+          "kind": "Component",
+          "name": "aeb-fusion-risk-aeb",
+          "namespace": "org.xverse.assured-aeb"
+        },
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "arms": [
+              "comparator",
+              "mloc",
+              "authorization-bypass",
+              "verification-bypass"
+            ],
+            "computeLatency": "TODO: author decision (AD-30)",
+            "hostUnit": "adas-hpc-unit",
+            "kind": "element-placement",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "fusion-risk-aeb",
+        "nodeId": "adas-hpc"
+      },
+      {
+        "componentRef": {
+          "apiVersion": "xverse.io/xdl/v1alpha1",
+          "kind": "Component",
+          "name": "aeb-proposer",
+          "namespace": "org.xverse.assured-aeb"
+        },
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "arms": [
+              "mloc",
+              "authorization-bypass",
+              "verification-bypass"
+            ],
+            "computeLatency": "TODO: author decision (AD-30)",
+            "hostUnit": "adas-hpc-unit",
+            "kind": "element-placement",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "proposer",
+        "nodeId": "adas-hpc"
+      },
+      {
+        "componentRef": {
+          "apiVersion": "xverse.io/xdl/v1alpha1",
+          "kind": "Component",
+          "name": "aeb-goal-interpreter",
+          "namespace": "org.xverse.assured-aeb"
+        },
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "arms": [
+              "mloc",
+              "authorization-bypass",
+              "verification-bypass"
+            ],
+            "computeLatency": "TODO: author decision (AD-30)",
+            "hostUnit": "adas-hpc-unit",
+            "kind": "element-placement",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "goal-interpreter",
+        "nodeId": "adas-hpc"
+      },
+      {
+        "componentRef": {
+          "apiVersion": "xverse.io/xdl/v1alpha1",
+          "kind": "Component",
+          "name": "aeb-vc-ingress",
+          "namespace": "org.xverse.assured-aeb"
+        },
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "arms": [
+              "comparator",
+              "mloc",
+              "authorization-bypass",
+              "verification-bypass"
+            ],
+            "computeLatency": "TODO: author decision (AD-30)",
+            "hostUnit": "vc-functional-unit",
+            "kind": "element-placement",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "vc-ingress",
+        "nodeId": "vehicle-control-hpc"
+      },
+      {
+        "componentRef": {
+          "apiVersion": "xverse.io/xdl/v1alpha1",
+          "kind": "Component",
+          "name": "aeb-evidence-validator",
+          "namespace": "org.xverse.assured-aeb"
+        },
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "arms": [
+              "comparator",
+              "mloc",
+              "authorization-bypass",
+              "verification-bypass"
+            ],
+            "computeLatency": "TODO: author decision (AD-30)",
+            "hostUnit": "vc-functional-unit",
+            "kind": "element-placement",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "evidence-validator",
+        "nodeId": "vehicle-control-hpc"
+      },
+      {
+        "componentRef": {
+          "apiVersion": "xverse.io/xdl/v1alpha1",
+          "kind": "Component",
+          "name": "aeb-functional-arbiter",
+          "namespace": "org.xverse.assured-aeb"
+        },
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "arms": [
+              "comparator",
+              "mloc",
+              "authorization-bypass",
+              "verification-bypass"
+            ],
+            "computeLatency": "TODO: author decision (AD-30)",
+            "hostUnit": "vc-functional-unit",
+            "kind": "element-placement",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "functional-arbiter",
+        "nodeId": "vehicle-control-hpc"
+      },
+      {
+        "componentRef": {
+          "apiVersion": "xverse.io/xdl/v1alpha1",
+          "kind": "Component",
+          "name": "aeb-radar-fallback",
+          "namespace": "org.xverse.assured-aeb"
+        },
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "arms": [
+              "comparator",
+              "mloc",
+              "authorization-bypass",
+              "verification-bypass"
+            ],
+            "computeLatency": "TODO: author decision (AD-30)",
+            "hostUnit": "vc-functional-unit",
+            "kind": "element-placement",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "radar-fallback",
+        "nodeId": "vehicle-control-hpc"
+      },
+      {
+        "componentRef": {
+          "apiVersion": "xverse.io/xdl/v1alpha1",
+          "kind": "Component",
+          "name": "aeb-vehicle-state",
+          "namespace": "org.xverse.assured-aeb"
+        },
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "arms": [
+              "comparator",
+              "mloc",
+              "authorization-bypass",
+              "verification-bypass"
+            ],
+            "computeLatency": "TODO: author decision (AD-30)",
+            "hostUnit": "vc-functional-unit",
+            "kind": "element-placement",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "vehicle-state",
+        "nodeId": "vehicle-control-hpc"
+      },
+      {
+        "componentRef": {
+          "apiVersion": "xverse.io/xdl/v1alpha1",
+          "kind": "Component",
+          "name": "aeb-diagnostics-supervision",
+          "namespace": "org.xverse.assured-aeb"
+        },
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "arms": [
+              "comparator",
+              "mloc",
+              "authorization-bypass",
+              "verification-bypass"
+            ],
+            "computeLatency": "TODO: author decision (AD-30)",
+            "hostUnit": "vc-functional-unit",
+            "kind": "element-placement",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "diagnostics-supervision",
+        "nodeId": "vehicle-control-hpc"
+      },
+      {
+        "componentRef": {
+          "apiVersion": "xverse.io/xdl/v1alpha1",
+          "kind": "Component",
+          "name": "aeb-fixed-fallback-supervisor",
+          "namespace": "org.xverse.assured-aeb"
+        },
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "arms": [
+              "comparator",
+              "mloc",
+              "authorization-bypass",
+              "verification-bypass"
+            ],
+            "computeLatency": "TODO: author decision (AD-30)",
+            "hostUnit": "vc-functional-unit",
+            "kind": "element-placement",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "fixed-fallback-supervisor",
+        "nodeId": "vehicle-control-hpc"
+      },
+      {
+        "componentRef": {
+          "apiVersion": "xverse.io/xdl/v1alpha1",
+          "kind": "Component",
+          "name": "aeb-configuration-manager",
+          "namespace": "org.xverse.assured-aeb"
+        },
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "arms": [
+              "comparator",
+              "mloc",
+              "authorization-bypass",
+              "verification-bypass"
+            ],
+            "computeLatency": "TODO: author decision (AD-30)",
+            "hostUnit": "vc-functional-unit",
+            "kind": "element-placement",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "configuration-manager",
+        "nodeId": "vehicle-control-hpc"
+      },
+      {
+        "componentRef": {
+          "apiVersion": "xverse.io/xdl/v1alpha1",
+          "kind": "Component",
+          "name": "aeb-transition-verifier",
+          "namespace": "org.xverse.assured-aeb"
+        },
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "arms": [
+              "comparator",
+              "mloc",
+              "authorization-bypass",
+              "verification-bypass"
+            ],
+            "computeLatency": "TODO: author decision (AD-30)",
+            "hostUnit": "vc-functional-unit",
+            "kind": "element-placement",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "transition-verifier",
+        "nodeId": "vehicle-control-hpc"
+      },
+      {
+        "componentRef": {
+          "apiVersion": "xverse.io/xdl/v1alpha1",
+          "kind": "Component",
+          "name": "aeb-chassis-zone",
+          "namespace": "org.xverse.assured-aeb"
+        },
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "arms": [
+              "comparator",
+              "mloc",
+              "authorization-bypass",
+              "verification-bypass"
+            ],
+            "computeLatency": "TODO: author decision (AD-30)",
+            "hostUnit": "vc-functional-unit",
+            "kind": "element-placement",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "chassis-zone",
+        "nodeId": "chassis-zone-ecu"
+      },
+      {
+        "componentRef": {
+          "apiVersion": "xverse.io/xdl/v1alpha1",
+          "kind": "Component",
+          "name": "aeb-brake-esc-node",
+          "namespace": "org.xverse.assured-aeb"
+        },
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "arms": [
+              "comparator",
+              "mloc",
+              "authorization-bypass",
+              "verification-bypass"
+            ],
+            "computeLatency": "TODO: author decision (AD-30)",
+            "hostUnit": "vc-functional-unit",
+            "kind": "element-placement",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "brake-esc-node",
+        "nodeId": "brake-esc-ecu"
+      },
+      {
+        "componentRef": {
+          "apiVersion": "xverse.io/xdl/v1alpha1",
+          "kind": "Component",
+          "name": "aeb-safety-monitor",
+          "namespace": "org.xverse.assured-aeb"
+        },
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "arms": [
+              "mloc",
+              "authorization-bypass",
+              "verification-bypass"
+            ],
+            "computeLatency": "TODO: author decision (AD-30)",
+            "hostUnit": "vc-assurance-unit",
+            "kind": "element-placement",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "safety-monitor",
+        "nodeId": "vehicle-control-hpc"
+      },
+      {
+        "componentRef": {
+          "apiVersion": "xverse.io/xdl/v1alpha1",
+          "kind": "Component",
+          "name": "aeb-safety-gate",
+          "namespace": "org.xverse.assured-aeb"
+        },
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "arms": [
+              "mloc",
+              "authorization-bypass",
+              "verification-bypass"
+            ],
+            "computeLatency": "TODO: author decision (AD-30)",
+            "hostUnit": "vc-assurance-unit",
+            "kind": "element-placement",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "safety-gate",
+        "nodeId": "vehicle-control-hpc"
+      }
+    ],
+    "defaultTimeDomainId": "carla-simulation",
+    "endpoints": [
+      {
+        "direction": "output",
+        "id": "brake-esc-node-brake-command-out",
+        "interfaceId": "brake-command",
+        "ownerId": "brake-esc-node"
+      },
+      {
+        "direction": "input",
+        "id": "brake-esc-node-brake-request-in",
+        "interfaceId": "brake-request",
+        "ownerId": "brake-esc-node"
+      },
+      {
+        "direction": "output",
+        "id": "brake-esc-node-brake-status-out",
+        "interfaceId": "brake-status",
+        "ownerId": "brake-esc-node"
+      },
+      {
+        "direction": "input",
+        "id": "camera-imaging-stage-camera-raw-in",
+        "interfaceId": "camera-raw",
+        "ownerId": "camera-imaging-stage"
+      },
+      {
+        "direction": "output",
+        "id": "camera-imaging-stage-camera-sensor-out-out",
+        "interfaceId": "camera-sensor-out",
+        "ownerId": "camera-imaging-stage"
+      },
+      {
+        "direction": "input",
+        "id": "carla-client-actuation-command-in",
+        "interfaceId": "actuation-command",
+        "ownerId": "carla-client"
+      },
+      {
+        "direction": "output",
+        "id": "carla-client-camera-raw-out",
+        "interfaceId": "camera-raw",
+        "ownerId": "carla-client"
+      },
+      {
+        "direction": "output",
+        "id": "carla-client-motion-raw-out",
+        "interfaceId": "motion-raw",
+        "ownerId": "carla-client"
+      },
+      {
+        "direction": "output",
+        "id": "carla-client-radar-raw-out",
+        "interfaceId": "radar-raw",
+        "ownerId": "carla-client"
+      },
+      {
+        "direction": "input",
+        "id": "chassis-zone-aeb-status-in",
+        "interfaceId": "aeb-status",
+        "ownerId": "chassis-zone"
+      },
+      {
+        "direction": "input",
+        "id": "chassis-zone-brake-request-in",
+        "interfaceId": "brake-request",
+        "ownerId": "chassis-zone"
+      },
+      {
+        "direction": "output",
+        "id": "chassis-zone-brake-request-out",
+        "interfaceId": "brake-request",
+        "ownerId": "chassis-zone"
+      },
+      {
+        "direction": "input",
+        "id": "chassis-zone-brake-status-in",
+        "interfaceId": "brake-status",
+        "ownerId": "chassis-zone"
+      },
+      {
+        "direction": "input",
+        "id": "chassis-zone-motion-evidence-in",
+        "interfaceId": "motion-evidence",
+        "ownerId": "chassis-zone"
+      },
+      {
+        "direction": "output",
+        "id": "chassis-zone-motion-evidence-out",
+        "interfaceId": "motion-evidence",
+        "ownerId": "chassis-zone"
+      },
+      {
+        "direction": "input",
+        "id": "configuration-manager-authorization-in",
+        "interfaceId": "authorization",
+        "ownerId": "configuration-manager"
+      },
+      {
+        "direction": "output",
+        "id": "configuration-manager-configuration-state-out",
+        "interfaceId": "configuration-state",
+        "ownerId": "configuration-manager"
+      },
+      {
+        "direction": "input",
+        "id": "configuration-manager-forced-command-in",
+        "interfaceId": "forced-command",
+        "ownerId": "configuration-manager"
+      },
+      {
+        "direction": "output",
+        "id": "configuration-manager-selector-command-out",
+        "interfaceId": "selector-command",
+        "ownerId": "configuration-manager"
+      },
+      {
+        "direction": "output",
+        "id": "configuration-manager-transition-request-out",
+        "interfaceId": "transition-request",
+        "ownerId": "configuration-manager"
+      },
+      {
+        "direction": "input",
+        "id": "configuration-manager-transition-verdict-in",
+        "interfaceId": "transition-verdict",
+        "ownerId": "configuration-manager"
+      },
+      {
+        "direction": "output",
+        "id": "diagnostics-supervision-diagnostic-verdict-out",
+        "interfaceId": "diagnostic-verdict",
+        "ownerId": "diagnostics-supervision"
+      },
+      {
+        "direction": "input",
+        "id": "diagnostics-supervision-qualified-evidence-in",
+        "interfaceId": "qualified-evidence",
+        "ownerId": "diagnostics-supervision"
+      },
+      {
+        "direction": "input",
+        "id": "driver-profile-motion-raw-in",
+        "interfaceId": "motion-raw",
+        "ownerId": "driver-profile"
+      },
+      {
+        "direction": "output",
+        "id": "driver-profile-throttle-command-out",
+        "interfaceId": "throttle-command",
+        "ownerId": "driver-profile"
+      },
+      {
+        "direction": "input",
+        "id": "evidence-validator-adas-cycle-in",
+        "interfaceId": "adas-cycle",
+        "ownerId": "evidence-validator"
+      },
+      {
+        "direction": "output",
+        "id": "evidence-validator-qualified-evidence-out",
+        "interfaceId": "qualified-evidence",
+        "ownerId": "evidence-validator"
+      },
+      {
+        "direction": "input",
+        "id": "evidence-validator-radar-evidence-in",
+        "interfaceId": "radar-evidence",
+        "ownerId": "evidence-validator"
+      },
+      {
+        "direction": "input",
+        "id": "evidence-validator-vehicle-state-record-in",
+        "interfaceId": "vehicle-state-record",
+        "ownerId": "evidence-validator"
+      },
+      {
+        "direction": "output",
+        "id": "fault-relay-proposal-out",
+        "interfaceId": "proposal",
+        "ownerId": "fault-relay"
+      },
+      {
+        "direction": "output",
+        "id": "fixed-fallback-supervisor-aeb-status-out",
+        "interfaceId": "aeb-status",
+        "ownerId": "fixed-fallback-supervisor"
+      },
+      {
+        "direction": "input",
+        "id": "fixed-fallback-supervisor-configuration-state-in",
+        "interfaceId": "configuration-state",
+        "ownerId": "fixed-fallback-supervisor"
+      },
+      {
+        "direction": "input",
+        "id": "fixed-fallback-supervisor-diagnostic-verdict-in",
+        "interfaceId": "diagnostic-verdict",
+        "ownerId": "fixed-fallback-supervisor"
+      },
+      {
+        "direction": "output",
+        "id": "fixed-fallback-supervisor-forced-command-out",
+        "interfaceId": "forced-command",
+        "ownerId": "fixed-fallback-supervisor"
+      },
+      {
+        "direction": "output",
+        "id": "fixed-fallback-supervisor-mrc-request-out",
+        "interfaceId": "mrc-request",
+        "ownerId": "fixed-fallback-supervisor"
+      },
+      {
+        "direction": "input",
+        "id": "fixed-fallback-supervisor-qualified-evidence-in",
+        "interfaceId": "qualified-evidence",
+        "ownerId": "fixed-fallback-supervisor"
+      },
+      {
+        "direction": "output",
+        "id": "front-zone-camera-evidence-out",
+        "interfaceId": "camera-evidence",
+        "ownerId": "front-zone"
+      },
+      {
+        "direction": "output",
+        "id": "front-zone-radar-evidence-out",
+        "interfaceId": "radar-evidence",
+        "ownerId": "front-zone"
+      },
+      {
+        "direction": "input",
+        "id": "front-zone-smart-camera-evidence-in",
+        "interfaceId": "smart-camera-evidence",
+        "ownerId": "front-zone"
+      },
+      {
+        "direction": "input",
+        "id": "front-zone-smart-radar-evidence-in",
+        "interfaceId": "smart-radar-evidence",
+        "ownerId": "front-zone"
+      },
+      {
+        "direction": "input",
+        "id": "functional-arbiter-adas-cycle-in",
+        "interfaceId": "adas-cycle",
+        "ownerId": "functional-arbiter"
+      },
+      {
+        "direction": "input",
+        "id": "functional-arbiter-aeb-status-in",
+        "interfaceId": "aeb-status",
+        "ownerId": "functional-arbiter"
+      },
+      {
+        "direction": "output",
+        "id": "functional-arbiter-brake-request-out",
+        "interfaceId": "brake-request",
+        "ownerId": "functional-arbiter"
+      },
+      {
+        "direction": "input",
+        "id": "functional-arbiter-fallback-request-in",
+        "interfaceId": "fallback-request",
+        "ownerId": "functional-arbiter"
+      },
+      {
+        "direction": "input",
+        "id": "functional-arbiter-qualified-evidence-in",
+        "interfaceId": "qualified-evidence",
+        "ownerId": "functional-arbiter"
+      },
+      {
+        "direction": "input",
+        "id": "functional-arbiter-selector-command-in",
+        "interfaceId": "selector-command",
+        "ownerId": "functional-arbiter"
+      },
+      {
+        "direction": "output",
+        "id": "fusion-risk-aeb-adas-cycle-out",
+        "interfaceId": "adas-cycle",
+        "ownerId": "fusion-risk-aeb"
+      },
+      {
+        "direction": "input",
+        "id": "fusion-risk-aeb-perception-output-in",
+        "interfaceId": "perception-output",
+        "ownerId": "fusion-risk-aeb"
+      },
+      {
+        "direction": "output",
+        "id": "fusion-risk-aeb-proposal-basis-out",
+        "interfaceId": "proposal-basis",
+        "ownerId": "fusion-risk-aeb"
+      },
+      {
+        "direction": "input",
+        "id": "fusion-risk-aeb-radar-evidence-in",
+        "interfaceId": "radar-evidence",
+        "ownerId": "fusion-risk-aeb"
+      },
+      {
+        "direction": "output",
+        "id": "goal-interpreter-goal-model-out",
+        "interfaceId": "goal-model",
+        "ownerId": "goal-interpreter"
+      },
+      {
+        "direction": "input",
+        "id": "goal-interpreter-objective-in",
+        "interfaceId": "objective",
+        "ownerId": "goal-interpreter"
+      },
+      {
+        "direction": "output",
+        "id": "loop-gateway-actuation-command-out",
+        "interfaceId": "actuation-command",
+        "ownerId": "loop-gateway"
+      },
+      {
+        "direction": "input",
+        "id": "loop-gateway-brake-command-in",
+        "interfaceId": "brake-command",
+        "ownerId": "loop-gateway"
+      },
+      {
+        "direction": "input",
+        "id": "loop-gateway-motion-raw-in",
+        "interfaceId": "motion-raw",
+        "ownerId": "loop-gateway"
+      },
+      {
+        "direction": "output",
+        "id": "loop-gateway-motion-raw-out",
+        "interfaceId": "motion-raw",
+        "ownerId": "loop-gateway"
+      },
+      {
+        "direction": "input",
+        "id": "loop-gateway-radar-raw-in",
+        "interfaceId": "radar-raw",
+        "ownerId": "loop-gateway"
+      },
+      {
+        "direction": "output",
+        "id": "loop-gateway-radar-sensor-out-out",
+        "interfaceId": "radar-sensor-out",
+        "ownerId": "loop-gateway"
+      },
+      {
+        "direction": "input",
+        "id": "loop-gateway-throttle-command-in",
+        "interfaceId": "throttle-command",
+        "ownerId": "loop-gateway"
+      },
+      {
+        "direction": "output",
+        "id": "motion-sensor-model-motion-evidence-out",
+        "interfaceId": "motion-evidence",
+        "ownerId": "motion-sensor-model"
+      },
+      {
+        "direction": "input",
+        "id": "motion-sensor-model-motion-raw-in",
+        "interfaceId": "motion-raw",
+        "ownerId": "motion-sensor-model"
+      },
+      {
+        "direction": "input",
+        "id": "mrc-sink-mrc-request-in",
+        "interfaceId": "mrc-request",
+        "ownerId": "mrc-sink"
+      },
+      {
+        "direction": "output",
+        "id": "objective-source-objective-out",
+        "interfaceId": "objective",
+        "ownerId": "objective-source"
+      },
+      {
+        "direction": "input",
+        "id": "perception-camera-evidence-in",
+        "interfaceId": "camera-evidence",
+        "ownerId": "perception"
+      },
+      {
+        "direction": "output",
+        "id": "perception-perception-output-out",
+        "interfaceId": "perception-output",
+        "ownerId": "perception"
+      },
+      {
+        "direction": "input",
+        "id": "proposer-configuration-state-in",
+        "interfaceId": "configuration-state",
+        "ownerId": "proposer"
+      },
+      {
+        "direction": "input",
+        "id": "proposer-goal-model-in",
+        "interfaceId": "goal-model",
+        "ownerId": "proposer"
+      },
+      {
+        "direction": "input",
+        "id": "proposer-proposal-basis-in",
+        "interfaceId": "proposal-basis",
+        "ownerId": "proposer"
+      },
+      {
+        "direction": "output",
+        "id": "proposer-proposal-out",
+        "interfaceId": "proposal",
+        "ownerId": "proposer"
+      },
+      {
+        "direction": "output",
+        "id": "radar-fallback-fallback-request-out",
+        "interfaceId": "fallback-request",
+        "ownerId": "radar-fallback"
+      },
+      {
+        "direction": "input",
+        "id": "radar-fallback-qualified-evidence-in",
+        "interfaceId": "qualified-evidence",
+        "ownerId": "radar-fallback"
+      },
+      {
+        "direction": "input",
+        "id": "radar-fallback-radar-evidence-in",
+        "interfaceId": "radar-evidence",
+        "ownerId": "radar-fallback"
+      },
+      {
+        "direction": "input",
+        "id": "safety-gate-assessment-in",
+        "interfaceId": "assessment",
+        "ownerId": "safety-gate"
+      },
+      {
+        "direction": "output",
+        "id": "safety-gate-authorization-out",
+        "interfaceId": "authorization",
+        "ownerId": "safety-gate"
+      },
+      {
+        "direction": "input",
+        "id": "safety-gate-proposal-in",
+        "interfaceId": "proposal",
+        "ownerId": "safety-gate"
+      },
+      {
+        "direction": "output",
+        "id": "safety-monitor-assessment-out",
+        "interfaceId": "assessment",
+        "ownerId": "safety-monitor"
+      },
+      {
+        "direction": "input",
+        "id": "safety-monitor-configuration-state-in",
+        "interfaceId": "configuration-state",
+        "ownerId": "safety-monitor"
+      },
+      {
+        "direction": "input",
+        "id": "safety-monitor-qualified-evidence-in",
+        "interfaceId": "qualified-evidence",
+        "ownerId": "safety-monitor"
+      },
+      {
+        "direction": "input",
+        "id": "safety-monitor-transition-verdict-in",
+        "interfaceId": "transition-verdict",
+        "ownerId": "safety-monitor"
+      },
+      {
+        "direction": "input",
+        "id": "smart-camera-camera-sensor-out-in",
+        "interfaceId": "camera-sensor-out",
+        "ownerId": "smart-camera"
+      },
+      {
+        "direction": "output",
+        "id": "smart-camera-smart-camera-evidence-out",
+        "interfaceId": "smart-camera-evidence",
+        "ownerId": "smart-camera"
+      },
+      {
+        "direction": "input",
+        "id": "smart-radar-radar-sensor-out-in",
+        "interfaceId": "radar-sensor-out",
+        "ownerId": "smart-radar"
+      },
+      {
+        "direction": "output",
+        "id": "smart-radar-smart-radar-evidence-out",
+        "interfaceId": "smart-radar-evidence",
+        "ownerId": "smart-radar"
+      },
+      {
+        "direction": "input",
+        "id": "transition-verifier-transition-request-in",
+        "interfaceId": "transition-request",
+        "ownerId": "transition-verifier"
+      },
+      {
+        "direction": "output",
+        "id": "transition-verifier-transition-verdict-out",
+        "interfaceId": "transition-verdict",
+        "ownerId": "transition-verifier"
+      },
+      {
+        "direction": "input",
+        "id": "vc-ingress-adas-cycle-in",
+        "interfaceId": "adas-cycle",
+        "ownerId": "vc-ingress"
+      },
+      {
+        "direction": "output",
+        "id": "vc-ingress-adas-cycle-out",
+        "interfaceId": "adas-cycle",
+        "ownerId": "vc-ingress"
+      },
+      {
+        "direction": "input",
+        "id": "vc-ingress-radar-evidence-in",
+        "interfaceId": "radar-evidence",
+        "ownerId": "vc-ingress"
+      },
+      {
+        "direction": "output",
+        "id": "vc-ingress-radar-evidence-out",
+        "interfaceId": "radar-evidence",
+        "ownerId": "vc-ingress"
+      },
+      {
+        "direction": "input",
+        "id": "vehicle-state-motion-evidence-in",
+        "interfaceId": "motion-evidence",
+        "ownerId": "vehicle-state"
+      },
+      {
+        "direction": "output",
+        "id": "vehicle-state-vehicle-state-record-out",
+        "interfaceId": "vehicle-state-record",
+        "ownerId": "vehicle-state"
+      }
+    ],
+    "flows": [
+      {
+        "deliveryIntent": "ordered",
+        "destinationEndpointIds": [
+          "camera-imaging-stage-camera-raw-in"
+        ],
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "deadline": "TODO: author decision (AD-07)",
+            "faultAdmission": [],
+            "freshness": "TODO: author decision (AD-06)",
+            "intraUnit": false,
+            "kind": "flow-declaration",
+            "latencyKind": "none",
+            "modelledLatency": "none",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "f01-camera-raw",
+        "interfaceId": "camera-raw",
+        "networkId": "net-adapter-link",
+        "sourceEndpointId": "carla-client-camera-raw-out",
+        "timeDomainId": "carla-simulation"
+      },
+      {
+        "deliveryIntent": "ordered",
+        "destinationEndpointIds": [
+          "loop-gateway-radar-raw-in"
+        ],
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "deadline": "TODO: author decision (AD-07)",
+            "faultAdmission": [],
+            "freshness": "TODO: author decision (AD-06)",
+            "intraUnit": false,
+            "kind": "flow-declaration",
+            "latencyKind": "none",
+            "modelledLatency": "none",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "f02-radar-raw",
+        "interfaceId": "radar-raw",
+        "networkId": "net-adapter-link",
+        "sourceEndpointId": "carla-client-radar-raw-out",
+        "timeDomainId": "carla-simulation"
+      },
+      {
+        "deliveryIntent": "ordered",
+        "destinationEndpointIds": [
+          "loop-gateway-motion-raw-in"
+        ],
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "deadline": "TODO: author decision (AD-07)",
+            "faultAdmission": [],
+            "freshness": "TODO: author decision (AD-06)",
+            "intraUnit": false,
+            "kind": "flow-declaration",
+            "latencyKind": "none",
+            "modelledLatency": "none",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "f03-motion-raw",
+        "interfaceId": "motion-raw",
+        "networkId": "net-adapter-link",
+        "sourceEndpointId": "carla-client-motion-raw-out",
+        "timeDomainId": "carla-simulation"
+      },
+      {
+        "deliveryIntent": "ordered",
+        "destinationEndpointIds": [
+          "smart-camera-camera-sensor-out-in"
+        ],
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "deadline": "TODO: author decision (AD-07)",
+            "faultAdmission": [],
+            "freshness": "TODO: author decision (AD-06)",
+            "intraUnit": false,
+            "kind": "flow-declaration",
+            "latencyKind": "sensor-sampling",
+            "modelledLatency": "TODO: author decision (AD-30)",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "f05-camera-sensor-out",
+        "interfaceId": "camera-sensor-out",
+        "networkId": "net-u3",
+        "sourceEndpointId": "camera-imaging-stage-camera-sensor-out-out",
+        "timeDomainId": "carla-simulation"
+      },
+      {
+        "deliveryIntent": "ordered",
+        "destinationEndpointIds": [
+          "smart-radar-radar-sensor-out-in"
+        ],
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "deadline": "TODO: author decision (AD-07)",
+            "faultAdmission": [],
+            "freshness": "TODO: author decision (AD-06)",
+            "intraUnit": false,
+            "kind": "flow-declaration",
+            "latencyKind": "sensor-sampling",
+            "modelledLatency": "TODO: author decision (AD-30)",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "f06-radar-sensor-out",
+        "interfaceId": "radar-sensor-out",
+        "networkId": "net-u3",
+        "sourceEndpointId": "loop-gateway-radar-sensor-out-out",
+        "timeDomainId": "carla-simulation"
+      },
+      {
+        "deliveryIntent": "ordered",
+        "destinationEndpointIds": [
+          "perception-camera-evidence-in"
+        ],
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "deadline": "TODO: author decision (AD-07)",
+            "faultAdmission": [],
+            "freshness": "TODO: author decision (AD-06)",
+            "intraUnit": false,
+            "kind": "flow-declaration",
+            "latencyKind": "network",
+            "modelledLatency": "TODO: author decision (AD-30)",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "f07-camera-adas",
+        "interfaceId": "camera-evidence",
+        "networkId": "net-u4",
+        "sourceEndpointId": "front-zone-camera-evidence-out",
+        "timeDomainId": "carla-simulation"
+      },
+      {
+        "deliveryIntent": "ordered",
+        "destinationEndpointIds": [
+          "fusion-risk-aeb-radar-evidence-in"
+        ],
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "deadline": "TODO: author decision (AD-07)",
+            "faultAdmission": [],
+            "freshness": "TODO: author decision (AD-06)",
+            "intraUnit": false,
+            "kind": "flow-declaration",
+            "latencyKind": "network",
+            "modelledLatency": "TODO: author decision (AD-30)",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "f08-radar-adas",
+        "interfaceId": "radar-evidence",
+        "networkId": "net-u4",
+        "sourceEndpointId": "front-zone-radar-evidence-out",
+        "timeDomainId": "carla-simulation"
+      },
+      {
+        "deliveryIntent": "ordered",
+        "destinationEndpointIds": [
+          "vc-ingress-radar-evidence-in"
+        ],
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "deadline": "TODO: author decision (AD-07)",
+            "faultAdmission": [
+              "loss",
+              "stale",
+              "delay"
+            ],
+            "freshness": "TODO: author decision (AD-06)",
+            "intraUnit": false,
+            "kind": "flow-declaration",
+            "latencyKind": "network",
+            "modelledLatency": "TODO: author decision (AD-30)",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "f09-radar-vc",
+        "interfaceId": "radar-evidence",
+        "networkId": "net-u5",
+        "sourceEndpointId": "front-zone-radar-evidence-out",
+        "timeDomainId": "carla-simulation"
+      },
+      {
+        "deliveryIntent": "ordered",
+        "destinationEndpointIds": [
+          "chassis-zone-motion-evidence-in"
+        ],
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "deadline": "TODO: author decision (AD-07)",
+            "faultAdmission": [],
+            "freshness": "TODO: author decision (AD-06)",
+            "intraUnit": false,
+            "kind": "flow-declaration",
+            "latencyKind": "sensor-sampling",
+            "modelledLatency": "TODO: author decision (AD-30)",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "f10-motion-chassis",
+        "interfaceId": "motion-evidence",
+        "networkId": "net-u5",
+        "sourceEndpointId": "motion-sensor-model-motion-evidence-out",
+        "timeDomainId": "carla-simulation"
+      },
+      {
+        "deliveryIntent": "ordered",
+        "destinationEndpointIds": [
+          "vc-ingress-adas-cycle-in"
+        ],
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "deadline": "TODO: author decision (AD-07)",
+            "faultAdmission": [],
+            "freshness": "TODO: author decision (AD-06)",
+            "intraUnit": false,
+            "kind": "flow-declaration",
+            "latencyKind": "compute-and-network",
+            "modelledLatency": "TODO: author decision (AD-30)",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "f11-adas-cycle",
+        "interfaceId": "adas-cycle",
+        "networkId": "net-u5",
+        "sourceEndpointId": "fusion-risk-aeb-adas-cycle-out",
+        "timeDomainId": "carla-simulation"
+      },
+      {
+        "deliveryIntent": "ordered",
+        "destinationEndpointIds": [
+          "safety-gate-proposal-in"
+        ],
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "deadline": "TODO: author decision (AD-07)",
+            "faultAdmission": [
+              "assurance.proposal-unsafe",
+              "assurance.proposal-mistimed"
+            ],
+            "freshness": "TODO: author decision (AD-06)",
+            "intraUnit": false,
+            "kind": "flow-declaration",
+            "latencyKind": "compute-and-network",
+            "modelledLatency": "TODO: author decision (AD-30)",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "f12-proposal",
+        "interfaceId": "proposal",
+        "networkId": "net-u6",
+        "sourceEndpointId": "proposer-proposal-out",
+        "timeDomainId": "carla-simulation"
+      },
+      {
+        "deliveryIntent": "ordered",
+        "destinationEndpointIds": [
+          "safety-monitor-qualified-evidence-in"
+        ],
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "deadline": "TODO: author decision (AD-07)",
+            "faultAdmission": [
+              "assurance.evidence-loss"
+            ],
+            "freshness": "TODO: author decision (AD-06)",
+            "intraUnit": false,
+            "kind": "flow-declaration",
+            "latencyKind": "network",
+            "modelledLatency": "TODO: author decision (AD-30)",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "f13-qualified-evidence",
+        "interfaceId": "qualified-evidence",
+        "networkId": "net-u6",
+        "sourceEndpointId": "evidence-validator-qualified-evidence-out",
+        "timeDomainId": "carla-simulation"
+      },
+      {
+        "deliveryIntent": "ordered",
+        "destinationEndpointIds": [
+          "configuration-manager-authorization-in"
+        ],
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "deadline": "TODO: author decision (AD-07)",
+            "faultAdmission": [],
+            "freshness": "TODO: author decision (AD-06)",
+            "hubDelay": {
+              "unit": "simulator-step",
+              "value": 1
+            },
+            "intraUnit": false,
+            "kind": "flow-declaration",
+            "latencyKind": "network",
+            "modelledLatency": "TODO: author decision (AD-30)",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "f14-authorization",
+        "interfaceId": "authorization",
+        "networkId": "net-u5",
+        "sourceEndpointId": "safety-gate-authorization-out",
+        "timeDomainId": "carla-simulation"
+      },
+      {
+        "deliveryIntent": "ordered",
+        "destinationEndpointIds": [
+          "safety-monitor-configuration-state-in"
+        ],
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "deadline": "TODO: author decision (AD-07)",
+            "faultAdmission": [],
+            "freshness": "TODO: author decision (AD-06)",
+            "intraUnit": false,
+            "kind": "flow-declaration",
+            "latencyKind": "network",
+            "modelledLatency": "TODO: author decision (AD-30)",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "f15a-configuration-state-assurance",
+        "interfaceId": "configuration-state",
+        "networkId": "net-u6",
+        "sourceEndpointId": "configuration-manager-configuration-state-out",
+        "timeDomainId": "carla-simulation"
+      },
+      {
+        "deliveryIntent": "ordered",
+        "destinationEndpointIds": [
+          "safety-monitor-transition-verdict-in"
+        ],
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "deadline": "TODO: author decision (AD-07)",
+            "faultAdmission": [],
+            "freshness": "TODO: author decision (AD-06)",
+            "intraUnit": false,
+            "kind": "flow-declaration",
+            "latencyKind": "network",
+            "modelledLatency": "TODO: author decision (AD-30)",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "f15c-transition-verdict-assurance",
+        "interfaceId": "transition-verdict",
+        "networkId": "net-u6",
+        "sourceEndpointId": "transition-verifier-transition-verdict-out",
+        "timeDomainId": "carla-simulation"
+      },
+      {
+        "deliveryIntent": "ordered",
+        "destinationEndpointIds": [
+          "goal-interpreter-objective-in"
+        ],
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "deadline": "TODO: author decision (AD-07)",
+            "faultAdmission": [],
+            "freshness": "TODO: author decision (AD-06)",
+            "intraUnit": false,
+            "kind": "flow-declaration",
+            "latencyKind": "network",
+            "modelledLatency": "TODO: author decision (AD-30)",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "f16-objective",
+        "interfaceId": "objective",
+        "networkId": "net-u4",
+        "sourceEndpointId": "objective-source-objective-out",
+        "timeDomainId": "carla-simulation"
+      },
+      {
+        "deliveryIntent": "ordered",
+        "destinationEndpointIds": [
+          "loop-gateway-brake-command-in"
+        ],
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "deadline": "TODO: author decision (AD-07)",
+            "faultAdmission": [],
+            "freshness": "TODO: author decision (AD-06)",
+            "hubDelay": {
+              "unit": "simulator-step",
+              "value": 1
+            },
+            "intraUnit": false,
+            "kind": "flow-declaration",
+            "latencyKind": "actuation",
+            "modelledLatency": "TODO: author decision (AD-30)",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "f17-brake-command",
+        "interfaceId": "brake-command",
+        "networkId": "net-u2-returns",
+        "sourceEndpointId": "brake-esc-node-brake-command-out",
+        "timeDomainId": "carla-simulation"
+      },
+      {
+        "deliveryIntent": "ordered",
+        "destinationEndpointIds": [
+          "mrc-sink-mrc-request-in"
+        ],
+        "extensions": {
+          "io.xverse.assured-aeb": {
+            "deadline": "TODO: author decision (AD-07)",
+            "faultAdmission": [],
+            "freshness": "TODO: author decision (AD-06)",
+            "intraUnit": false,
+            "kind": "flow-declaration",
+            "latencyKind": "network",
+            "modelledLatency": "TODO: author decision (AD-30)",
+            "schemaVersion": "0.1"
+          }
+        },
+        "id": "f18-mrc-request",
+        "interfaceId": "mrc-request",
+        "networkId": "net-u2-returns",
+        "sourceEndpointId": "fixed-fallback-supervisor-mrc-request-out",
+        "timeDomainId": "carla-simulation"
+      }
+    ],
+    "interfaces": [
+      {
+        "compatibility": "exact",
+        "direction": "bidirectional",
+        "id": "actuation-command",
+        "payloadSchema": "urn:xverse:assured-aeb:actuation-command:v1",
+        "unitSemantics": "pedal-command"
+      },
+      {
+        "compatibility": "exact",
+        "direction": "bidirectional",
+        "id": "adas-cycle",
+        "payloadSchema": "urn:xverse:assured-aeb:adas-cycle:v1",
+        "unitSemantics": "evidence-item"
+      },
+      {
+        "compatibility": "exact",
+        "direction": "bidirectional",
+        "id": "aeb-status",
+        "payloadSchema": "urn:xverse:assured-aeb:aeb-status:v1",
+        "unitSemantics": "node-status"
+      },
+      {
+        "compatibility": "exact",
+        "direction": "bidirectional",
+        "id": "assessment",
+        "payloadSchema": "urn:xverse:assured-aeb:assessment:v1",
+        "unitSemantics": "verdict"
+      },
+      {
+        "compatibility": "exact",
+        "direction": "bidirectional",
+        "id": "authorization",
+        "payloadSchema": "urn:xverse:assured-aeb:authorization:v1",
+        "unitSemantics": "authorization"
+      },
+      {
+        "compatibility": "exact",
+        "direction": "bidirectional",
+        "id": "brake-command",
+        "payloadSchema": "urn:xverse:assured-aeb:brake-command:v1",
+        "unitSemantics": "brake-request"
+      },
+      {
+        "compatibility": "exact",
+        "direction": "bidirectional",
+        "id": "brake-request",
+        "payloadSchema": "urn:xverse:assured-aeb:brake-request:v1",
+        "unitSemantics": "brake-request"
+      },
+      {
+        "compatibility": "exact",
+        "direction": "bidirectional",
+        "id": "brake-status",
+        "payloadSchema": "urn:xverse:assured-aeb:brake-status:v1",
+        "unitSemantics": "node-status"
+      },
+      {
+        "compatibility": "exact",
+        "direction": "bidirectional",
+        "id": "camera-evidence",
+        "payloadSchema": "urn:xverse:assured-aeb:camera-evidence:v1",
+        "unitSemantics": "evidence-item"
+      },
+      {
+        "compatibility": "exact",
+        "direction": "bidirectional",
+        "id": "camera-raw",
+        "payloadSchema": "urn:xverse:assured-aeb:camera-raw:v1",
+        "unitSemantics": "camera-frame-metadata"
+      },
+      {
+        "compatibility": "exact",
+        "direction": "bidirectional",
+        "id": "camera-sensor-out",
+        "payloadSchema": "urn:xverse:assured-aeb:camera-sensor-out:v1",
+        "unitSemantics": "camera-frame-metadata"
+      },
+      {
+        "compatibility": "exact",
+        "direction": "bidirectional",
+        "id": "configuration-state",
+        "payloadSchema": "urn:xverse:assured-aeb:configuration-state:v1",
+        "unitSemantics": "configuration-state"
+      },
+      {
+        "compatibility": "exact",
+        "direction": "bidirectional",
+        "id": "diagnostic-verdict",
+        "payloadSchema": "urn:xverse:assured-aeb:diagnostic-verdict:v1",
+        "unitSemantics": "verdict"
+      },
+      {
+        "compatibility": "exact",
+        "direction": "bidirectional",
+        "id": "fallback-request",
+        "payloadSchema": "urn:xverse:assured-aeb:fallback-request:v1",
+        "unitSemantics": "brake-request"
+      },
+      {
+        "compatibility": "exact",
+        "direction": "bidirectional",
+        "id": "forced-command",
+        "payloadSchema": "urn:xverse:assured-aeb:forced-command:v1",
+        "unitSemantics": "configuration-command"
+      },
+      {
+        "compatibility": "exact",
+        "direction": "bidirectional",
+        "id": "goal-model",
+        "payloadSchema": "urn:xverse:assured-aeb:goal-model:v1",
+        "unitSemantics": "typed-objective"
+      },
+      {
+        "compatibility": "exact",
+        "direction": "bidirectional",
+        "id": "motion-evidence",
+        "payloadSchema": "urn:xverse:assured-aeb:motion-evidence:v1",
+        "unitSemantics": "evidence-item"
+      },
+      {
+        "compatibility": "exact",
+        "direction": "bidirectional",
+        "id": "motion-raw",
+        "payloadSchema": "urn:xverse:assured-aeb:motion-raw:v1",
+        "unitSemantics": "vehicle-motion"
+      },
+      {
+        "compatibility": "exact",
+        "direction": "bidirectional",
+        "id": "mrc-request",
+        "payloadSchema": "urn:xverse:assured-aeb:mrc-request:v1",
+        "unitSemantics": "mrc-request"
+      },
+      {
+        "compatibility": "exact",
+        "direction": "bidirectional",
+        "id": "objective",
+        "payloadSchema": "urn:xverse:assured-aeb:objective:v1",
+        "unitSemantics": "typed-objective"
+      },
+      {
+        "compatibility": "exact",
+        "direction": "bidirectional",
+        "id": "perception-output",
+        "payloadSchema": "urn:xverse:assured-aeb:perception-output:v1",
+        "unitSemantics": "evidence-item"
+      },
+      {
+        "compatibility": "exact",
+        "direction": "bidirectional",
+        "id": "proposal",
+        "payloadSchema": "urn:xverse:assured-aeb:proposal:v1",
+        "unitSemantics": "typed-proposal"
+      },
+      {
+        "compatibility": "exact",
+        "direction": "bidirectional",
+        "id": "proposal-basis",
+        "payloadSchema": "urn:xverse:assured-aeb:proposal-basis:v1",
+        "unitSemantics": "evidence-item"
+      },
+      {
+        "compatibility": "exact",
+        "direction": "bidirectional",
+        "id": "qualified-evidence",
+        "payloadSchema": "urn:xverse:assured-aeb:qualified-evidence:v1",
+        "unitSemantics": "evidence-item"
+      },
+      {
+        "compatibility": "exact",
+        "direction": "bidirectional",
+        "id": "radar-evidence",
+        "payloadSchema": "urn:xverse:assured-aeb:radar-evidence:v1",
+        "unitSemantics": "evidence-item"
+      },
+      {
+        "compatibility": "exact",
+        "direction": "bidirectional",
+        "id": "radar-raw",
+        "payloadSchema": "urn:xverse:assured-aeb:radar-raw:v1",
+        "unitSemantics": "radar-detections"
+      },
+      {
+        "compatibility": "exact",
+        "direction": "bidirectional",
+        "id": "radar-sensor-out",
+        "payloadSchema": "urn:xverse:assured-aeb:radar-sensor-out:v1",
+        "unitSemantics": "radar-detections"
+      },
+      {
+        "compatibility": "exact",
+        "direction": "bidirectional",
+        "id": "selector-command",
+        "payloadSchema": "urn:xverse:assured-aeb:selector-command:v1",
+        "unitSemantics": "configuration-command"
+      },
+      {
+        "compatibility": "exact",
+        "direction": "bidirectional",
+        "id": "smart-camera-evidence",
+        "payloadSchema": "urn:xverse:assured-aeb:smart-camera-evidence:v1",
+        "unitSemantics": "evidence-item"
+      },
+      {
+        "compatibility": "exact",
+        "direction": "bidirectional",
+        "id": "smart-radar-evidence",
+        "payloadSchema": "urn:xverse:assured-aeb:smart-radar-evidence:v1",
+        "unitSemantics": "evidence-item"
+      },
+      {
+        "compatibility": "exact",
+        "direction": "bidirectional",
+        "id": "throttle-command",
+        "payloadSchema": "urn:xverse:assured-aeb:throttle-command:v1",
+        "unitSemantics": "pedal-command"
+      },
+      {
+        "compatibility": "exact",
+        "direction": "bidirectional",
+        "id": "transition-request",
+        "payloadSchema": "urn:xverse:assured-aeb:transition-request:v1",
+        "unitSemantics": "configuration-command"
+      },
+      {
+        "compatibility": "exact",
+        "direction": "bidirectional",
+        "id": "transition-verdict",
+        "payloadSchema": "urn:xverse:assured-aeb:transition-verdict:v1",
+        "unitSemantics": "verdict"
+      },
+      {
+        "compatibility": "exact",
+        "direction": "bidirectional",
+        "id": "vehicle-state-record",
+        "payloadSchema": "urn:xverse:assured-aeb:vehicle-state-record:v1",
+        "unitSemantics": "evidence-item"
+      }
+    ],
+    "networks": [
+      {
+        "capabilities": [
+          "xcom.delivery.best-effort",
+          "xcom.ordering.per-route-fifo"
+        ],
+        "id": "net-adapter-link",
+        "scope": "in-vehicle-simulated"
+      },
+      {
+        "capabilities": [
+          "xcom.delivery.best-effort",
+          "xcom.ordering.per-route-fifo"
+        ],
+        "id": "net-u2-returns",
+        "scope": "in-vehicle-simulated"
+      },
+      {
+        "capabilities": [
+          "xcom.delivery.best-effort",
+          "xcom.ordering.per-route-fifo"
+        ],
+        "id": "net-u3",
+        "scope": "in-vehicle-simulated"
+      },
+      {
+        "capabilities": [
+          "xcom.delivery.best-effort",
+          "xcom.ordering.per-route-fifo"
+        ],
+        "id": "net-u4",
+        "scope": "in-vehicle-simulated"
+      },
+      {
+        "capabilities": [
+          "xcom.delivery.best-effort",
+          "xcom.ordering.per-route-fifo"
+        ],
+        "id": "net-u5",
+        "scope": "in-vehicle-simulated"
+      },
+      {
+        "capabilities": [
+          "xcom.delivery.best-effort",
+          "xcom.ordering.per-route-fifo"
+        ],
+        "id": "net-u6",
+        "scope": "in-vehicle-simulated"
+      }
+    ],
+    "nodes": [
+      {
+        "id": "forward-camera",
+        "roles": [
+          "smart-sensor"
+        ]
+      },
+      {
+        "id": "forward-radar",
+        "roles": [
+          "smart-sensor"
+        ]
+      },
+      {
+        "id": "front-zone-ecu",
+        "roles": [
+          "zonal-ecu"
+        ]
+      },
+      {
+        "id": "adas-hpc",
+        "roles": [
+          "hpc"
+        ]
+      },
+      {
+        "id": "vehicle-control-hpc",
+        "roles": [
+          "hpc"
+        ]
+      },
+      {
+        "id": "chassis-zone-ecu",
+        "roles": [
+          "zonal-ecu"
+        ]
+      },
+      {
+        "id": "brake-esc-ecu",
+        "roles": [
+          "legacy-ecu-model"
+        ]
+      },
+      {
+        "id": "ivi-hpc",
+        "roles": [
+          "context"
+        ]
+      },
+      {
+        "id": "simulation-environment",
+        "roles": [
+          "environment"
+        ]
+      }
+    ],
+    "timeDomains": [
+      {
+        "clockClass": "simulation",
+        "epoch": "first-ticked-frame",
+        "id": "carla-simulation",
+        "monotonic": true,
+        "rate": "1"
+      },
+      {
+        "clockClass": "simulation",
+        "epoch": "0",
+        "id": "experiment-time",
+        "monotonic": true,
+        "rate": "1"
+      },
+      {
+        "clockClass": "monotonic",
+        "epoch": "host-boot",
+        "id": "host-monotonic",
+        "monotonic": true,
+        "rate": "wall-rate"
+      }
+    ]
+  }
+}
