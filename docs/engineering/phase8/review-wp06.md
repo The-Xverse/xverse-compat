@@ -165,3 +165,104 @@ behaviour unverified (E8-3a).
      - R-6. The depth-2 queue and the 2-frame buffer are engineering constants based on the lockstep; they
        are not measured.
    - **Status.** Candidate for independent review. Not accepted, not merged, not pushed.
+3. **Independent review of findings 1 and 2 (2026-10-24 11:52:20).** Reviewer: an independent Claude agent that did
+   not write the increment. Scope: `430cfd1` and `56601a0` on `855878a`. **Verdict: PASS WITH NOTES.** Nothing
+   blocks the merge. M1 must be repaired before the first live use with `--frames` (E8-3a) or the WP-12 U2
+   integration.
+   - **What was checked, and the result.**
+     - **Suite.** The offline compat suite, with the command given: **410 passed, 39 subtests** in 24 s. The
+       worktree stayed clean.
+     - **The unchanged link, verified independently against the base.**
+       - **Method.** I extracted `855878a:src` and `HEAD:src` with `git archive` into a scratch directory, and ran
+         each with the pinned 3.10 interpreter on the fake `nominal` source, without `--frames`.
+       - **Modes.** Four, with the same inbound bytes: protocol 1 on stdio, protocol 2 on stdio, protocol 2 with
+         `--connect`, and protocol 2 with `--connect --marker`.
+       - **Result.** The exit codes and the stdout, stderr and link bytes are **byte-identical** in all four.
+       - **Why this matters.** The in-repo test `test_wp06_without_the_side_channel_the_link_is_unchanged`
+         (`tests/live/test_phase8_frames.py:284-287`) compares the candidate with and without `--frames`, and only
+         on a socket link. It is not a comparison with the base. The stdio branch, where defect 2(a) lived, is
+         covered only by this external check (L5).
+       - **Code reading agrees.** Without `--frames`, the only new executed code is the argument checks and
+         `frame_format = None` (`main.py:76-79,86`). `frames=None` leaves `_frame_items` on its base path
+         (`protocol.py:125-126`), and the publisher block sits after the link `if/else` (`main.py:133-142`).
+     - **3.10 isolation.** `xverse_compat_carla/frames.py` imports only `hashlib`, `json`, `queue` and
+       `threading` (`frames.py:12-15`), and `main.py` imports it lazily. `FORBIDDEN` is unchanged
+       (`protocol.py:32`), and the end-to-end run reports `forbiddenModulesLoaded == []`.
+     - **Transport choice.** A second Unix stream socket is sound. It reuses the DLG-8 link pattern (0600 under
+       umask 0177), keeps ordering and EOF semantics, and avoids an interpreter-to-interpreter seqlock. A
+       shared-memory ring would add stale-file handling and torn-read handling for no measured gain.
+     - **Publisher.** `offer` never blocks on the socket: `put_nowait` is used, and a full queue drops the new
+       frame (`frames.py:110-118`). The depth is bounded, the drops are counted, and the `sequence`/`dropped`
+       header lets the receiver attribute gaps. `offered = sent + dropped` holds on every ordinary path; L1 is the
+       exception.
+     - **Receiver.**
+       - **Backpressure.** The reader waits on the condition while the buffer is full (`live/frames.py:183-184`),
+         so at most capacity + 1 frames are in memory.
+       - **Verification.** It compares against the **item's** `rawSha256` and length (`:214`), not the header's.
+         Wrong lengths are refused (`:168-169`), and counters running backwards are refused (`:175-176`).
+       - **Soundness of `reconcile`.** Under the design rule that every camera item is taken once and in order,
+         each adapter drop yields exactly one `dropped` or `missing` take. A frame that was sent but arrived late
+         yields `missing` and then `skipped`. So `absent == end.dropped` with `received == sent` cannot hide a
+         late or lost frame: it fails. The trailing-drop rule (2(c)) is consistent with this.
+     - **No defaults in the format record.** Both `load_format` copies agree: exact members, the schema, positive
+       non-bool `int` dimensions and `bgra8` only (`frames.py:29-41`; `live/frames.py:43-50`). The geometry must
+       equal the descriptor before the protocol starts (`main.py:86-92`).
+     - **No pixels in evidence.** The items keep the five K-8 members. `record()`, `summary()` and `reconcile()`
+       hold no bytes, and nothing is written to disk.
+   - **Issues.**
+     - **M1 (MEDIUM; does not block the merge; blocks live use with `--frames`): `publisher.close()` runs before
+       the source is closed, and can take twice its bound.**
+       - **The delay.** `close` waits up to `timeout_s` for `put(None)` and then up to `timeout_s` again in
+         `join` (`frames.py:123-127`). On the normal path it is called with the default 5 s (`main.py:163`),
+         **before** `_close(source)` (`main.py:164`). For `LiveSource`, `_close(source)` destroys the owned CARLA
+         actors (`sources.py:227-250`).
+       - **When it happens.** If U2 keeps the socket open but stops taking frames, for example on a WP-12 stop or
+         failure path, the adapter waits up to 10 s before cleaning up the actors. No SIGTERM handler is
+         installed until the linger loop (`main.py:46-49`). A Maestro stop inside that window (TERM grace 0.6 s,
+         stop action 5 s) therefore kills the process before the actors are destroyed.
+       - **Measured in a scratch run.** With an unread socket pair and four 1.92 MB frames, `close(timeout_s=1.0)`
+         returned after **2.0 s** with `error = "writer did not finish within the close bound"`.
+       - **Repair.**
+         - Close the source first, or bound `close` with one shared deadline that is shorter than the stop
+           budget.
+         - Shut down the socket on close (`SHUT_WR` after `end`, `SHUT_RDWR` on timeout). This also covers
+           `--linger`, where the frames socket otherwise stays open.
+     - **L1 (LOW): a failure race can break `offered = sent + dropped` in the close summary.**
+       - **The race.** `offer` reads `failed` under the lock (`frames.py:106`), but puts the frame after releasing
+         it (`:112`). If the writer fails and `_drain`s (`:80-85`) in between, the frame stays queued with no
+         writer, and it is never counted as sent or dropped. `close` recomputes `dropped` only when the thread is
+         alive (`:131`).
+       - **Forced interleaving.** In a scratch run it gave `{'offered': 2, 'sent': 0, 'dropped': 1}`.
+       - **Impact.** It is limited, because `end` is not sent after an error and `main` discards the summary.
+       - **Repair.** Drain the queue in `close`, or always set `dropped = offered - sent` once the writer has
+         ended or failed.
+     - **L2 (LOW): the adapter-side accounting is never recorded.** `main.py:154,163` discard the dict that
+       `close` returns. When the channel fails, the adapter's `offered`, `sent`, `dropped` and `error` are
+       therefore lost, and U2 sees only `endReceived: false`. One stderr summary line would keep finding 1's claim
+       ("a close summary gives offered = sent + dropped").
+     - **L3 (LOW): the receiver's hello read has no time bound.**
+       - `start` clears the socket timeout (`settimeout(None)`, `live/frames.py:119`) before reading `hello`
+         (`:121`). A peer that connects but never sends a full line blocks `start` indefinitely. The accept is
+         bounded; the handshake is not.
+       - Maestro's action timeouts still bound U2 from outside. Apply the remaining accept bound to the hello
+         read.
+     - **L4 (LOW; robustness and hardening).**
+       - The receiver does not refuse a non-increasing `frame` number. A repeated frame would overwrite
+         `_buffer[frame]` (`live/frames.py:187`) without being counted.
+       - `load_format` puts no upper bound on `width·height`, on either side. `rawLength` follows the trusted,
+         declared record, so this is defence in depth only.
+       - `dataclasses.asdict(FrameResult)` would include `data`. The U2 integration must use `record()`.
+       - The tick path copies and hashes each 1.92 MB frame a second time, after `camera_value`
+         (`protocol.py:126`; `sensors.py:40-43`), and `_writer` concatenates header and pixels before sending
+         (`frames.py:77`). These are D-4c host-cost items; R-2 should name them.
+     - **L5 (LOW; tests and records).**
+       - **The unchanged-link test.** It compares the candidate with itself, on the socket link only. Adding a
+         stdio protocol 1 and 2 case without `--frames` against a stored golden output from the base would make
+         the regression of 2(a) directly testable in-repo.
+       - **An exit code in finding 1.** It says `--frames` without `--frame-format` exits 3 before the protocol.
+         The implementation and the tests exit 2 (an argument error, `main.py:76-77`; `test_phase8_frames.py:290-301`),
+         as finding 2 states.
+   - **Residuals R-1 to R-6.** They are honest and correctly scoped. Proposed additions:
+     - **R-7.** The order and bound of the adapter close (M1), to repair before E8-3a.
+     - **R-8.** The unbounded hello read (L3) and the dropped close summary (L2).
+     - **R-2** should name the extra per-tick copy and hash (L4).
