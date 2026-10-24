@@ -57,7 +57,7 @@ verified offline only: not M1, not AEB evidence, live behaviour unverified (E8-3
        loop sends per tick.
      - Meta per tick: driver throttle, speed error, integrator, brake request, `aebActive`, the reason for
        a zero throttle, and the parameter record digest, for the loop's `driver-ticks.jsonl`.
-   - **After an AEB release.** FR-030 sets throttle to zero only "while an AEB brake request is active";
+   - **After an AEB release (superseded by finding 5: the AD-38 amendment latches the throttle at 0).** FR-030 sets throttle to zero only "while an AEB brake request is active";
      the profile resumes the speed hold, from a reset integrator, when the request returns to 0. Whether a
      scenario should instead latch the driver at zero after an intervention is a scenario-protocol choice
      (AD-25 horizon, AD-27), recorded as a residual, not implemented.
@@ -144,7 +144,7 @@ verified offline only: not M1, not AEB evidence, live behaviour unverified (E8-3
      - R-3. The brake request's source, validity window and staleness in simulation time belong to WP-04
        and WP-12. The invalid-request rule (throttle 0, last valid brake held) reuses the Phase 7 stale
        rule and is confirmed under the ED-15 review.
-     - R-4. After an AEB release the hold resumes, from a reset integrator (FR-030 literal). A latch at
+     - R-4 (superseded by finding 5). After an AEB release the hold resumes, from a reset integrator (FR-030 literal). A latch at
        zero after an intervention is a scenario-protocol choice (AD-25, AD-27), not implemented.
      - R-5. Decision timing: each command is decided from the previous frame's motion and simulation
        time, so the response to a brake request first takes effect one frame later in simulation time.
@@ -279,3 +279,66 @@ verified offline only: not M1, not AEB evidence, live behaviour unverified (E8-3
        the rule is recorded.
    - **Documentation.** LOW-3 goes into B-3: the request source returns 0.0 while no AEB request is active,
      including before the first message.
+5. **Repair of finding 4 (2026-10-24 11:09:48).**
+   - **Amended design (supersedes the "After an AEB release" bullet of finding 1 and R-4 of finding 2).**
+     - **FR-030 note.** The AD-38 amendment of 2026-10-24 (`decisions.md`, 11:07, under the delegation,
+       flagged for review) replaces FR-030's "throttle zero while an AEB brake request is active, then
+       resume". The rule is now: from the first tick with a valid brake request above 0, the throttle
+       latches at 0 for the rest of the run, even after a release. `ArbitratedDriver.latched` is set on
+       that tick, and every later tick records `latched: true` with reason `latched` while the request is
+       0. The integrator stays at 0. Collision and minimum-gap outcomes therefore measure the AEB response,
+       not a re-acceleration after release (finding 3, MEDIUM-3). FR-030 in thesis `spec.md` still has
+       the old wording; aligning it is a thesis-side edit, not made here.
+     - **Stale motion (MEDIUM-1).** A motion item whose `originNs` is not greater than the last fresh one
+       is stale: throttle 0, no integration (the integrator is kept, not reset), `motionStale: true`,
+       reason `motion-stale`. The tick record carries `motionOriginNs`. The first motion item and every
+       advancing one are fresh. A tick whose decision repeats the previous frame (`loop.py`: a tick
+       without items) is also stale, which is fail-closed.
+     - **Brake range (MEDIUM-2).** `brake_of`: a finite request in [0, 1] is used as is; a finite request
+       above 1 is a full brake, 1.0, with `brakeClamped: true` (as Phase 7 `driver.py` 56). NaN,
+       infinities, bools, negatives and non-numbers stay invalid: throttle 0, last valid brake held.
+       `arbitrate` now returns `(throttle, brake, request_valid, brake_clamped)` and takes `latched`.
+     - **aebActive (LOW-1).** `aebActive` is `commanded brake > 0`, so a held brake under an invalid request
+       shows as active braking.
+     - **Digest (LOW-2).** `canonical(record)`: every int or float member is converted to float, then
+       serialized as JSON with sorted keys and `(",", ":")` separators. Python writes floats in their
+       shortest round-trip form, so 8 and 8.0 give the same digest. WP-17 binds this digest to the AD-27
+       record.
+   - **B-3, amended (LOW-3).** The `brake_request` source returns 0.0 whenever no AEB request is active,
+     including before the WP-04 node's first message. It returns an invalid value (`None`) only for a
+     stale or lost source, which then holds the last valid brake with throttle 0. B-1 also passes the
+     motion freshness above, from the item's `originNs`; the loop's `vehicle-motion` receiver verdict is
+     an equivalent alternative.
+   - **Tests.** `tests/live/test_phase8_driver_profile.py`: 32 tests (29 before; 4 new, 1 replaced). The
+     motion helper now gives each item an advancing `originNs`, and the fake link can drop motion items
+     for a frame window while radar items still advance simulation time.
+     - Latch: brake at 1.0 s, release at 1.5 s, then an invalid request and 0 again: throttle 0 and
+       `latched` from 1.0 s on. In the closed loop, a brake from 25 s to 27 s and then a release give
+       `(0, 0)` with `latched` to the end.
+     - Clamp: requests 1.0000001 and 1.2 give `(0, 1.0)` with `brakeClamped`; the rule table includes 7
+       and the invalid values `-inf` and `False`.
+     - aebActive: held brakes under invalid requests are active.
+     - Stale motion: repeated or decreasing `originNs` gives throttle 0, `motionStale`, and an unchanged
+       integrator, and a fresh item resumes. In the closed loop, 10 dropped motion frames give 10 stale
+       ticks with throttle 0, and the hold resumes.
+     - Digest: `targetSpeedMps` 8 and 8.0 give the same digest; the canonical form is pinned.
+   - **Mutation checks (not committed; restored).**
+     - no latch: 3 tests fail;
+     - no stale detection: 2 fail;
+     - a request above 1 treated as invalid: 2 fail;
+     - `aebActive` restricted to valid requests: 1 fails;
+     - an uncanonicalized digest: 1 fails.
+   - **Phase 7 unchanged.** `git diff --quiet 372e6b7` on `live/driver.py`, `live/stimulus.py`,
+     `live/loop.py` and `xverse_compat_carla/` succeeds.
+   - **Suite.** 359 passed, 39 subtests (finding 2: 356).
+   - **Residuals, updated.**
+     - R-3, amended: the clamp makes a finite over-range request a full brake. Validity and staleness of
+       the request source stay with WP-04 and WP-12 (B-3).
+     - R-4, replaced: the latch implements the AD-38 amendment. The thesis `spec.md` FR-030 text still
+       says "while ... active" and needs aligning on the thesis side. The amendment itself is flagged for
+       the author's review.
+     - R-9 (MEDIUM-1, repaired): stale motion is detected from `originNs` within the command source. A
+       motion item that advances `originNs` but carries a wrong speed is not detectable here (adapter
+       FRAME rule, D-1).
+   - **Status.** Candidate for re-review of the repair and for the author's acceptance. Not accepted,
+     not merged, not pushed.
