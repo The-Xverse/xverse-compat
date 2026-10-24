@@ -197,6 +197,8 @@ def test_frame_sampling_precedes_fault_relay_hold_and_never_controls_simulator_t
             assert owner.result.step_frames[-1]["hostNs"] == clock[0]
             clock[0] += 1000  # TEST-ONLY held-work observation
             owner.hold(lambda: True)
+        def filter(self, step, due):
+            return due  # TEST-ONLY no-message-fault relay; preserve the genuine delivery path.
         def finish(self, last):
             pass
     instance.relay = Relay()
