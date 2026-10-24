@@ -396,3 +396,89 @@ evidence, and no model of the thesis (GA-35).
      - R-6 is amended on the thesis side by the coordinator.
    - **Status.** Candidate for a focused re-review and the author's acceptance. Not accepted, not merged,
      not pushed.
+6. **Independent re-review of the repair, findings 4 and 5 (2026-10-24 11:35:49).**
+   - **Reviewer and method.** The finding 3 reviewer.
+     - Read `76b4750` and `f28fec6` against `5e21d56`.
+     - The rebuilt venv and `identity.json` were only read. I rehashed every recorded tree with my own
+       implementation of the record's rule: sorted relative paths, a file's SHA-256 or a symlink's target.
+     - Ran the compat suite one process at a time, with the venv and with
+       `XVERSE_COMPAT_INFERENCE_ENV=/nonexistent-env`.
+     - There was no download or install, and no CARLA. `xverse-lite-live-20261022` and
+       `.x-verse-build/worktrees/*` were not touched. The worktree was not changed except for this entry.
+   - **Verdict: PASS WITH NOTES. Nothing blocks the merge.** The merge still awaits the author's
+     acceptance.
+   - **Evidence.**
+     - **Suite.** With the venv: 377 passed, 39 subtests. Without it: 372 passed and 5 skipped, each with
+       the reason "U4 inference venv absent". After both runs the venv still has 0 `__pycache__`
+       directories and 0 `.pyc` files, and its trees still equal the record.
+     - **Read-only rehash against `identity.json` (schema 2).** Every one of these is equal:
+       - `sitePackagesTree` (1252 entries, `eb7d164d…c0b3`);
+       - `venvTree` (`9f79dcc7…d0a9`);
+       - `interpreter.stdlibTree` (2398 entries, `ccf0cbaf…7f73`);
+       - `interpreter.libpython` (`/home/jefferson/.pyenv/versions/3.13.13/lib/libpython3.13.so.1.0`,
+         `169a1f5d…4685`);
+       - the interpreter executable (`9907c621…`);
+       - `installer.pipTree` and `pip-26.1.1.dist-info`;
+       - `lock.sha256` against `tools/inference/u4-inference.lock`.
+
+       `lock.repositoryRevision` `76b4750…` is a commit of this branch.
+   - **Items.**
+     - **MEDIUM-1: closed** (loader.py 70–72).
+       - After the variable check, any `onnxruntime` or `onnxruntime.*` entry in `sys.modules` is refused.
+       - `test_wp08_an_earlier_onnxruntime_import_is_refused` runs the probe's `import-first` mode under
+         `unshare -rn` only. It skips when network namespaces are unavailable, so a default-telemetry
+         probe never runs with a network.
+       - It asserts the refusal, and it asserts the telemetry line in stderr, which proves the bypass was
+         real. My finding 3 probe now fails as intended.
+     - **MEDIUM-2: closed.**
+       - The venv is created `--without-pip` (make-inference-env.sh 28). The base interpreter's pip
+         installs through `--python` with `--no-index --find-links --require-hashes --no-deps
+         --no-compile` (30).
+       - The build refuses (exit 5) if any `__pycache__` or `.pyc` exists after the import check.
+       - `sitePackagesTree` and `venvTree` digest every file, symlinks included. The identity test
+         recomputes both from disk and asserts that no bytecode exists.
+       - The import-cost figures (0.10–0.13 s with bytecode, 0.22–0.29 s without) are correctly passed to
+         V-3 as an input, not a result.
+     - **LOW-1: closed.** The record gains libpython (the interpreter is built shared, so most of it is in
+       this library), the standard-library tree and the installing pip's identity, and the rehash matches.
+       See LOW-A for the standard-library bytecode.
+     - **LOW-2: closed.**
+       - The docstring separates the refusals made before the import (digest, file, variable, earlier
+         import) from those made after it and before readiness (import failure, session, providers,
+         schema).
+       - An import failure maps to `ModelRefused` (75), tested in the compat venv, which has no
+         `onnxruntime`.
+       - The mandatory schema arguments are recorded for WP-13 (R-5).
+     - **LOW-3: closed.** `lock` is `{repositoryPath, sha256, repositoryRevision}`, and the hash is the
+       binding value.
+     - **Residuals.**
+       - R-1, R-2, R-3, R-4, R-6 and R-7 are accurate. R-5 (amended) is accurate.
+       - R-8 is accurate for `sitePackagesTree`, but understated for `venvTree` (LOW-B). Both trees are
+         reproducible at the build path and not relocatable, which is the right statement.
+   - **New notes (LOW, none blocking).**
+     - **LOW-A: the standard-library tree excludes the bytecode the U4 interpreter reads.**
+       - Where: make-inference-env.sh 82.
+       - `stdlibTree` skips `__pycache__`, and the pyenv `lib/python3.13` holds 5265 `.pyc` files outside
+         `site-packages`. U4 runs with `-B`, which stops writing bytecode, not reading it. So a modified
+         standard-library `.pyc` with an intact header would run unrecorded. This is the MEDIUM-2 class
+         one level down.
+       - It is lower risk: the files are the shared, install-time pyenv tree, which this increment does not
+         own.
+       - Either include the standard-library `.pyc` files in `stdlibTree`, which is stable while the pyenv
+         install is unchanged and gets no new writes under `-B`, or state in R-5 that the
+         standard-library bytecode is not bound.
+     - **LOW-B: `venvTree` depends on the build path in more places than R-8 names.**
+       - Besides the two `RECORD` files, `venv/pyvenv.cfg` `command = … -m venv --without-pip
+         /media/…/xverse-aeb-inference-20261024/venv`, the `bin/` console-script shebangs and the
+         `bin/python3.13` symlink target embed paths. The `sitePackagesTree` statement in R-8 is exact.
+       - Amend R-8 to cover `venvTree`.
+     - **LOW-C: the identity test does not recompute two of the recorded trees.** It checks `stdlibTree`
+       only for `entries > 0` and the installer by version only. My rehash shows they match. Optional:
+       recompute them as is already done for the venv trees.
+     - **LOW-D: the earlier-import guard relies on `sys.modules`.** A module deliberately removed from
+       `sys.modules` after import would pass it. This is tampering, not an accidental code path. The WP-13
+       entry-point check before any import (R-5) is the primary control, and the loader guard is a second
+       line. No change is needed.
+   - **Recommendation.** Ready for the author's acceptance. LOW-A and LOW-B are one-line record or residual
+     amendments, best made before the merge or recorded in the acceptance. LOW-C and LOW-D are optional or
+     informational.
