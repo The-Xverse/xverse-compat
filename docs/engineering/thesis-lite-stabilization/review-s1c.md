@@ -1687,3 +1687,21 @@ engineering stabilization candidate: not M1, not AEB evidence.
     - **Restart.** I see no blocker to the soak restart on `ad14eec` behaviour. If the MEDIUM-1 and LOW-3 text
       amendments are made, they change `health_check.py` and `run_soak.py` bytes. They then need a new
       blueprints commit, pinned before the restart from zero (FR-020), not after it.
+59. **Dispositions of finding 58 (written at 08:07:43 2026-10-24, before the change).**
+    - **MEDIUM-1, corrected text.** The `health_check.py` docstring, the plan.md amendment and an erratum to DR-21 (1)
+      now say what counts as evidence.
+      - Only `get_world`, `get_settings` and `get_map` are evidence that the server answers. These are server
+        requests under the 15 s client timeout.
+      - The actor count and the snapshot come from the client's local view in a world nobody has ticked. They are
+        recorded but are not evidence.
+    - **LOW-3.** The `run_soak.py` protocol docstring and the `health_check.py` INVALID sentence are updated to
+      DR-21.
+    - **LOW-6.** In the synchronous branch the check now records `localSnapshotFrame` instead of `frame` and
+      `waitForTickS`.
+    - **LOW-5.** The tests inject the failure at `get_settings` and at `get_map`, and assert that
+      `set_timeout(15.0)` is used.
+    - **Declared.**
+      - LOW-2: a server that answers but cannot tick passes the before-check, then fails the warm-up as a criterion
+        stop rather than as INVALID. This is safe, but the cause is attributed in the finding instead.
+      - LOW-4: the guard does not run after a BLOCKED preflight or in baseline runs. Those runs are already FAIL,
+        and their consoles carry the reason.
