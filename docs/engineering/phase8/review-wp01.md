@@ -97,3 +97,62 @@ unverified (E8-3a).
        `test_n2_live_ground_truth_export_is_refused_before_binding`).
    - **Out of scope here.** The blueprint wiring (`run-live.sh`, `lib-live.sh`) of WP-01 is a separate
      `xverse-blueprints` increment, and the live check belongs to E8-3a.
+2. **Implementation of finding 1 (2026-10-24).**
+   - **Change.** `src/xverse_compat_carla/observe.py` only. `main` parses the mutually exclusive `--role`
+     (v1) and repeatable `--track` (v2) options and dispatches. The v1 body moved unchanged into
+     `_observe_v1`; its diff is the docstring and the `--role` option line only. v2 is `_observe_v2`,
+     with `_entry` for one role and `_line` (`allow_nan=False`). The module imports the standard library,
+     `carla` (lazily) and `.timeconv`. `main.py`, `sources.py`, `protocol.py` and `groundtruth.py` are
+     unchanged, so the live `--ground-truth` refusal stands.
+   - **Tests.** `tests/carla/test_observe_v2.py`: 24 tests, offline, with a fake `carla` module in
+     `sys.modules`, a fake world, `ActorList` and actors whose mutating methods raise, and the observer's
+     signal handlers captured instead of installed.
+     - v1: `test_wp01_v1_role_schema_is_unchanged` pins the header, record (`ego` members and values) and
+       footer members; `..._existing_output_is_still_truncated`.
+     - v2 schema: `..._header_labels_ground_truth_and_declares_clock_and_passivity`,
+       `..._records_every_declared_role_per_simulation_frame` (ego, target and the camera role;
+       `simElapsedNs == seconds_to_ns`; one actor listing while every role stays alive),
+       `..._absent_ambiguous_not_in_snapshot_and_non_finite_are_never_guessed`,
+       `..._resolves_a_role_again_after_its_actor_dies_or_appears`.
+     - Passivity: `..._never_mutates_the_world_or_any_actor` and the AST check
+       `test_wp01_observer_source_calls_no_mutating_carla_method`.
+     - Failure: connection failure (exit 3, no file); an existing path and `/dev/stdout` refused (exit 3,
+       untouched); a lost server after the header (error footer, exit 3); a non-finite simulation clock
+       (error footer, exit 3); tick timeouts counted; duration 0 ends with `stoppedBy: "duration"`; six
+       argument errors exit 2 before any connection or file.
+     - Separation: `test_wp01_no_runtime_unit_imports_the_observer` (AST import closure of
+       `xverse_compat_carla.main`, `xverse_compat.live.driver`, `.stimulus`, `.loop`),
+       `test_wp01_no_module_imports_the_observer` (all of `src/`),
+       `test_wp01_observer_imports_no_transport_and_nothing_forbidden` (exact import set),
+       `test_wp01_runtime_intake_refuses_every_observer_line` (`parse_outbound` under both protocol
+       identifiers; standard output empty) and `test_wp01_runtime_flows_carry_no_ground_truth` (both
+       `FLOWS` constants; no XDL file names the observer or its schema).
+   - **Mutation checks (not committed).** An injected `from xverse_compat_carla import observe` in
+     `xverse_compat/live/loop.py` failed the two import tests; an injected `world.tick()` in the v2 loop
+     failed 8 tests, among them the passivity and AST tests. Both files were restored.
+   - **CPython 3.10.** Under `env -i ... /usr/bin/python3.10 -s -B` (3.10.12) the module imports with
+     `protocol.forbidden_modules_loaded() == []` and without loading `carla`; an off-prefix `--track` is
+     refused by argparse.
+   - **Suite.** `env -u PYTHONPATH PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src
+     /dev/shm/compat-p6-venv/bin/python -m pytest tests -q -p no:cacheprovider`: 268 passed, 39
+     subtests (baseline 244 at `9d1f3f3`).
+   - **Residuals.**
+     - R-1. Live behaviour is unverified: the v2 role resolution, snapshot `find` and frame coverage on a
+       real server belong to E8-3a. No CARLA was run.
+     - R-2. The blueprint wiring of WP-01 (`run-live.sh`, `lib-live.sh`: a `--track` observer with its own
+       output path beside or instead of the v1 observer) is a separate `xverse-blueprints` increment.
+       Until then the harness runs v1 only.
+     - R-3. The separation is enforced by process, import, flow and output-path construction, not by the
+       operating system: runtime units run as the same user and could open the file if given its path.
+       The V14 data-provenance audit (WP-17) and the harness's path choice cover this.
+     - R-4. Ambiguity is detected only when a role is resolved. A second actor that takes a role while
+       the first stays alive is not detected; WP-02 owns the spawn of a unique `xverse-lite-target`.
+     - R-5. A passive client can miss frames when it is slower than the tick owner. Gaps show in `frame`
+       and are never filled; the oracle (WP-17) must declare how it treats them.
+     - R-6. The observer reads the same `World.get_snapshot` source as the adapter's `vehicle-motion`
+       flow (C-12). AD-32 resolves this on the runtime side with the modelled motion sensor (WP-05), not
+       here.
+     - R-7. The package docstring of `xverse_compat_carla/__init__.py` says `carla` is imported only in
+       `sources.LiveSource`; `observe.py` already imported it in v1. The docstring is left unchanged
+       (pre-existing, LOW).
+   - **Status.** Candidate for independent review. Not accepted, not merged, not pushed.
