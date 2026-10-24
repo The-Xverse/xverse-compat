@@ -411,3 +411,17 @@ behaviour unverified (E8-3a).
        only the record's.
      - Still open, and not blocking: N1 and N2 above. So is the live verification that R-2 and E8-3a still
        require.
+
+## 7. Acceptance (written at 12:05:58 2026-10-24)
+
+- **Accepted** under the author's delegation of 2026-10-24 (thesis `specs/002-assured-aeb/decisions.md` §G, §J
+  and §K). It is flagged for the author's review.
+- **Basis:** finding 3 (PASS WITH NOTES), repaired in findings 4–5, and finding 6 (PASS). The suite gives 419 passed
+  and 39 subtests. The base-golden stdio fixtures were verified independently against `855878a`, and the link
+  without `--frames` is byte-identical to the base in four modes.
+- **Declared:**
+  - N1: `FrameReceiver.start` leaves its listener open on a `FrameChannelError` from the header. It still fails
+    closed, and the WP-12 U2 integration must always call `close()`.
+  - N2: with `--frames`, an exit 3 writes the frame summary line and then the error line. This goes into the R-5
+    `carla-items-2.md` contract amendment with the blueprint increment.
+- **Merged** into compat main and pushed (see the merge commit).
