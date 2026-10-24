@@ -96,3 +96,16 @@ unshare -cn env -u PYTHONPATH PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AU
 
 Status: implementation candidate pending independent review and queued suites; no acceptance, merge, live run or
 scientific measurement. Offline oracle join/extractor and observer-origin verification remain future WP-17f work.
+
+## Independent source review (Codex coordinator, 2026-10-24), PASS for scheduled verification
+
+Reviewed exact57ef514fd17dbdb9a6423d66fbd89e72485ec497 against4172f61: actual motion/ticked identities,
+immutable export, origin preservation, gaps, aborted boundaries, host sampling before binding/holds/delivery,
+normal/exceptional cleanup and genuine socket regression coverage. The metadata never feeds runtime decisions.
+No source blocker found. Initial connection/arming and final nonexistent successor interval are explicitly excluded;
+frame/episode membership still requires the future offline join. Full compiled/runtime/scientific claims remain
+unproven. No CARLA/pytest/adapter process was executed in this read-only pass.
+
+Assemble with accepted compat mainc7f92eb (training/sensor tools, independent605passed/2network-refusal-skips/39subtests)
+and run the complete owning suite with all environments available and namespace isolation. The independent host
+refusal controls already cover those namespace-only skips. Candidate remains unaccepted until that result.
