@@ -1361,3 +1361,38 @@ engineering stabilization candidate: not M1, not AEB evidence.
         - No cancel-paused run at observe tick 24 has passed start-up yet, so confirm one in the MEDIUM-2 set.
         - Finding 49 omits the closure `ML-CLOSURE-REPORT-INCOMPLETE` and the broker `cleanup_complete` false,
           and does not say that the harness exit came from the L4 stderr assertion.
+51. **Dispositions of finding 50 (thesis DR-19; written at 05:04:46 2026-10-24, before any change).**
+    - **HIGH-1:** the owned readiness window goes back to 1.7 s, which supersedes DR-18 (1).
+    - **MEDIUM-1:** `run_soak.py` excuses a warm-up only for a clean start-up readiness failure: `ML-PROBE-NOT-READY`,
+      cleanup complete, healthy after the run, no residue, and audit failures within {P1.flowRootClosedComplete,
+      P1.maestroRootClosedComplete, P1.succeededWithMarkers, P8.pathHolds}. Any other warm-up failure stops the soak.
+      This gets tests.
+    - **MEDIUM-2:** H2 becomes a declared soak condition under DR-19 (3). It is verified live on the final commit: the
+      copy line, an audit PASS, the guard in cancel-paused using the copied registry, and no stage left behind. The
+      dev6 set already ran on `7677078` (H1 = 1.95 s). It shows the copy and no stage left for all 8 runs, and
+      cancel-paused passing 3 times.
+    - **MEDIUM-3:** dev3, dev4, dev5 and dev6 get `SHA256SUMS`, with `SEALED-AFTER-RUN.txt` giving the sealing time.
+    - **LOW repairs:**
+      - LOW-1: warm-ups are tagged before they are saved, and their directories are named `warmup-<stamp>-nominal`.
+      - LOW-2: the thesis plan.md soak protocol gets a DR-18/DR-19 amendment. It is approved under the author's
+        acceptance of 2026-10-24.
+      - LOW-7: `_drain_facts` reads every dataclass field.
+      - LOW-8:
+        - `run-live.sh` refuses a stage left over from an earlier run.
+        - If the copy fails, the guard reads the registry left in the stage.
+        - Writes by a residue unit after the copy are a declared loss; such a residue is already a failure.
+      - LOW-9: the admission record is rebuilt with the command actually run.
+      - The stale comment is corrected.
+    - **LOW errata (no code change):**
+      - LOW-3: DR-18 counted nine runs at 1.7 s; the record holds eight. Findings 47 and 49 give run end times
+        later than they were written; the evidence files hold the true times.
+      - LOW-4: finding 48's 0.94 s and 0.96 s margins come from the ten 3.5 s-window nominal and freeze-vcu runs in
+        dev2 to dev4. For each run, the method takes the first Argus host time at ticks k and k + 10, adds the
+        observe step's extra cost (tick 61 − 60, less a plain tick) and 0.1 s of clear latency, and compares with the
+        stimulus pedal window. The reviewer's independent figures are 0.93 s and 0.88 s.
+      - LOW-5: "CARLA's first owned-scenario setup" and "stalled in fsync" are inferences from timing and
+        files-left evidence, not observed causes.
+    - **LOW declared:**
+      - LOW-6: `leaseFacts` is the harness's initial lease. The renewed lease is in `readinessWindows`.
+      - The other part of LOW-7: `reapFacts` is None when the drain happens in `dispose()`.
+      - The remainder of LOW-9: no change beyond the rebuilt admission record.
