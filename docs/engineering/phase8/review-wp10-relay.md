@@ -530,3 +530,20 @@ end: not M1, no CARLA, no live run.
      - **L4 and L5** are recorded as obligations elsewhere, as the dispositions row specifies.
      - **R-3 and R-5 to R-9** are unchanged.
      - **R-8** remains the interoperability gate. It should include N1.
+
+9. **Dispositions of finding 8 (written at 15:58:58 2026-10-24, before code).** Source: the thesis `decisions.md` rows
+   "WP-10 #3/#4 re-review notes" and "Lost-flow rule, clarification" (both 15:58, under the author's delegation,
+   flagged for the author's review).
+   - **N1, align to platform ADR decision 5.**
+     - After every hold `ack`, including a `refused` one, the hub's next frame is `resumed`, echoing `ackSeq`.
+     - After a refused ack the hub does not step again. It waits for Maestro's `close` within `stop_wait_s`, then
+       closes and ends the run as invalid (`HubInvalidRun`). The record notes whether the close was observed.
+     - **Test:** a refused apply and a refused clear each give `resumed` with the right `ackSeq`, no later step, and
+       the close observed.
+     - The R-8 wire test includes this case.
+   - **N2.** Each queued delivery replayed after a thaw gets `replayedAtStep` and `replayedAtNs` in its
+     `HubResult.deliveries` entry. A delivery that was never queued has neither. **Test:** the replay step equals the
+     thaw step for every backlog delivery.
+   - **Lost-flow rule, clarification (editorial).** A message that passed the final delivery step before the
+     verdict, and sits in a frozen unit's queue, counts as already delivered. It is replayed ahead of the `lost`
+     notice. That is the behaviour of finding 7, and no code change follows.
