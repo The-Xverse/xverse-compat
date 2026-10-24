@@ -242,3 +242,70 @@ not M1, not AEB evidence, live behaviour unverified (E8-3a).
        the audit's owned set and target stillness).
    - **Status.** Candidate for independent review and the author's acceptance. Not accepted, not merged, not
      pushed.
+3. **Independent review of findings 1 and 2 (2026-10-24 15:26:14).** Reviewer: an independent Claude agent that did
+   not write the increment. Scope: `83b9b97`, `1a7f3ec` and `5002833` on `95e9e7a`. **Verdict: PASS WITH NOTES.**
+   All notes are LOW, and **nothing blocks the merge**. The merge still needs the author's or the coordinator's
+   acceptance, which this finding does not give.
+   - **Independent checks.**
+     - **Suite.** The offline compat suite gave **460 passed, 39 subtests**. The worktree stayed clean.
+     - **CPython 3.10.12 import check.** With the pinned interpreter under `env -i ... -s -B`, `scenario`, `sources`,
+       `main`, `restore` and `observe` all import with `forbidden_modules_loaded() == []` and without loading
+       `carla`. `scenario.py` imports only `__future__` and `math` (checked through the AST). The shipped
+       descriptor gives `target_of(...) is None`.
+     - **Targets without `adjacentLane` behave exactly as in WP-02 (base differential).**
+       - **Method.** I loaded base `95e9e7a:src/xverse_compat_carla/scenario.py` next to the candidate. Both ran on
+         the candidate's lane fake, with driving neighbours present on **both** sides and the old fake `CARLA`,
+         which has no `LaneType`.
+       - **Cases.** 50 in-lane cases: plain, junction, branch, lane end and off-lane, at distances 0.5, 1, 7.3, 40
+         and 60 m, from spawn points 0 and 1.
+       - **Result.** The transforms or refusals are identical, the walk calls are identical, and **zero**
+         neighbour queries were made.
+       - **`target_of`.** It gives the same result as the base for the WP-02 target, a minimal distance, and an
+         extra member, which both versions refuse. Only `adjacentLane` changes the answer: the base refuses it and
+         the candidate accepts it.
+       - **Unchanged files.** `git diff 95e9e7a` over `sources.py`, `main.py`, `restore.py`, `observe.py` and
+         `xdl/` is empty. The soak uses the shipped schema-1 descriptor, so it is unaffected.
+     - **Design choice.** I agree with (B), the adjacent lane, over a metric offset. It invents no lateral value,
+       ties every refusal to one waypoint property, and is portable across the P-2 training segments. The
+       `decisions.md` row "WP-02b scope" (15:24) has since adopted it. Keeping schema id 2 is sound, because no file
+       accepted by `95e9e7a` changes meaning: the base refuses a fifth member, as shown above.
+     - **Neighbour checks.** `adjacent_lane` (`scenario.py:112-137`) refuses, in this order: no neighbour, a type
+       other than `Driving`, another `road_id`, a lane id on either lane that is not a non-zero `int` (bool
+       excluded), a sign relation that disagrees with `direction` (`:131`), and a neighbour in a junction
+       (`:135`). It runs only after the unchanged WP-02 walk (`:166`), and the lift and finiteness checks then
+       apply to the neighbour's transform (`:168-171`). The tests cover each refusal, and the record lists
+       mutation checks for the type, direction, road and junction checks.
+     - **Restore guard and observer v2.** These need no code change, and they cover the target. The role is still
+       `xverse-lite-target`, so the listing path (`restore._owned` prefix) and the registry path, which carries
+       `id`, `typeId` and `roleName` (`sources.py:172`), both hold and destroy it in any lane. Both are tested for an
+       adjacent-lane target. `observe --track` resolves it by role.
+   - **Notes (LOW; none blocks the merge).**
+     - **L1. The direction check is a map-convention assumption.**
+       - Using the lane-id sign as the direction of travel (`scenario.py:131`) assumes right-hand traffic and no
+         per-lane direction override. OpenDRIVE also allows left-hand roads and a lane `direction` attribute
+         ("reversed" or "both"), which this rule would misread.
+       - This holds for the installed CARLA maps but is not checked. **Fix.** State it in R-1 as a live check (a
+         lane's `transform.rotation.yaw` against the ego heading would corroborate the sign), or refuse when the
+         neighbour's heading disagrees with the declared direction by more than a declared tolerance.
+     - **L2. Only one point of the neighbour lane is checked.** That point is the target's centre. A target about
+       4–5 m long extends past it, so a neighbour lane that ends, merges or meets a junction within half a vehicle
+       length is accepted. R-3 records "target position only". It should say "the target centre only, not its
+       footprint", or, as cheap hardening, check the neighbour's `next`/`previous` by half the blueprint length.
+     - **L3. The run-kind restriction can be applied only from the scenario file.** The "WP-02b scope" row requires
+       the WP-09 dataset manifest to refuse adjacent-lane targets in any evaluation run. Compat emits no marker of
+       the placement in its own outputs: the registry holds `id`, `typeId` and `roleName`, and the observer records
+       poses. So the manifest can apply the rule only from the scenario file itself. The blueprints' D-3 harness
+       must bind the scenario file's digest into the run's retained inputs. This is a blueprints obligation that R-4
+       should name.
+     - **L4 (editorial). R-4 and R-6 are now decided.** The "WP-02b scope" row (15:24, under the author's delegation,
+       flagged for the author's review) decides them: one lane over under schema 2, training and characterisation
+       data only, with the manifest refusing such targets in evaluation; near-edge negatives are out of scope. R-4
+       and R-6 (`review-wp02b.md:232-240`) should cite the row and be marked decided, and R-2 should cite the row's
+       out-of-scope statement.
+     - **L5. Refusal message text changed.** The `target` members refusal now reads "exactly …, optionally with
+       ['adjacentLane']" (`scenario.py:87-89`). Its meaning is unchanged, and the WP-02 tests still pass. A consumer
+       that matches the exact text would see the difference. None was found in compat.
+   - **Residuals R-1 to R-7.**
+     - R-1 to R-7 are honest and correctly scoped.
+     - R-4 and R-6 are decided by "WP-02b scope" (L4).
+     - Additions are proposed to R-1 (L1), R-3 (L2) and R-4 (L3).
