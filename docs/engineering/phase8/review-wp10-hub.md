@@ -184,3 +184,112 @@ faults, live behaviour unverified (E8-3a, D-4c).
      - R-8. Live behaviour, the D-4c bounds and the integration with Maestro are unverified (increment #5,
        E8-3a).
    - **Status.** Candidate for independent review. Not accepted, not merged, not pushed.
+3. **Independent review of findings 1 and 2 (2026-10-24 15:14:18).** Reviewer: an independent Claude agent that did
+   not write the increment. Scope: `0cd7d44` and `07f8641` on `95e9e7a`. **Verdict: PASS WITH NOTES.** Nothing blocks
+   the merge of increment #2. M1 must be repaired before increment #4 introduces frozen units, or before the first
+   live hub run, whichever comes first. M2 needs a recorded rule before increment #4/#5 wires a real consumer.
+   - **What was checked, and the result.**
+     - **Suite.** The offline compat suite gave **459 passed, 39 subtests**. `test_phase8_hub.py` was run twice more:
+       40 passed each time. The end-to-end test with the pinned 3.10 adapter and `--frames` passes: 4 steps, all
+       frames `verified`, the origin bound once, and the receiver's socket unlinked.
+     - **Topology contract.**
+       - **Provenance.** The fixture is byte-identical to blueprints
+         `5f71cde:automotive/assured-aeb/xdl/mloc/topology/system.json`. The SHA-256 is `f982be82…bab07af`, recomputed
+         from the blueprints object, not only from the copy.
+       - **No blueprint import.** `hub_topology.py` imports only `typing`, and `hub.py` only the standard library and
+         `.hub_topology`.
+       - **Derivation.** It matches the form: `flows` and `returnFlows`, endpoint owners, `hostedElements` against
+         `hostUnit`, `intraUnit` skipped, and the adapter-link route rule.
+     - **Delivery rule.** It matches `decisions.md` "AD-30 delivery rule" and the new "Hub delay semantics" row:
+       - the delivery is the first boundary at or after `deliverAtNs` (`hub.py:86-87,115-116`), plus the additive
+         `hubDelaySteps` (`:123`);
+       - same-step messages go to a later round;
+       - the deliveries are sorted by `(flow, source unit, sequence)` (`:126`), and the outputs are collected in
+         unit-id order (`:353-375`), so the delivery log does not depend on the reply order. The jitter test shows
+         this.
+     - **Zero-delay cycle (the coordinator's question).** **No livelock.** With `f-c-a` changed to delay 0 and units
+       that chain on every delivery, a scratch probe raises `HubInvalidRun` ("more than 6 delivery rounds") at step 0
+       in under 10 ms (cap = units + 1, `hub.py:378-393`). With the declared delay the same units end normally (3
+       steps, max 3 rounds). The suite does not test the cap itself (L1).
+     - **Late origin binding.** It is bound at the first frame only. Ticks without items give no boundary (`:422-426`).
+       `bind_origin` runs on local consumers, and `origin` goes to every live unit before step 0's first round. A
+       second, different origin is refused (`:288-299`).
+     - **Lost verdicts.** On EOF, a protocol error or a send failure, `_unit_gone` marks each produced flow lost once:
+       `mark_lost` locally, `lost` to the live remote consumers (`:301-320`). A missed wait bound is
+       `HubInvalidRun` (`:362-366`), as designed.
+     - **The F17 start-up deadline.** It is in simulation time (`sim_ns >= origin + deadline`) and checked after the
+       step's rounds (`:322-328,444`). It is required whenever F17 exists (`:267-268`).
+     - **Bounds.** `wait_bound_s`, `hold_bound_s`, `connect_timeout_s` and `frame_wait_s` (with frames) are required,
+       finite and positive, and booleans are excluded (`:49-52,256-260`). The hold is bounded and raises
+       `HubInvalidRun`.
+     - **`FrameReceiver.close()`.** It is in `run()`'s `finally` (`:448-452`), on success, on `HubInvalidRun`, on a
+       protocol error and on an accept failure.
+     - **Transport.**
+       - The socket is created with mode **0600** (checked with `stat`: `0o600`) and unlinked by `close`.
+       - The inbound line limit is 65 536 bytes, with strict UTF-8 and no NaN (`:180-189`). The hello is read
+         within the connect deadline (`:163-169`).
+       - No peer credentials are checked, which R-6 records honestly.
+   - **Issues.**
+     - **M1 (MEDIUM; does not block the merge of #2; repair before increment #4 or the first live hub run): hub
+       writes to units have no time bound, so the hub can hang without bound.**
+       - **The cause.** `accept_all` sets each unit socket to blocking with no timeout (`hub.py:174`). `send` writes
+         and flushes through `makefile("wb")` (`:203-212`). `UnitLinks.close()` sends `end` to every unit before the
+         shutdown (`:214-216`), and that close runs inside `run()`'s `finally` (`:452`).
+       - **Probe.** A unit that connects and then never reads blocks `send()` after 44 rounds of about 4 KB
+         (`send()` still blocked after 3 s). `UnitLinks.close()` with that unit is also still blocked after 3 s.
+       - **Consequence.** No timeout fires in this state, so neither `HubInvalidRun` nor the `finally` cleanup
+         (frames close, listener unlink) is reached. It is unreachable in practice today: a silent unit misses the
+         wait bound after its first round, long before its socket buffer fills.
+       - **When it becomes reachable.** Under increment #4, a frozen unit (SIGSTOP) keeps receiving round-0
+         messages without reading.
+       - **Repair.** Give sends a timeout from the round deadline, or use `MSG_DONTWAIT` with a bound that is
+         treated as a lost unit, and shut down before sending `end` in `close`, or send `end` non-blocking. A test
+         with a non-reading unit should show `close()` within a bound.
+     - **M2 (MEDIUM; does not block the merge; a rule is needed before the consumer wiring): a flow declared lost can
+       still be delivered afterwards.**
+       - **The cause.** `_mark_lost` records the verdict, but `HubSchedule.due` still returns messages already
+         admitted on that flow (`hub.py:123,301-313,342-344`).
+       - **Probe.** `uc` produces F17 at step 0 with `deliverAtNs = T0 + 3·STEP` and disconnects. The lost verdict
+         comes at step 1 (`mark_lost` once), and the F17 is then **delivered at step 4**: the reader gets `mark_lost`
+         and then `deliver`. The same holds after a start-up-deadline loss, when a late F17 arrives.
+       - **Why it matters.** Whether a delivery after a lost verdict is valid in-flight data or must be discarded is a
+         semantic choice. It decides what `BrakeCommandReader` and the degraded path see, and it must be recorded:
+         drop the pending items of a lost flow, or document that `lost` is a verdict about the producer and not a
+         barrier, and test the chosen rule.
+       - **Scope.** With the one-step F17 delay and `deliverAtNs` inside the step, the loss is detected after that
+         step's delivery, so the common case is unaffected.
+     - **L1 (LOW): the cap on same-step rounds is untested.** Every hub test emits only in round 0 (`_emit_round0`;
+       `test_phase8_hub.py:149-156`), so neither chaining over three or more rounds nor the cap (`hub.py:392-393`) is
+       exercised. My probe above is a ready test: an undeclared zero-delay cycle raises `HubInvalidRun`, and the
+       declared delay terminates.
+     - **L2 (LOW): the code closes less than the design record says.** Finding 1 says the hub closes the frame
+       receiver "together with the unit links and the adapter link" (`review-wp10-hub.md:82`). The `finally` closes
+       only the frames and the unit links (`hub.py:448-452`), and the end-to-end test kills the link itself
+       (`test_phase8_hub.py:435`). Either close or kill the link in the `finally`, or correct the record so that the
+       caller (the increment #5 entry point) owns the adapter link.
+     - **L3 (LOW): a malformed `outputs` field escapes as a bare `TypeError`.** A unit `outputs` whose `messages` is
+       not a list, for example `5`, raises a `TypeError` out of `run` (`hub.py:373`), not a `HubProtocolError` or a
+       lost unit. It still fails closed through the `finally`. Validate `type(messages) is list` and treat a violation
+       as a protocol error of that unit.
+     - **L4 (LOW): outbound lines have no size limit.** A `round` line aggregates the payloads of every delivery to
+       one unit (`hub.py:346-348,355`), and no limit is applied when sending. A line above 65 536 bytes would be
+       refused on the unit side (R-6), not fail-closed at the hub. Check the size before sending, and raise
+       `HubProtocolError` or `HubInvalidRun` above `MAX_LINE`.
+     - **L5 (LOW): the step boundary falls back to another stream's time.** `frame_ns` is the `vehicle-motion`
+       `originNs`, but falls back to the maximum `originNs` of the other items when motion is absent (`hub.py:421`).
+       A step without motion therefore takes its boundary from another stream's time, for example a sensor origin.
+       That is fail-closed only when it does not increase. Prefer the adapter's tick frame time, or refuse a
+       motion-less step, and record the choice.
+     - **L6 (LOW, editorial): R-1 still reads `TODO`.** R-1 (`review-wp10-hub.md:164-165`) is now settled by the
+       `decisions.md` row "Hub delay semantics" (12:19, under the author's delegation), which confirms the additive
+       rule. R-1 and the corresponding `TODO: author decision (AD-30)` in finding 1 (`:40`) should cite that row.
+       The row is still flagged for the author's review.
+     - **L7 (LOW): no cleanup if `run()` is never reached.** If `Hub.__init__` refuses its arguments, the
+       caller-supplied `FrameReceiver` is never closed. If `run()` is never called, the unit listener stays bound. A
+       `close()` on `Hub`, or a documented caller responsibility before `run()`, would complete WP-06 N1.
+   - **Residuals R-1 to R-8.**
+     - **R-1** is resolved by the "Hub delay semantics" row (L6).
+     - **R-2 to R-8** are honest and correctly scoped.
+     - **Proposed additions:**
+       - **R-9.** Unbounded unit writes and `end` on close (M1); to repair before increment #4.
+       - **R-10.** The rule for deliveries on a flow already lost (M2).
