@@ -309,3 +309,20 @@ not M1, not AEB evidence, live behaviour unverified (E8-3a).
      - R-1 to R-7 are honest and correctly scoped.
      - R-4 and R-6 are decided by "WP-02b scope" (L4).
      - Additions are proposed to R-1 (L1), R-3 (L2) and R-4 (L3).
+
+## 4. Acceptance (written at 15:27:07 2026-10-24)
+
+- **Accepted** under the author's delegation of 2026-10-24 (thesis `specs/002-assured-aeb/decisions.md` §G and
+  the rows "WP-09 training pipeline" and "WP-02b scope", which decide R-4 and R-6). It is flagged for the author's
+  review.
+- **Basis:** finding 3, PASS WITH NOTES, all LOW. The suite gives 460 passed and 39 subtests, and the 3.10 import
+  check is clean. Targets without `adjacentLane` are identical to WP-02 across 50 differential cases.
+- **Residuals amended:**
+  - R-1 (L1): the lane-id-sign direction rule assumes right-hand traffic and no per-lane direction override. Check it
+    live (E8-3a), or compare the neighbour's heading.
+  - R-3 (L2): the neighbour lane is checked at the target centre only.
+  - R-4 (L3): compat outputs carry no adjacent-lane marker. The blueprints D-3 harness must record the scenario
+    file's digest in the run's retained inputs, so the WP-09 manifest can refuse adjacent-lane targets in
+    evaluation.
+  - L5: the refusal message text changed; its meaning did not.
+- **Merged** into compat main and pushed (see the merge commit).
