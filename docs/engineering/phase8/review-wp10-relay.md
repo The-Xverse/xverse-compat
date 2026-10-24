@@ -289,3 +289,99 @@ end: not M1, no CARLA, no live run.
      - R-4 is adopted. The full-buffer case is a declared residual (AD-12).
      - R-3 and R-5 to R-9 are unchanged.
    - **Status.** Candidate for independent review. Not accepted, not merged, not pushed.
+5. **Independent review of findings 1 to 4 (written at 15:47:14 2026-10-24).** Reviewer: an independent Claude agent
+   that did not write the increment. Scope: `34b514d..c8c376a` (`11e117a`, `5bb35ba`, `6557b42`, `14478e5` and
+   `c8c376a`). **Verdict: PASS WITH NOTES.**
+   - **Nothing blocks the merge of increment #4.** The merge still needs the author's or the coordinator's
+     acceptance, which this finding does not give.
+   - **M1 must be repaired before the first live run with a `delay`, or with any fault on a flow that can be lost.**
+   - **R-8**, the wire test against the platform with ST-2, must pass before increment #5 wires a live run.
+   - **What was checked, and the result.**
+     - **Suite at `c8c376a`.** The worktree was clean and the implementer idle. The command given gave **579 passed,
+       39 subtests** in 36 s. The relay and hub-core files were run twice more: 95 passed each time.
+     - **Frame contract (ST-2, thesis rows "WP-10 #3 review dispositions" and "WP-10 #4 relay alignment").**
+       - **Closed sets.** The Maestro frames have closed key sets, including `count` and `index`. The JSON is
+         canonical, at most 4 096 B, with no NaN, and the sequence rises by exactly 1 (`hub_relay.py`
+         `decode_maestro_frame`, `MaestroEnd.receive`).
+       - **Arming end.** Arming ends at `index == count`, the first `count` must equal the harness list, `count` may
+         not change, and `index` must be the next one (`:325-350`).
+       - **`armed` first.** Every `armed` is sent before the first tick (`hub.py` `run`), so before any report.
+       - **`resumed`.** It is the only frame after a hold's ack, and it echoes `ackSeq`. After a `refused` ack nothing
+         is sent and the run is invalid (`at_step`).
+       - **Benign close.** The hub closes at its own stop only when settled. Otherwise it waits for Maestro's close
+         (`finish`, `:505-520`).
+       - **Interop not tested.** The platform branch at `920f7e6e6` has no `resumed`, `count` or `index` yet, because
+         ST-2 has not landed. Interoperability is therefore untested (R-8).
+     - **No host time in fault selection (PAIR-1).**
+       - `every` counts in-window due items in the hub's sorted delivery order, and `loss-ratio` hashes
+         `seed:entry:flow:sequence`.
+       - `stale`, `delay` (the release step) and the F12 replacement are keyed to steps and sequences.
+       - Host time appears only in the evidence (`hostNs`) and in bounding the waits. The PAIR-1 test compares runs
+         with different unit jitter, host time aside.
+     - **CC-1 and the re-check against blueprints `HubArmingRecheck` (`18201fe`, `admission.py:206-247`).** The
+       target and kind rule, the CC-1 rule (every member, the same `atNs` and `durationNs`) and the duration-bound
+       rule are equivalent.
+       - **Compat is stricter**, and fail-closed: it also requires a `hub` route, the declared mode and collection,
+         per-kind parameters, an equal `stepNs`, re-derived grid steps, one seed, and a configured proposal provider.
+       - **The real form.** On the MLOC form `5f71cde`, only F09 {delay, loss, stale}, F12 {the two proposal kinds}
+         and F13 {evidence-loss} carry `faultAdmission`. The freeze targets are front-zone, adas-hpc and vc-assurance
+         alone, plus the set {vc-assurance, vc-functional}. Neither the clock source (vehicle-loop) nor the adapter
+         is freezable. This matches §K.
+     - **Frozen units (R-4) and the N1/N2 repairs.**
+       - A frozen unit gets no round, is not waited for, and receives no send.
+       - Its deliveries and its `lost` notices are queued and go out at its first round after the thaw.
+       - **N1.** One deadline covers a round's sends and its wait.
+       - **N2.** A failed `origin` or `lost` send calls `_unit_gone` at once (`hub.py` `_bind_origin`, `_notify`).
+     - **No fault identifier on runtime flows.** Fault records go to `HubResult.faults` only. Deliveries carry the
+       flow id, source, sequence, stamps and payload. A test asserts that no unit receives a fault identifier.
+     - **No invented timing values.** `step_ns`, `grid_tolerance_ns` (< `step_ns`), `arm_timeout_s`, the Maestro send
+       timeout and the `SimTimeBound` are required, with no default. The only literal is the hub core's existing
+       0.005 s poll.
+   - **Issues.**
+     - **M1 (MEDIUM; does not block the merge; repair before the first live run with `delay`, or with any fault on a
+       flow that can be lost): the Lost-flow rule is bypassed by items the relay holds or creates.**
+       - **The rule.** `decisions.md` "Lost-flow rule": once a flow is lost, nothing is delivered on it after the
+         verdict.
+       - **The gap.** `HubSchedule.discard_flow` empties only the schedule's pending list. The relay's `_held`
+         (delayed) items, its F12 injections, and the frozen-unit queues still reach `_deliver`
+         (`hub_relay.py:445-500`; `hub.py:462-479,483-495`). `_deliver` does not consult `schedule.lost`.
+       - **Probe.** A `delay` of two steps on F09 holds sequence 1 at step 2 (release at step 4). The flow is lost at
+         step 3 (`schedule.lost = {f09}`). `filter(4)` still returns `('f09-radar-vc', 1)`, which `_deliver` then
+         delivers after the verdict.
+       - **A frozen unit sees the wrong order.** It is sent its queued control first (`hub.py:488`) and its queued
+         deliveries second (`:494`). A `lost` that arrives during the freeze therefore precedes deliveries that were
+         queued before it.
+       - **Repair.**
+         - Apply the barrier at one point: in `_deliver`, or on the relay's output. Items of a lost flow are
+           discarded and recorded in `schedule.discarded` (digest only, with reason "relay-held at the lost
+           verdict").
+         - Keep a single ordered queue of deliveries and control messages per frozen unit.
+         - Add tests: delay then loss; an injection after a loss; a loss during a freeze.
+     - **L1 (LOW): a freeze is armable with no duration bound.** With `sim_bound=None` the re-check applies no bound
+       at all (`hub_relay.py:289`). A 400-step freeze of front-zone is armable (probe: no refusal). Blueprints has
+       the same semantics, and the platform refuses freezes while D-4c is unknown, so a second line exists elsewhere.
+       But "an unknown bound refuses" holds only when a `SimTimeBound` object is passed. **Repair.** Refuse a `freeze`
+       in the batch whenever no `SimTimeBound` is configured.
+     - **L2 (LOW): one round can exceed the line limit after a long freeze.** The first round after a thaw
+       concatenates every queued delivery into one `round` line (`hub.py:494`). Above 65 536 bytes,
+       `UnitLinks.send` raises `HubProtocolError`, which is not `HubInvalidRun`. It fails closed, but it is not the
+       declared full-buffer residual (AD-12). State it under R-4 or R-7, or split the queue across lines.
+     - **L3 (LOW): `arm_timeout_s` does two jobs.** It bounds arming and also the unsettled-stop wait (`finish`,
+       `:514`). These are different D-4c quantities: arming happens at start-up, while the stop wait must fit
+       Maestro's stop action. Separate them, or record that one value must satisfy both (R-5).
+     - **L4 (LOW): the F12 provider's output is unchecked.** `ProposalSets.replace` and `inject` return provider
+       messages, which are delivered as is. Nothing checks that they carry no fault identifier or run-kind marker.
+       Record this as an obligation of the AD-11/AD-27 provider (R-3), or check the injected message shape against
+       the flow's schema at the hub.
+     - **L5 (LOW, for increment #5): identifiers must match across the two forms.** The Maestro-form `element`
+       values must equal the topology-form unit and flow ids (for example `front-zone-unit` and `f09-radar-vc`).
+       Otherwise every entry is refused at the re-check, which is fail-closed. R-2 assigns the domain mapping to #5,
+       and the identifier mapping belongs there too.
+   - **Residuals R-1 to R-9.**
+     - **R-1** is closed on the hub side, and R-2 is assigned.
+     - **R-4** is adopted, with M1's ordering fix.
+     - **R-3 and R-5 to R-9** are honest.
+     - **R-6** (Maestro not authenticated) should be closed in #5, together with the platform's L1 obligation: a
+       connected socketpair end given at spawn.
+     - **R-8** (the wire test against ST-2) is the gate before any live run.
+     - **Proposed addition: R-10.** Lost-flow barrier coverage for relay-held, injected and frozen-queued items (M1).
