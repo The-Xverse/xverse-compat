@@ -82,10 +82,16 @@ def from_system_document(doc: dict) -> dict:
         flows.append({"id": flow_id, "source": {"element": src, "unit": host[src]},
                       "destinations": [{"element": d, "unit": host[d]} for d in dsts],
                       "route": "adapter-link" if adapter_unit in units_touched else "hub",
-                      "hubDelaySteps": _delay_steps(declaration), "returnFlow": is_return})
+                      "hubDelaySteps": _delay_steps(declaration), "returnFlow": is_return,
+                      "faultAdmission": sorted(declaration.get("faultAdmission", []))})  # WP-10 #4 (optional field)
     flows.sort(key=lambda f: f["id"])
-    return {"schema": SCHEMA, "arm": ext.get("arm"), "units": units, "hubUnit": hub_unit, "adapterUnit": adapter_unit,
-            "flows": flows}
+    record = {"schema": SCHEMA, "arm": ext.get("arm"), "units": units, "hubUnit": hub_unit, "adapterUnit": adapter_unit,
+              "flows": flows}
+    freeze = ext.get("freezeTargets")
+    if freeze is not None:  # WP-10 #4: the hub re-check reads the admitted freeze targets and the CC-1 sets
+        record["freezeTargets"] = {"admitted": sorted(freeze.get("admitted", [])),
+                                   "admittedSets": [sorted(group) for group in freeze.get("admittedSets", [])]}
+    return record
 
 
 def validate(record: Any) -> dict:
@@ -107,4 +113,14 @@ def validate(record: Any) -> dict:
             raise TopologyError(f"flow {flow['id']}: element and unit do not match the declared units")
         if flow.get("route") not in ("adapter-link", "hub") or type(flow.get("hubDelaySteps")) is not int or flow["hubDelaySteps"] < 0:
             raise TopologyError(f"flow {flow['id']}: route or hubDelaySteps invalid")
+        admission = flow.get("faultAdmission", [])
+        if type(admission) is not list or any(type(k) is not str for k in admission):
+            raise TopologyError(f"flow {flow['id']}: faultAdmission must be a list of kinds")
+    freeze = record.get("freezeTargets")
+    if freeze is not None:
+        groups = freeze.get("admittedSets") if isinstance(freeze, dict) else None
+        if (not isinstance(freeze, dict) or type(freeze.get("admitted")) is not list or type(groups) is not list
+                or any(type(g) is not list or len(g) < 2 for g in groups)
+                or any(u not in units for u in freeze["admitted"] + [m for g in groups for m in g])):
+            raise TopologyError("freezeTargets must name declared units (admitted, admittedSets of two or more)")
     return record

@@ -103,6 +103,7 @@ class FakeUnit(threading.Thread):
         self.rng = random.Random(jitter_seed) if jitter_seed is not None else None
         self.disconnect_after, self.silent_at = disconnect_after, silent_at
         self.origin, self.lost, self.rounds, self.order = None, [], [], []
+        self.backlog = []  # WP-10 #4 finding 6: post-thaw backlog lines (step, [(flow, sequence)])
         self.seq = {}
 
     def run(self):
@@ -129,6 +130,8 @@ class FakeUnit(threading.Thread):
                 self.lost.append(msg["flowId"])
             elif msg["type"] == "end":
                 break
+            elif msg["type"] == "backlog":
+                self.backlog.append((msg["step"], [(d["flowId"], d["sequence"]) for d in msg["deliveries"]]))
             elif msg["type"] == "round":
                 self.rounds.append((msg["step"], msg["round"], [(d["flowId"], d["sequence"]) for d in msg["deliveries"]]))
                 if self.disconnect_after is not None and msg["step"] > self.disconnect_after:

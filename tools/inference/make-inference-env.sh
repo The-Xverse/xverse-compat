@@ -5,7 +5,7 @@
 # Creates the venv --without-pip with the pyenv CPython 3.13.13 interpreter that runs U4, and installs into it with
 # that interpreter's own pip (--python): --no-index --find-links <wheeldir> --require-hashes --no-deps --no-compile,
 # so the venv holds no pip and no bytecode (finding 4, MEDIUM-2). Runs an offline import check through the U4
-# pattern (the real interpreter, PYTHONPATH to site-packages, -s -B, single-threaded, telemetry disabled), refuses if
+# pattern (the real interpreter, PYTHONPATH to site-packages, -S -s -B, single-threaded, telemetry disabled), refuses if
 # any __pycache__ or .pyc exists afterwards, and writes a JSON identity record that digests every venv file, the
 # standard library, libpython and the installing pip (LOW-1), and binds the lock by hash and repository path (LOW-3).
 # Never downloads, never touches another venv, never starts CARLA, Maestro or a unit.
@@ -13,7 +13,8 @@ set -euo pipefail
 ENV=$1; WHEELS=$2; LOCK=$3; RECORD=$4
 PY313=/home/jefferson/.pyenv/versions/3.13.13/bin/python3.13
 HERE=$(cd "$(dirname "$0")/../.." && pwd)
-CLEAN=(env -i PATH=/usr/bin HOME=/nonexistent-inference-home)
+# PYTHONDONTWRITEBYTECODE=1 for every step (review-wp08b finding 1, R-9: as the training script)
+CLEAN=(env -i PATH=/usr/bin HOME=/nonexistent-inference-home PYTHONDONTWRITEBYTECODE=1)
 [ -x "$PY313" ] || { echo "refused: $PY313 missing" >&2; exit 2; }
 free_kb=$(df -Pk "$(dirname "$ENV")" | awk 'NR==2{print $4}')
 [ "$free_kb" -ge 2097152 ] || { echo "refused: less than 2 GB free" >&2; exit 2; }
@@ -31,10 +32,12 @@ PIP=("${CLEAN[@]}" "$PY313" -s -B -m pip --python "$ENV/venv/bin/python" --disab
 SITE="$ENV/venv/lib/python3.13/site-packages"
 # ORT_DISABLE_TELEMETRY=1: the 1.31 wheel embeds 1DS telemetry (review-wp08 finding 2); the U4 unit sets it as well
 check='import numpy, onnxruntime as ort; print("numpy", numpy.__version__); print("onnxruntime", ort.__version__); print("providers", ort.get_available_providers())'
-import_out=$("${CLEAN[@]}" ORT_DISABLE_TELEMETRY=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 PYTHONPATH="$SITE" "$PY313" -s -B -c "$check" 2>&1) && import_rc=0 || import_rc=$?
+# -S -s -B: the U4 unit template (xverse_compat.inference.unit); the base site-packages stays off sys.path (R-1)
+import_out=$("${CLEAN[@]}" ORT_DISABLE_TELEMETRY=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 PYTHONPATH="$SITE" "$PY313" -S -s -B -c "$check" 2>&1) && import_rc=0 || import_rc=$?
+freeze=$("${PIP[@]}" freeze --all 2>/dev/null)
+# the bytecode check comes after every step that runs an interpreter on the venv, just before the record (R-9)
 bytecode=$(find "$ENV/venv" \( -name __pycache__ -o -name '*.pyc' \) -print | head -5)
 [ -z "$bytecode" ] || { echo "refused: bytecode present after the build: $bytecode" >&2; exit 5; }
-freeze=$("${PIP[@]}" freeze --all 2>/dev/null)
 pip_version=$("${CLEAN[@]}" "$PY313" -s -B -m pip --version | cut -d' ' -f2)
 lock_rel=$(realpath --relative-to="$HERE" "$LOCK")
 revision=$(git -C "$HERE" rev-parse HEAD 2>/dev/null || echo unknown)

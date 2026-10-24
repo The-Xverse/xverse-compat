@@ -17,7 +17,7 @@ import sys
 
 import pytest
 
-from xverse_compat.inference import loader
+from xverse_compat.inference import loader, unit
 from xverse_compat.inference.loader import ModelRefused, verified_bytes
 
 from . import minimal_onnx
@@ -56,12 +56,11 @@ NETNS = shutil.which("unshare") is not None and subprocess.run(["unshare", "-rn"
 def _u4(*args, telemetry_off=True, netns=False, timeout=120):
     """Run ``tests.inference.probe`` in the U4 pattern: env -i, the real interpreter, PYTHONPATH to the venv."""
 
-    env = {"PATH": "/usr/bin", "HOME": "/nonexistent-inference-home", "OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1",
-           "PYTHONPATH": f"{SITE}:{ROOT / 'src'}:{ROOT}"}
-    if telemetry_off:
-        env["ORT_DISABLE_TELEMETRY"] = "1"
+    env = unit.environment(SITE, (ROOT / "src", ROOT))  # the U4 unit template: -S -s -B (review-wp08b finding 1)
+    if not telemetry_off:
+        del env["ORT_DISABLE_TELEMETRY"]
     prefix = ["unshare", "-rn"] if netns else []  # no network: a default-telemetry probe cannot reach the collector
-    proc = subprocess.run([*prefix, str(PY313), "-s", "-B", "-m", "tests.inference.probe", *map(str, args)], env=env, cwd=ROOT,
+    proc = subprocess.run([*prefix, *unit.command(PY313, "tests.inference.probe", *args)], env=env, cwd=ROOT,
                           capture_output=True, text=True, timeout=timeout)
     assert proc.returncode == 0, proc.stderr
     return json.loads(proc.stdout.strip().splitlines()[-1]), proc.stderr
