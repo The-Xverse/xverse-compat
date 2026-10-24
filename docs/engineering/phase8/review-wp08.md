@@ -327,3 +327,72 @@ evidence, and no model of the thesis (GA-35).
      schema checks mandatory (recorded).
    - **LOW-3.** `identity.json` binds the lock by its hash and its repository-relative path.
    - The thesis correction section is amended by the coordinator, not here.
+5. **Repair of finding 4 (2026-10-24 11:33:46).**
+   - **MEDIUM-1, the earlier-import bypass.** After the variable check, `load_model` refuses when any
+     `onnxruntime` module is already in `sys.modules` ("onnxruntime was imported before the loader's
+     telemetry guard"). Its 1DS telemetry would have initialised at that import, outside the guard.
+     - Test `test_wp08_an_earlier_onnxruntime_import_is_refused`: the probe imports `onnxruntime` with
+       the variable unset, sets it, and calls `load_model`, which refuses. The probe's stderr shows that
+       the earlier import did initialise telemetry. Because this probe runs with default telemetry, the
+       test runs it only inside `unshare -rn` (no network), and skips if network namespaces are
+       unavailable.
+     - Removing the guard fails this test (probe, restored).
+   - **MEDIUM-2, bytecode.**
+     - The venv is now created `--without-pip`. The base interpreter's pip 26.1.1 installs into it through
+       `--python` with `--no-index --find-links --require-hashes --no-deps --no-compile`, so the venv holds
+       neither pip nor bytecode.
+     - The build refuses (exit 5) if any `__pycache__` or `.pyc` exists after the import check. The
+       identity record digests every file of `site-packages` and of the whole venv; a symlink contributes
+       its target.
+     - A test recomputes both digests from disk and asserts that no bytecode exists, so a `.pyc` written
+       later, or any other change, fails it. U4 must run with `-B` (R-5).
+     - The old venv was removed at its exact path and rebuilt from the existing wheelhouse, with no
+       download, in about 4.5 s:
+       - `sitePackagesTree` `eb7d164d17a3f39f49df11f14438b747cce78609237d46103e87102fa5e0c0b3`
+         (1252 files);
+       - `venvTree` `9f79dcc7f3fd147dad99f309b335534e1c1b91e0737fb2b2290f279ce647d0a9` (1265 entries);
+       - 121740 KiB; installed `numpy==2.5.4` and `onnxruntime==1.31.0` only.
+     - **Reproducibility.** A second build at another path, in the scratchpad and deleted afterwards,
+       differed only in `numpy-2.5.4.dist-info/RECORD` and `onnxruntime-1.31.0.dist-info/RECORD`. These
+       hold the hashes of the console-script wrappers in `bin/` (`f2py`, `numpy-config`,
+       `onnxruntime_test`), whose shebang embeds the venv path. All other files were identical. The tree
+       digests are therefore path-dependent through those two files.
+     - **Import-time cost, an input to V-3.** `import numpy, onnxruntime` in the U4 pattern, 5 runs each,
+       host load about 4.5 to 5.3:
+       - with bytecode (the finding 2 venv, before removal): 0.096 to 0.131 s;
+       - without bytecode (this venv): 0.221 to 0.289 s.
+       This is the import only; model load, session creation and warm-up stay NEEDS DATA with the real model.
+   - **LOW-1.** `identity.json` (schema `xverse-compat.inference-env-record/2`) adds:
+     - **`interpreter.libpython`**: the interpreter is built shared, and `python3.13` loads
+       `libpython3.13.so.1.0`, SHA-256
+       `169a1f5d8a1692162da9a4dce105bc6cbd58f8a60f2bf2f78bac66ad6d9b4685`. Most of the interpreter is in this
+       library, not in the sealed executable, which still has SHA-256 `9907c621…cf968`;
+     - **`interpreter.stdlibTree`**: `lib/python3.13` without `site-packages` and `__pycache__`,
+       `ccf0cbaf99d50035da7a556f6680c9e5e8b5784687b175599c7eaac8b19a7f73` (2398 entries);
+     - **`installer`**: pip 26.1.1, with its package tree `298f3a1a…c985` (439 entries) and
+       `pip-26.1.1.dist-info` `85f48358…c32d`.
+   - **LOW-2.** The docstring now separates the refusals made before the import (digest, file, variable,
+     earlier import) from those made after it and before readiness (import failure, session, providers,
+     schema). An import failure maps to `ModelRefused`; tested in the compat venv, which has no
+     `onnxruntime`. WP-13 makes the input and output schema arguments mandatory for the frozen model
+     (recorded in the docstring and R-5).
+   - **LOW-3.** `identity.json` `lock` is `{"repositoryPath": "tools/inference/u4-inference.lock",
+     "sha256": "8d0689ee…2367", "repositoryRevision": "76b4750…"}`. The binding value is the hash; the
+     revision is the build-time checkout, recorded for information only.
+   - **Tests.** `tests/inference/test_inference_env.py`: 18 tests, 2 new. The identity test is extended
+     (schema 2, lock path, no pip, no bytecode, tree digests recomputed, interpreter, libpython, stdlib and
+     installer). The probe gains the `import-first` mode.
+   - **Suite.** With the venv: 377 passed, 39 subtests. Without it (`XVERSE_COMPAT_INFERENCE_ENV=/nonexistent-env`):
+     372 passed, 5 skipped, 39 subtests. No bytecode is in the venv after either run.
+   - **Residuals, updated.**
+     - R-1: the earlier-import bypass is repaired in the loader. A network-attached default build remains
+       untested by design.
+     - R-5, amended: the U4 entry point (WP-13) checks `ORT_DISABLE_TELEMETRY=1` before any other import,
+       treats `ModelRefused` as a refusal before readiness, makes the schema arguments mandatory, and runs
+       with `-s -B`, so that no bytecode is written into the venv.
+     - R-8 (new): the tree digests are path-dependent through the two `RECORD` files, so the venv is
+       reproducible at its build path, not relocatable. Rebuilding means rebuilding at the same path, or
+       re-recording.
+     - R-6 is amended on the thesis side by the coordinator.
+   - **Status.** Candidate for a focused re-review and the author's acceptance. Not accepted, not merged,
+     not pushed.

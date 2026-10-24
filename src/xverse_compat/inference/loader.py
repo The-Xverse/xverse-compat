@@ -1,12 +1,17 @@
 """Digest-first loader of the frozen U4 model (Phase 8 WP-08; design record ``docs/engineering/phase8/review-wp08.md``).
 
 ``load_model`` reads the model file once and compares its SHA-256 with the declared ``sha256:<hex>`` digest
-(FR-005, V-6). Every refusal raises ``ModelRefused`` before ONNX Runtime is imported, so before any readiness.
+(FR-005, V-6). Refusals raise ``ModelRefused``, always before readiness:
+- before ONNX Runtime is imported: an ill-formed digest, an unreadable file, a digest mismatch, telemetry not
+  disabled (``ORT_DISABLE_TELEMETRY=1`` must be set in the unit environment), and ``onnxruntime`` already imported
+  by someone else, whose import would have initialised its 1DS telemetry before this guard (finding 4, MEDIUM-1);
+- after the import: an import failure, a session that cannot be created, providers other than exactly the CPU
+  execution provider, and an input or output schema that differs from the declared one (finding 4, LOW-2).
 The session is created from the verified bytes in memory, never by re-opening the path, so the file cannot change
-between the check and the load. ONNX Runtime runs single-threaded and sequential, with deterministic compute,
-the CPU execution provider only, and its telemetry disabled: ``ORT_DISABLE_TELEMETRY=1`` must be set in the unit
-environment before the import (finding 2), and ``disable_telemetry_events()`` is called as a second line. There is
-no training or write path. This module imports only the standard library at import time.
+between the check and the load. ONNX Runtime runs single-threaded and sequential, with deterministic compute, and
+``disable_telemetry_events()`` is called as a second line. There is no training or write path. The U4 entry point
+(WP-13) checks ``ORT_DISABLE_TELEMETRY`` before any other import and makes the schema arguments mandatory. This
+module imports only the standard library at import time.
 """
 
 from __future__ import annotations
@@ -15,6 +20,7 @@ from dataclasses import dataclass
 import hashlib
 import os
 import re
+import sys
 from typing import Any
 
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
@@ -61,7 +67,13 @@ def load_model(path, expected_digest: str, *, expected_inputs=None, expected_out
     data = verified_bytes(path, expected_digest)  # V-6: refused before onnxruntime is imported
     if os.environ.get(TELEMETRY_ENV) != "1":
         raise ModelRefused(f"{TELEMETRY_ENV}=1 must be set in the unit environment before onnxruntime is imported")
-    import onnxruntime as ort  # noqa: PLC0415 - only after the digest and environment checks
+    earlier = sorted(name for name in sys.modules if name == "onnxruntime" or name.startswith("onnxruntime."))
+    if earlier:  # its telemetry initialised at that import, outside this guard (finding 4, MEDIUM-1)
+        raise ModelRefused(f"onnxruntime was imported before the loader's telemetry guard: {earlier[:3]}")
+    try:
+        import onnxruntime as ort  # noqa: PLC0415 - only after the digest and environment checks
+    except Exception as error:  # noqa: BLE001 - an unusable runtime is a refusal (finding 4, LOW-2)
+        raise ModelRefused(f"onnxruntime import failed: {type(error).__name__}: {error}") from error
 
     ort.disable_telemetry_events()
     options = ort.SessionOptions()

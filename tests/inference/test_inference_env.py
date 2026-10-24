@@ -35,14 +35,33 @@ needs_env = pytest.mark.skipif(not (PY313.is_file() and (SITE / "onnxruntime").i
                                reason=f"U4 inference venv absent: {ENV}")
 
 
-def _u4(*args, telemetry_off=True, timeout=120):
+def _tree(root):
+    """The identity record's tree digest: sorted relative paths, a file's SHA-256 or a symlink's target."""
+
+    digest, count = hashlib.sha256(), 0
+    for base, dirs, files in os.walk(root):
+        dirs.sort()
+        links = [d for d in os.listdir(base) if os.path.islink(os.path.join(base, d)) and d not in files]
+        for name in sorted(files + links):
+            path = os.path.join(base, name)
+            entry = "link:" + os.readlink(path) if os.path.islink(path) else hashlib.sha256(Path(path).read_bytes()).hexdigest()
+            digest.update(f"{os.path.relpath(path, root)}\0{entry}\n".encode())
+            count += 1
+    return {"sha256": digest.hexdigest(), "entries": count}
+
+
+NETNS = shutil.which("unshare") is not None and subprocess.run(["unshare", "-rn", "true"], capture_output=True).returncode == 0
+
+
+def _u4(*args, telemetry_off=True, netns=False, timeout=120):
     """Run ``tests.inference.probe`` in the U4 pattern: env -i, the real interpreter, PYTHONPATH to the venv."""
 
     env = {"PATH": "/usr/bin", "HOME": "/nonexistent-inference-home", "OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1",
            "PYTHONPATH": f"{SITE}:{ROOT / 'src'}:{ROOT}"}
     if telemetry_off:
         env["ORT_DISABLE_TELEMETRY"] = "1"
-    proc = subprocess.run([str(PY313), "-s", "-B", "-m", "tests.inference.probe", *map(str, args)], env=env, cwd=ROOT,
+    prefix = ["unshare", "-rn"] if netns else []  # no network: a default-telemetry probe cannot reach the collector
+    proc = subprocess.run([*prefix, str(PY313), "-s", "-B", "-m", "tests.inference.probe", *map(str, args)], env=env, cwd=ROOT,
                           capture_output=True, text=True, timeout=timeout)
     assert proc.returncode == 0, proc.stderr
     return json.loads(proc.stdout.strip().splitlines()[-1]), proc.stderr
@@ -89,7 +108,7 @@ def test_wp08_loader_imports_only_the_standard_library_at_import():
     tree = ast.parse(Path(loader.__file__).read_text())
     top = {a.name for n in tree.body if isinstance(n, ast.Import) for a in n.names}
     top |= {n.module for n in tree.body if isinstance(n, ast.ImportFrom)}
-    assert top == {"__future__", "dataclasses", "hashlib", "os", "re", "typing"}
+    assert top == {"__future__", "dataclasses", "hashlib", "os", "re", "sys", "typing"}
 
 
 def test_wp08_lock_pins_exactly_two_hashed_cp313_requirements():
@@ -99,19 +118,44 @@ def test_wp08_lock_pins_exactly_two_hashed_cp313_requirements():
     assert subprocess.run(["bash", "-n", str(SCRIPT)]).returncode == 0
     text = SCRIPT.read_text()
     assert "--no-index" in text and "--require-hashes" in text and "--no-deps" in text and "ORT_DISABLE_TELEMETRY=1" in text
+    assert "--no-compile" in text and "--without-pip" in text  # finding 4, MEDIUM-2
+
+
+def test_wp08_an_unusable_runtime_is_a_refusal(monkeypatch):
+    """LOW-2: without onnxruntime (the compat test venv) the import failure maps to ModelRefused."""
+
+    monkeypatch.setenv("ORT_DISABLE_TELEMETRY", "1")
+    if any(name == "onnxruntime" or name.startswith("onnxruntime.") for name in sys.modules):
+        pytest.skip("onnxruntime is imported in this process")
+    try:
+        import onnxruntime  # noqa: F401, PLC0415
+    except ImportError:
+        with pytest.raises(ModelRefused, match="onnxruntime import failed"):
+            loader.load_model(FIXTURE, FIXTURE_DIGEST)
+    else:
+        pytest.skip("onnxruntime is importable in this test venv")
 
 
 # ---- in the U4 inference venv (skip when absent) -----------------------------------------------------
 
 
 @needs_env
-def test_wp08_identity_record_matches_the_lock():
+def test_wp08_identity_record_matches_the_lock_and_the_venv_on_disk():
     record = json.loads((ENV / "identity.json").read_text())
     locked = {line.split()[0].split("==")[0]: line.split()[1].removeprefix("--hash=sha256:") for line in LOCK.read_text().splitlines()
               if line.strip() and not line.startswith("#")}
+    assert record["schema"] == "xverse-compat.inference-env-record/2" and record["importReturnCode"] == 0
     assert {w["name"].split("-")[0]: w["sha256"] for w in record["wheels"]} == locked
-    assert record["lockSha256"] == hashlib.sha256(LOCK.read_bytes()).hexdigest() and record["importReturnCode"] == 0
-    assert sorted(p.split("==")[0] for p in record["pipFreeze"]) == ["numpy", "onnxruntime", "pip"]  # V-1: numpy only, --no-deps
+    assert record["lock"]["sha256"] == hashlib.sha256(LOCK.read_bytes()).hexdigest()  # LOW-3: hash and repository path
+    assert record["lock"]["repositoryPath"] == "tools/inference/u4-inference.lock"
+    assert record["installed"] == ["numpy==2.5.4", "onnxruntime==1.31.0"]  # V-1: numpy only, --no-deps; no pip in the venv
+    # MEDIUM-2: no bytecode, every file digested, and the venv on disk still equals its record
+    assert not [p for p in (ENV / "venv").rglob("*") if p.name == "__pycache__" or p.suffix == ".pyc"]
+    assert _tree(SITE) == record["sitePackagesTree"] and _tree(ENV / "venv") == record["venvTree"]
+    interpreter = record["interpreter"]  # LOW-1
+    assert interpreter["sha256"] == hashlib.sha256(PY313.read_bytes()).hexdigest() and interpreter["version"] == "3.13.13"
+    assert interpreter["libpython"]["sha256"] == hashlib.sha256(Path(interpreter["libpython"]["path"]).read_bytes()).hexdigest()
+    assert interpreter["stdlibTree"]["entries"] > 0 and record["installer"]["pip"]
 
 
 @needs_env
@@ -142,3 +186,13 @@ def test_wp08_v6_in_the_venv_a_tampered_model_is_refused_before_onnxruntime_is_i
     assert "ORT_DISABLE_TELEMETRY=1" in out["refused"] and out["onnxruntimeImported"] is False
     out, _ = _u4(FIXTURE, FIXTURE_DIGEST, 1, "wrong-schema")  # a model that does not match the declared schema
     assert "differ from the declared" in out["refused"]
+
+
+@needs_env
+@pytest.mark.skipif(not NETNS, reason="unprivileged network namespaces (unshare -rn) unavailable")
+def test_wp08_an_earlier_onnxruntime_import_is_refused():
+    """MEDIUM-1: onnxruntime imported with default telemetry before the guard; run only without a network."""
+
+    out, stderr = _u4(FIXTURE, FIXTURE_DIGEST, 1, "import-first", telemetry_off=False, netns=True)
+    assert "imported before the loader's telemetry guard" in out["refused"] and out["onnxruntimeImported"] is True
+    assert "telemetry" in stderr  # the earlier import did initialise telemetry: the bypass the guard now refuses
