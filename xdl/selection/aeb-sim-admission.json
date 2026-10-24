@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-10-24T03:34:29.183052+00:00",
+  "recordedAt": "2026-10-24T04:07:32.793189+00:00",
   "platform": {
     "revision": "ee91697a4728d03ae5a3d6d323a9bc65efb5a71b",
     "sourceSurfaceFileCount": 26,
@@ -119,7 +119,7 @@
   ],
   "verification": {
     "suite": "xverse-compat tests",
-    "command": "PYTHONPATH=src python -m pytest tests -q -p no:cacheprovider",
+    "command": "env -u PYTHONPATH PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src /dev/shm/compat-p6-venv/bin/python -m pytest tests -q -p no:cacheprovider",
     "passed": 244,
     "failed": 0,
     "logSha256": "8ced7d2d0b505218b74a340ad1133bfc1274f85f8354459052d160f00ecad076",
