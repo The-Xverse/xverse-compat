@@ -274,3 +274,21 @@ behaviour unverified (E8-3a).
        owner.
      - Amend R-2 and R-4 for LOW-1, LOW-2 and LOW-4.
      - LOW-3 and LOW-5 are optional code repairs on this branch, or residual sentences.
+4. **Disposition of finding 3 (2026-10-24 10:54:09; decided by the coordinator under the author's delegation of
+   2026-10-24, flagged for the author's review). Recorded before repair.**
+   - **Repairs in code, with tests.**
+     - LOW-1: walk the lane from the ego spawn waypoint to the target in bounded steps (the step is
+       recorded in the design) and refuse when any intermediate waypoint is in a junction or the lane
+       branches.
+     - LOW-3: schema 2 requires and type-checks every base member (`egoBlueprint`, `spawnPointIndex`,
+       `map` and any other base field), refused before any spawn.
+     - LOW-5: at close, destroy each actor in its own `try`, record failures and continue.
+   - **Records without code change.**
+     - MEDIUM-1: the live-check criteria (a) to (g) become an E8-3a and D-2 input: the settle criterion,
+       the horizon, lane-frame quantities, lateral placement, observer-v2 resolution with the bounding
+       box, the D-2 radar return, and the phases. Each tolerance stays TODO, owned by WP-17 (oracle and
+       characterisation harness).
+     - LOW-2: R-4 is amended. The real `get_waypoint` snaps any point onto the nearest driving lane, so
+       lateral placement is verified live.
+     - LOW-4: R-2 is amended. The gap conversion needs the bounding-box offsets and the ego's offset from
+       the projected waypoint.
