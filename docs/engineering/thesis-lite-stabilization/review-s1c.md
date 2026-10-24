@@ -1544,3 +1544,20 @@ engineering stabilization candidate: not M1, not AEB evidence.
     - **Logs e and f** both gave 244 passed. My first admission call passed log e with the counts of a pre-re-pin
       run (243 and 1), in error. The record was rebuilt at once against log f (244 passed, 0 failed, with the
       command actually run), and that is the committed record. A rerun gave 244 passed.
+56. **Final S1c-2 live verification on the merged platform (blueprints `1650473`, the pinned environment from
+    platform main `a9db0ac39`; CARLA instance 24; runs 06:54–07:14; written at 07:13:54 2026-10-24).**
+    - **Evidence.** `runs/lite-stabilization-s1/s1c2-part2-dev8-20261024` (`SHA256SUMS`, 666 files). Every run's
+      identities show blueprints `1650473` with `dirty=0` and platform-src `a9db0ac39`.
+    - **Results: 10 of 10 as designed.**
+      - The first nominal after the server start passed, with the adapter at 1.267 s. In the soak this would be the
+        warm-up.
+      - Nominal ×2, freeze-vcu ×2 (freeze start margins 1.024 and 0.869 s, end margins 1.978 and 2.132 s),
+        cancel-paused ×2 and long-run ×2 all PASS. Loads were 5.3–7.3.
+      - no-carla fails closed (`ML-PROBE-NOT-READY`, audit PASS).
+    - **Facts across the set.**
+      - Readiness slack 0.333–0.531 s, with no cut. No persistence failure.
+      - No `unverifiable` coverage row, except no-carla's expected `ready` row (platform finding 33).
+      - The H2 copy appears in every run, and no stage is left behind.
+    - **S1c-2 acceptance.** S1c-2 (findings 28–56) is accepted under the author's acceptance of 2026-10-24
+      (thesis `author-decisions-20261023.md`, "Author acceptance"), which names S1c-2 acceptance. It is merged into
+      compat and blueprints main and pushed.
