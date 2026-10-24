@@ -138,3 +138,10 @@ offline.
      defect or a waived regression. `unshare -cn` preserves UID 1000 and the complete suite passes.
    - Suite-log SHA-256: `7d9b6a59b7dd7f444cf656c00a10df0c27f04bc7ad4655a6b882b61e299937d2`.
    - Finding 2 residuals R-1 to R-3 remain carried. Phase 7/S1 commands and rc.1 soak inputs are untouched.
+
+4. **Acceptance under the author's delegation of 2026-10-24 (Codex, 2026-10-24; flagged for author review).**
+   - Accepted WP-08b on independent finding 3 and the full 541-test/39-subtest result, with finding 2 residuals
+     R-1 to R-3 carried. Basis: thesis `specs/002-assured-aeb/decisions.md` §G and the WP-09 #3 unit-isolation row;
+     the author's instruction to continue Claude's X-Verse work preserves that delegated engineering scope.
+   - This accepts the offline isolation increment only. It grants no Phase 8 live execution, protocol freeze,
+     principal-campaign admission, M1 or scientific claim. Integration and push are the next delivery steps.
