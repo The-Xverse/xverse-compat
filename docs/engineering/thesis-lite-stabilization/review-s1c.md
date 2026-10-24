@@ -1122,3 +1122,20 @@ engineering stabilization candidate: not M1, not AEB evidence.
     - **Host clean.** No residue, no vehicles, the world restored.
     - **Both failures go to a platform diagnosis before any repair:** (A) readiness against the start deadline and
       the lease under load; (B) the persistence state at a cancel.
+46. **Harness repairs from the platform diagnosis (platform S1b-stack finding 22; thesis DR-15; written at 01:10:16
+    2026-10-24, before any change).**
+    - **Diagnosis taken over.** (B), the cancel-paused failure, is a platform race in `PersistenceClient._live`;
+      it is repaired by RB1 on the platform branch, and the harness needs no change. (A), the freeze-vcu failure,
+      came in part from the harness: the 3.5 s owned window of finding 44, M3, plus a start-up scope at lease − 0.05 s,
+      lets the start step run to the bootstrap lease, so the cancel then has no native close time left. RA1 now
+      caps a declared window at run time and rejects at admission a window that cannot fit a fresh lease.
+    - **H1.** The owned readiness window goes back to the largest value that the RA1 admission bound accepts. The
+      value is set from the bound that the platform records, not guessed. A slow adapter is still covered by the
+      three attempts, and readyLatencyS keeps measuring it.
+    - **H3.** `maestro-run.json` records the lease facts: the bootstrap lease relative to the run start, and the
+      start-up scope end. It also records the reap facts of the bootstrap drain (supervisor reaped, returncode,
+      diagnostic, unacknowledged births) and of the storage drain (worker returncode, diagnostic). Each fact is
+      read through `_fact`, so a missing fact never loses the record.
+    - **H2** (run directory on tmpfs) is deferred to the S1d soak environment decision; it is not applied here.
+    - **Re-run plan.** Rebuild the dev venv from the repaired platform head, then run part 2 live: nominal,
+      long-run, freeze-vcu, cancel-paused and no-carla, recording the load. Independent review follows.
