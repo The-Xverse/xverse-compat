@@ -235,3 +235,26 @@ end: not M1, no CARLA, no live run.
        harness check.
      - **R-9. Live behaviour.** CARLA, the real frame grid tolerance and D-4c are unverified (E8-3a, increment #5).
    - **Status.** Candidate for independent review. Not accepted, not merged, not pushed.
+
+3. **Dispositions of the alignment residuals (written at 15:42:57 2026-10-24, before code).** Source: the thesis
+   `decisions.md` row "WP-10 #4 relay alignment" (15:42, under the author's delegation, flagged for the author's
+   review), relayed by the coordinator.
+   - **R-1, adopted.** The platform `arm` frame gains the closed keys `count` and `index` (1-based), as part of
+     ST-2.
+     - **Batch end.** The hub uses them to detect that arming is complete.
+     - **Refusals.** The hub refuses arming for any of the following:
+       - a `count` that differs between frames, or that differs from the harness list;
+       - an `index` outside 1..`count`;
+       - an `index` that is not the next one, which covers both a gap and a repeat;
+       - a repeated entry;
+       - an entry not in the harness list.
+     - **Cross-check.** The harness's `expected_entries` stays as a cross-check, not as the batch-end signal.
+   - **R-2, assigned to WP-10 #5.** The platform keeps one time domain per Maestro form. WP-10 #5 maps the
+     blueprints domain `carla-simulation` onto the form's `experiment-time` domain, whose clock source is the
+     CARLA-facing unit, and records the mapping in the run's evidence. Compat needs no change.
+   - **R-4, adopted as built.** Deliveries to a frozen unit are queued and delivered after the thaw, modelling a
+     stopped process whose socket buffer still accepts. A full buffer during a freeze is a declared residual
+     (AD-12).
+   - **Change planned.** `live/hub_relay.py`: the `arm` key set, its field checks, and arming completion by `count`
+     and `index`. New tests: completion by count; a wrong count; an index gap; a repeated index; a duplicated entry;
+     and a count that disagrees with the harness list.
