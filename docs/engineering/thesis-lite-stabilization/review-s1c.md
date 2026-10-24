@@ -1229,3 +1229,135 @@ engineering stabilization candidate: not M1, not AEB evidence.
       (`/dev/shm/xverse-lite-run-<run>`). `cleanup()` copies it into the loop10 evidence directory (`cp -a`, the
       stage removed only after a successful copy). The copy comes after the residue listing and before the restore
       guard, which reads the copied owned-actor registry. The evidence still ends on loop10.
+50. **Independent review of the S1c-2 candidate since finding 44 (blueprints `66e745b..7677078`, compat
+    `2627f2c..7221ab5`, DR-15 to DR-18; evidence `s1c2-part2-dev3`, `-dev4`, `-dev5`; `-dev6` was being written and
+    is not reviewed; written at 05:02:49 2026-10-24): FAIL, 1 HIGH, 3 MEDIUM and 9 LOW. The code changes are
+    otherwise correct. The single blocking defect is a parameter margin, and its repair is one constant.**
+    - **Checks performed.** Read-only. Offline: `soak/test_run_soak_logic.py` 22 passed; compat `tests` 244 passed,
+      39 subtests passed. I recomputed from the recorded `maestro-run.json`, `argus-maestro/events.jsonl` and
+      `stimulus.jsonl` of the dev2–dev5 runs: readiness-window slack, tick clocks against the throttle segment,
+      VCU health against the thaw, and observe-before-freeze order. Platform `ee91697a4` `providers.py`,
+      `schedule_plan.py:136-143` and `dispatcher.py:1373-1390` were read. `sha256sum` of log d was taken.
+    - **H1, admission.** The harness admits `operation_seconds=0.38` (`test_live_closed_loop.py:458`). The bound is
+      `readiness_window_bound` = 5 − (2 + 0.38 + 0.25) − 0.38 = 1.99 s (`providers.py:42-58`), and W = min(policy
+      1.95, observe action 4) = 1.95 s, so admission passes. The need is 0.38 + 1.95 + 2.63 = 4.96 s ≤ 5 s, and
+      the attempt offsets are 0, 0.85 and 1.70 s. This is consistent with the bound.
+    - **HIGH-1 (H1 at run time; `test_live_closed_loop.py:114`).** The run-time cap is W′ = min(W, L − 2.63 − t0,
+      deadline − t0) (`providers.py:61-64`, `:480-485`). From the recorded `readinessWindows`, the slack
+      L − t0 − 2.63 − W is as follows:
+      - at W = 1.95 s (dev4, dev5; 38 marker steps): 0.017–0.295 s. It was 0.017, 0.043, 0.044, 0.062 and 0.063 s
+        at loads 6–9; the 0.017 s case is dev4 long-run, lite-driver.
+      - at W = 1.7 s (dev3): 0.348–0.507 s.
+
+      The recorded windows are uncut, but the 1.95 s window was within 17 ms of `ML-PROBE-WINDOW-CUT`. A cut is a
+      fail-closed start failure: a P1/P3 criterion failure that stops the soak (FR-020). The S1d soak has
+      130 Maestro runs × 3 marker steps ≈ 390 steps. The DR-18 (1) basis, "uncut in all nine runs at 1.7 s", does
+      not carry over to 1.95 s, which removes 0.25 s of exactly this slack. The 1.95 s value also has no remaining
+      purpose once DR-18 (2) is in force. The cold first run after a server start is the warm-up, which is
+      excluded. A failed warm-up still warms the server: the dev3 run after the failed `035633` had the adapter
+      at 0.361 s. Warm adapter latencies are 0.29–0.45 s, and all owned units are ≤ 0.54 s.
+      **Repair:** return H1 to 1.7 s (DR-17) by a delegated revision that supersedes DR-18 (1), and re-verify.
+      **Blocking** S1c-2 acceptance (the soak pins this harness) and S1d.
+    - **H3 (`:132-134`, `:503-504`, `:562`, `:583-584`).**
+      - `readinessWindows` and `reapFacts` are read through `_fact`. They are public-safe: monotonic floats, the
+        unit URN, booleans, return codes and ML diagnostic codes. Their field use is correct: `declared_seconds` = W,
+        `window_seconds` = W′, `lease_end` = L and `began` = t0.
+      - `leaseFacts` is not guarded. It is computed from local floats and cannot realistically fail. See LOW-6.
+    - **DR-18 warm-up in `run_soak.py`.**
+      - Exclusion is correct. `summarize` drops `warmUp` entries before the case statistics and the validity share
+        (`:465`). P2 filters them (`:444`).
+      - A FAIL or OBSERVATION warm-up returns True, so the soak does not stop. An INVALID warm-up makes `_start`
+        return unhealthy, and the callers then count one server failure through `_restart`.
+      - The recursion `_restart` → `_start` → warm-up → `_restart` is bounded by `failed_starts >= 2` and by the
+        server-failure limit of 3. Each failed start is counted once, and the tests confirm this.
+      - The exclusion is positional (every start, whatever the outcome) and predeclared, so it carries no
+        selection on outcome. It is defensible, with the scope note of LOW-2.
+      - The docstring is accurate, except for the gap in MEDIUM-1.
+    - **MEDIUM-1 (`run_soak.py:324-332` with `classify` `:84-86`).** The exemption covers every failure mode of a
+      warm-up, not only the cold-start readiness failure that DR-18 is based on. The failure modes covered include:
+      - a DR-12 restore failure, where the world is left synchronous. `classify` returns FAIL, `_warm_up` returns
+        True, and the next run's health check then fails, so the restore failure is turned into an INVALID and a
+        server failure;
+      - residue (FR-021), a P7 single-owner violation, and an Argus evidence failure.
+
+      **Repair:** exempt only a start-up readiness failure that is otherwise clean: cleanup complete, guard
+      restored, no residue, and evidence consistent. Treat any other failed check of a warm-up as a criterion
+      failure (FR-020), and add an offline test. **Blocking S1d**, not S1c-2 acceptance.
+    - **Finding 48 freeze placement.**
+      - The tick clocks reproduce the placement. Tick 1 begins 3.6–6.7 s after tick 0. The observe step at
+        tick 24 costs 0.34 s (dev5). Tick 24 lies 5.1–5.7 s after tick 0, well before the cancel-paused cancel
+        (≥ 13.2 s).
+      - In all three dev5 freeze-vcu runs, the VCU's tick 24 probe precedes the freeze apply, so finding 24
+        MEDIUM-1 holds. The thaw comes 0.575–0.603 s after the VCU's last health success, against a bound of
+        ≤ 3.48 s (finding 18).
+      - The dev5 margins match the record: 0.95–1.22 s at the start and 1.78–2.05 s at the end.
+      - Re-derived over the dev2–dev4 3.5 s-segment runs, with an observe cost of 0.17–0.39 s, the margins are
+        ≥ 0.93 s at the start and ≥ 0.88 s at the end. The end figure is the dev2 timing. The stated 0.94 and
+        0.96 s are close but not reproduced (LOW-4).
+      - An analytic worst case, with the stimulus ready only on its last attempt, still leaves about 0.4 s at the
+        end.
+    - **Finding 49 H2 staging (`run-live.sh:17-35`).**
+      - The order is correct: residue listing (`:30`), stage copy (`:32-35`), the guard reading
+        `$RUN/owned-actors.json` (`:36-41`), then the Maestro copy and the Argus verify of `$RUN/driver/argus-flows`
+        (`:45-48`). The stage is removed only after a successful `cp -a`.
+      - `audit.py`, `_ready_latency_of` and `run_one` read only `$RUN` paths (`maestro-run.json`,
+        `driver/driver-ticks.jsonl`, `argus-verify.txt` and the rest).
+      - The dev5 manifests and `maestro-run.json` hold no absolute run paths, so a copied tree verifies by
+        relative layout.
+    - **MEDIUM-2 (H2 unverified and untraced).**
+      - No reviewed run used `7677078`: dev5 ran `5f3e3ba`, and dev6 is not in scope.
+      - DR-15 only "considers" H2, and finding 46 deferred it to the S1d environment decision. No delegated
+        decision applies it, and tmpfs for the units' evidence is not declared as a soak environment condition.
+      - **Repair:** a run set on `7677078` showing the copy line, audit PASS, the guard destroying via the copied
+        registry (cancel-paused), and no `/dev/shm/xverse-lite-run-*` left. Also a DR recording H2 and the tmpfs
+        condition. **Blocking** S1c-2 acceptance and S1d.
+    - **MEDIUM-3 (evidence seals).** `s1c2-part2-dev3`, `-dev4` and `-dev5` have no `SHA256SUMS` (dev2 has one).
+      Findings 47–49 rest on unsealed evidence, the finding 44 M2 class. **Repair:** seal them now, noting that the
+      seals postdate the runs. **Blocking** S1c-2 acceptance; the repair is cheap.
+    - **Compat re-pin.** The lock moves `4586c2ed…`/`b28a2aacf` to `ce779e57…`/`ee91697a4`. The admission
+      record's previous and current pins chain correctly. Log d's sha256 `8ced7d2d…` equals `logSha256`. Log c's
+      single failure is the content lock before the re-pin, as stated. The lock test passes against the sibling
+      `xverse-platform` at `ee91697a4`. The record is consistent, except for LOW-9.
+    - **LOW items (none blocking; LOW-2 is required before S1d).**
+      - **LOW-1.** `run_one` appends and saves the warm-up as a plain `nominal` entry (`:300`) before `_warm_up`
+        tags it (`:328-330`), and its directory is `lite-<stamp>-nominal`. Tag it inside `run_one`, or name it
+        `…-warm-up`.
+      - **LOW-2.** Amend thesis `plan.md` (Soak protocol, Interpretation) for DR-18, and the report `note`
+        (`:492`). The bounds cover runs after a warm-up; the first run after a server start is outside the sample.
+      - **LOW-3.** DR-18 says "nine runs at 1.7 s", but dev3 holds eight. Finding 47's "runs 03:56–04:5x"
+        (written 04:08) and finding 49's "runs 04:33–05:0x" (written 04:51; the last run was 04:48) are
+        impossible times.
+      - **LOW-4.** Finding 48 names neither the "ten runs" nor the method behind 0.94 and 0.96 s. Record them, or
+        use ≥ 0.93 and ≥ 0.88 s.
+      - **LOW-5.** Two attributions should be worded as such:
+        - The cold-start attribution is well supported as a first run after a server start: 5 of 5 instances
+          were slow or failed, including instance 19 after warm page-cache runs. The adapter's internal phases
+          were not timed, however, so write "attributed to the server's first-run state" in place of "CARLA's
+          first owned-scenario setup … not the stack".
+        - Finding 49's "stalled in the manifest write and fsync" is an inference. The temporary file was fully
+          written with the directory's mtime and never renamed, and the freeze stayed unresolved, but no wchan or
+          stack was sampled. Write "consistent with an uninterruptible fsync stall".
+      - **LOW-6.** `leaseFacts` uses the harness's initial +4.8 s lease (`:481`), not the native lease after RA2
+        renewals. It cannot attribute a start step reaching the lease (`readinessWindows.lease_end` can). Rename
+        it or document it.
+      - **LOW-7.** Two limits of `_drain_facts`:
+        - It uses `vars()`, which omits the class-default fields set with `init=False` (`cleanup_complete`,
+          `ready_for_execution`).
+        - `reapFacts` is read before `entry.dispose()`, so it is `None` where the drain happens in dispose.
+
+        Document both.
+      - **LOW-8.** Three gaps in the `run-live.sh` staging:
+        - `mkdir -p` reuses a stale stage, for example one left by a failed copy.
+        - On a failed copy, the guard reads a missing `$RUN/owned-actors.json`, not the staged one.
+        - A residue unit's writes after the copy are discarded by `rm -rf`.
+
+        Refuse an existing stage, fall back to `$STAGE/owned-actors.json`, and keep the stage when residue is
+        non-empty.
+      - **LOW-9.** `aeb-sim-admission.json:122` records the `admit_phase4.py` default command. The `b` record
+        named the full `env -u PYTHONPATH PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 …` command. Pass `--command` with the
+        command actually run.
+      - **Further notes, also LOW.**
+        - The stale comment at `test_live_closed_loop.py:85` ("starts at tick 61") reads as current.
+        - No cancel-paused run at observe tick 24 has passed start-up yet, so confirm one in the MEDIUM-2 set.
+        - Finding 49 omits the closure `ML-CLOSURE-REPORT-INCOMPLETE` and the broker `cleanup_complete` false,
+          and does not say that the harness exit came from the L4 stderr assertion.
