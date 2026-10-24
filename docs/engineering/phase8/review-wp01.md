@@ -353,3 +353,82 @@ unverified (E8-3a).
    - **Suite.** 274 passed, 39 subtests (finding 2: 268). `tests/carla/test_observe_v2.py` has 30 tests.
    - **Status.** Candidate for re-review of the repair and for the author's acceptance. Not accepted,
      not merged, not pushed.
+6. **Independent re-review of the repair, findings 4 and 5 (2026-10-24 10:43:31).**
+   - **Reviewer and method.** The finding 3 reviewer. Read `fb3d596` and `9f57e12` against `1374570`, then
+     ran the offline suite, a CPython 3.10 import check, a consumer probe and four mutation probes in
+     scratch copies. The blueprint files `report.py` and `soak/audit.py` are from main `99df3a4`, used
+     unchanged. The worktree was not changed except for this entry. No CARLA, no live run.
+   - **Verdict: PASS WITH NOTES. Nothing blocks the merge.** The merge still awaits the author's
+     acceptance.
+   - **v1 compatibility (no regression).**
+     - The v1 body is still byte-identical to base `9d1f3f3`, apart from the `def` line and its
+       docstring. The source diff from `1374570` touches only module constants, `_resolution` and
+       `_observe_v2`.
+     - Resolution lines are written only by `_observe_v2`, which v1 and `run-live.sh` (`--role
+       xverse-lite-ego`) never reach. A v1 file therefore has no line without the v1 members.
+     - Consumer probe, with no change to the consumers:
+       - The fake v1 run produced 29 frames, with the ego slowing and SIGTERM stopping it.
+       - `report.observer_metrics` gave `framesWithEgo` 29, with the brake metrics computed.
+       - `audit.actuator_safe_stop` held on the adapter-close path (29 samples,
+         `observerFooterSigterm: true`) and on the guard path (29 window samples).
+   - **Items of finding 3.**
+     - MEDIUM-2: closed (observe.py 155–166 and 222–226).
+       - The repair reads the static `actor.bounding_box` once per resolution, writes a frame-stamped
+         line before that frame's record, and has `observed`, `unavailable` and `non-finite` statuses;
+         no non-finite value is written.
+       - The test covers all three statuses and once-per-role.
+       - Probe: writing a resolution line on every frame failed 4 tests.
+     - LOW-4: closed (observe.py 212–226).
+       - A dead actor is dropped at once, and the next listing comes once the frame has advanced 20 or
+         more, or has gone backwards.
+       - The test gives 45 frames and 3 listings, plus a listing after a backward frame.
+       - The 19-frame delay in R-5 is the correct bound, in simulation frames even when frames are
+         missed.
+       - Probe: listing on every frame failed 2 tests.
+     - LOW-2: closed within its declared static scope.
+       - Probe (a), the finding 3 `importlib.import_module("xverse_compat_carla" + ".observe")` appended
+         to `live/loop.py`, now fails `test_wp01_runtime_units_neither_import_dynamically_nor_launch_the_observer`.
+       - Probe (b) passed all 30 tests: `from subprocess import Popen as _P` with a name split into
+         `"obs" + "erve"`. This is the "built at runtime" limit that the R-3 addition declares (see
+         LOW-A).
+     - LOW-3: closed. `MUTATORS` (test_observe_v2.py 30–34) holds all twelve names of finding 4 and
+       `start_recorder`, and drives both the raising fakes and the AST check.
+     - LOW-6: closed.
+       - `..._sigint_stops_with_a_complete_footer` drives the SIGINT handler.
+       - `..._failed_write_or_close_exits_3[write]` keeps the first error when the footer write also
+         fails.
+       - `[close]` reaches the outer `except` after the footer.
+     - R-3, R-5 and R-7 corrections, and R-8 and R-9: present and accurate.
+       - R-7 now names `restore.py` 190, `main.py` 88 and `observe.py`.
+       - R-8 states that a complete footer does not imply a complete run and assigns coverage to WP-17.
+       - R-9 forbids joining control timing on `frame`.
+   - **Evidence.**
+     - Suite: 274 passed, 39 subtests. `test_observe_v2.py` has 30 tests.
+     - CPython 3.10.12 (`env -i`, `-s -B`): the import succeeds, `forbidden_modules_loaded() == []`,
+       and `carla` is not loaded.
+   - **New notes (all LOW, none blocking).**
+     - **LOW-A: the launch check matches names only** (test_observe_v2.py `_launches`).
+       - An aliased import (`from subprocess import Popen as _P`), a rebound module (`sp = subprocess`)
+         or a launcher outside the list (`asyncio.create_subprocess_exec`, `multiprocessing`, `pty`) is
+         not seen.
+       - Combined with a split name, probe (b) shows the bypass.
+       - This is inside the R-3 addition. Optional: say "aliased launchers" explicitly in R-3.
+     - **LOW-B: v1-pattern consumers would misread a v2 file. This is a constraint on the wiring (R-2),
+       not a regression.**
+       - The probe fed a v2 file to the unchanged blueprint consumers. `report.observer_metrics` returns
+         `{"framesWithEgo": 0}` without crashing.
+       - `audit.actuator_safe_stop` counts the resolution line as a sample, because it selects
+         `"frame" in r` (4 samples for 3 frames). On the guard path it raises `KeyError: 'monotonicNs'`,
+         because v2 frame records carry `observerMonotonicNs`.
+       - v2 creates its output exclusively and is not wired, so no current path is affected. The
+         blueprint increment (R-2) must give v2 its own path and its own reader, selecting frame records
+         by `roles` (as finding 5 states) and never `observer.jsonl`.
+     - **LOW-C: one key name means two things.** The header's `boundingBox` is a descriptive string,
+       while the resolution line's `boundingBox` is an object or null. Readers must branch on the line
+       kind. Optional: rename the header member, for example to `boundingBoxDeclaration`, before the
+       schema is consumed.
+     - **LOW-D: the schema of record is now spread across findings 1 and 5.** Finding 1's schema list does
+       not name the resolution line or `resolvePeriodFrames`. The acceptance record should name findings
+       1 and 5 together as the v2 schema.
+   - **Recommendation.** Ready for the author's acceptance. Carry LOW-B into the R-2 blueprint increment as
+     an input constraint. LOW-A, LOW-C and LOW-D are optional.
