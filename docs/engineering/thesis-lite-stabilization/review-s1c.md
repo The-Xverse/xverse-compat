@@ -1705,3 +1705,21 @@ engineering stabilization candidate: not M1, not AEB evidence.
         stop rather than as INVALID. This is safe, but the cause is attributed in the finding instead.
       - LOW-4: the guard does not run after a BLOCKED preflight or in baseline runs. Those runs are already FAIL,
         and their consoles carry the reason.
+60. **Soak attempt 2 stopped by the operator; the runner has no SIGTERM handler (written at 08:37:36
+    2026-10-24, before the change).**
+    - **Attempt 2.** It started at 08:10 from compat `f0f31f9`, blueprints `9b21d5b` and platform `a9db0ac39`.
+      - The 3 gap no-carla runs PASS.
+      - Server 1 was healthy, with `tickProbe: skipped-synchronous`, so the DR-21 repair held live. Its warm-up
+        PASS, in `warmup-20261024T081607-nominal` (adapter 1.285 s).
+      - The first round then waited about 15 minutes at the load gate (load 6.7–7.2, from idle CARLA plus other host
+        processes).
+      - At the author's request ("I want you to run the soak overnight") the operator stopped it at about 08:36.
+        It is kept as `runs/lite-stabilization-s1/s1d-soak-20261024-attempt2` (`SHA256SUMS`,
+        `STOPPED-BY-OPERATOR.txt`). This is not a criterion failure.
+    - **Defect (LOW).** `run_soak.py` installs no SIGTERM handler. Python's default TERM action ended the process
+      without running `execute()`'s `finally` block, so the CARLA server stayed up and the manifest still says
+      `running`. The operator stopped the server and recorded it.
+    - **Repair.** A SIGTERM or SIGINT handler raises `SystemExit`, so the `finally` block stops the server. The
+      manifest records `stopped` with `operator signal`. This gets a test.
+    - **Next.** The soak restarts from zero at 00:00 on 2026-10-25, the author's choice, from clean worktrees of the
+      repaired mains.
