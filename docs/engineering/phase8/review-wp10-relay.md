@@ -579,3 +579,54 @@ end: not M1, no CARLA, no live run.
       - R-11 (`backlog` in the unit runtime) stays a gate for WP-10 #5b.
       - R-3, R-5 to R-7 and R-9 are unchanged.
     - **Status.** Candidate for re-review. Not accepted, not merged, not pushed.
+
+11. **Focused re-review of findings 9 and 10 (written at 16:04:18 2026-10-24).** Reviewer: the same independent
+    Claude agent as findings 5 and 8. Scope: `f08b63b..2f78497` (`dce3c3f` and `2f78497`). **Verdict: PASS.**
+    - **Nothing blocks the merge of increment #4.** The merge still needs the author's or the coordinator's
+      acceptance, which this finding does not give.
+    - **The gates before any live run are unchanged:**
+      - R-8, the full wire test with the real dispatcher;
+      - R-11, `backlog` in the unit runtime (WP-10 #5b);
+      - the WP-10 #5 obligations.
+    - **Independent checks.**
+      - **Suite at `2f78497`, with a clean worktree.** **588 passed, 39 subtests** in 42 s. Another compat pytest
+        process was running at the same time.
+      - **The cases of findings 9 and 10 pass:** both N1 cases (refused apply, and refused clear), the N2 replay
+        step, and the existing refused-ack and freeze-queue cases.
+      - **N1, aligned with ADR-ML3-SIMTIME-0001 decision 5 as amended by ST-2.**
+        - After a `refused` ack, the hub sends `resumed`, echoing `ackSeq`, then steps no further. It waits for
+          Maestro's `close` within `stop_wait_s`, closes, and ends the run invalid (`hub_relay.py` `at_step`,
+          `_await_close`). The evidence records `resumedSent` and `maestroClosed`.
+        - A failed `resumed` send, because Maestro had already closed, is tolerated.
+      - **N2.** Each delivery queued for a frozen unit gets `replayedAtStep` and `replayedAtNs` in its
+        `HubResult.deliveries` entry when it goes out in a `backlog` line (`hub.py` `_deliver` and `_replay`). An
+        entry never replayed keeps no replay fields, which is truthful.
+        - **One note.** The link is kept by `id()` of the queued wire dict. That is safe, because the dict stays
+          referenced by the queue until it is popped and flushed, so no id can be reused meanwhile.
+      - **Interoperability probe: a miniature R-8, not committed.**
+        - **Setup.** One `SOCK_SEQPACKET` socketpair connects the **installed platform ST-2 wheel**
+          (`SimTimeFaultScheduler` and `HubChannel` at `00bd41ba2`) to the **compat `FaultRelay` at `2f78497`**.
+        - **Batch.** A freeze of `front-zone-unit` (steps 3 to 5) and a relay `loss` on `f09-radar-vc` (steps 2 to 6).
+        - **The fakes.** A fake hub object (bounded `hold`) on the compat side, and the platform test's fake process
+          operations on the Maestro side.
+        - **Nominal.**
+          - Arming completes by `count` and `index`.
+          - The hold, `ack`, `resumed` sequence runs at apply and clear, with freeze and thaw on both sides.
+          - The hub finishes settled and closes, and Maestro records a **benign `hub-closed`**.
+          - Outcomes are `cleared` and `cleared`, with `run_failed=False` and `incomplete=False`.
+        - **Refused apply.**
+          - The hub sends `resumed`, observes Maestro's `close`, and ends `RelayInvalid` ("close observed").
+          - Maestro ends `run_failed` with `fault:frz` `failed-to-apply` and the relay entry `incomplete-clearing`.
+          - Both sides fail closed and agree.
+        - **Scope.** This exercises the frame contract end to end. It does not replace R-8 with the real
+          `FiniteDispatcher` and the harness.
+      - **Independence from the platform follow-up** (thesis row "WP-10 #3/#4 re-review notes": a truncated freeze
+        marked incomplete, `hub-closed` in the final outcome's detail, an outstanding `resumed` recorded).
+        - These change only Maestro's outcome and evidence classification. The hub never reads Maestro outcomes:
+          it acts only on `arm`, `ack` and `close`. It always sends `resumed` at once after every ack, and it closes
+          only when settled.
+        - **Conclusion.** Nothing on the hub side depends on that follow-up, and the probe above passes against the
+          wheel without it.
+    - **Residuals.**
+      - **R-1 and R-10** are closed. **R-2, R-4, R-11, L4 and L5** are assigned as recorded.
+      - **R-3 and R-5 to R-9** are honest. **R-8** remains the interoperability gate with the real dispatcher.
