@@ -111,3 +111,65 @@ repairs. This is an engineering increment verified offline; no parameter value i
        WP-13.
      - R-6. The per-frame cost at 800 × 600 is not measured (V-5, D-4c).
    - **Status.** Candidate for independent review. Not accepted, not merged, not pushed.
+3. **Independent review of findings 1 and 2 (2026-10-24 15:29:31).** Reviewer: an independent Claude agent that did
+   not write the increment. Scope: `d3d5805` and `426aa05` on `95e9e7a`. **Verdict: PASS WITH NOTES.** All notes are
+   LOW, and **nothing blocks the merge**. The merge still needs the author's or the coordinator's acceptance, which
+   this finding does not give.
+   - **Independent checks.**
+     - **With the U4 venv** (`…/xverse-aeb-inference-20261024`): **443 passed, 39 subtests**.
+     - **Without it** (`XVERSE_COMPAT_INFERENCE_ENV=/nonexistent-env`): **433 passed, 10 skipped, 39 subtests**.
+       The 10 skips are the 5 new venv cases plus the existing WP-08 venv cases.
+     - **The U4 venv stays bytecode-free.** It held 0 `__pycache__` and `.pyc` entries before the runs and still
+       held 0 after both suite runs and my own probe (all with `-s -B`). The WP-08 identity tests, which recompute
+       the venv tree digests, pass.
+     - **WP-08 fixture digest.** `model_bytes()` and `model_bytes({})` both still hash to `FIXTURE_DIGEST`
+       (`sha256:29f7e86b…`). The candidate's `model_bytes()` is also byte-identical to base `95e9e7a`'s.
+     - **numpy pin.** The lock has `numpy==2.5.4` with a hash (`tools/inference/u4-inference.lock:5`). The venv
+       holds `numpy-2.5.4.dist-info`, and the binding probe reports 2.5.4.
+     - **Bit-exactness at realistic size (my own probe in the U4 venv, `-s -B`).** On a random 800 × 600 BGRA frame
+       with test values for mean and std, three cases are **bit-equal** to the record's pure-Python reference:
+       - `area-integer` 800 × 600 to 200 × 150 (k = 16);
+       - `area-integer` on a 640 × 480 crop at (80, 60) to 320 × 240;
+       - `nearest` on a 600 × 600 crop at (100, 0) to 224 × 224, `bgr`.
+
+       The record's cases are 8 × 6 and do not exercise numpy's vectorised loops with long runs and tails. These
+       cases do. The timings were 2–16 ms after the first call; they are not a measurement (R-6).
+     - **The `preprocess/1` record.** It has exact members at every level and no defaults. Booleans are excluded
+       (`_int` uses `type(...) is int`, and `mean`/`std` require `int` or `float`). The crop must lie inside the
+       input, `area-integer` needs integer factors, the method and channels are enumerated, and `mean` and `std` are
+       3 finite numbers with `std > 0` (`preprocess.py:61-93`). The 16 refusal cases cover these.
+     - **The computation.**
+       - The crop and resize use exact integer arithmetic: `area-integer` sums in `int64` blocks, and `nearest`
+         uses integer index tables with centre sampling (`:113-124`).
+       - Float64 is used in one elementwise expression, `(s/(k·255) − mean)/std`, with no reduction. The sums are
+         exact in float64 (< 2^53). The result is cast once to float32, in C-contiguous NCHW (`:128-129`).
+       - "Single float64 step" means one expression of three correctly rounded IEEE operations. That is what makes
+         it reproducible, and the reference applies them in the same order.
+     - **Binding.** `binding` gives the four `xverse.preprocess.*` entries: schema, `paramsSha256` (canonical JSON),
+       `codeSha256` (source bytes) and the numpy version. Inside the ONNX file they are covered by the WP-08 model
+       digest, which the probe shows: the two parameter sets give two model digests, and ONNX Runtime exposes them
+       through `custom_metadata_map`. `verify_binding` compares exactly those four keys and refuses any difference or
+       a missing entry (`:146-164`).
+   - **Notes (LOW; none blocks the merge).**
+     - **L1. "Only verified frames" trusts the status label.** `preprocess_frame` checks `status == "verified"` and
+       that `pixels()` is non-`None` (`preprocess.py:135-137`). It does not re-check the pixels against the result's
+       own `rawSha256`, `actualSha256` and `rawLength`.
+       - The probe itself builds a `FrameResult.with_pixels(raw, "verified", 1, "0"*64, ...)` whose `rawSha256` is
+         not the hash of `raw`, and it is accepted (`preprocess_probe.py:58`).
+       - The WP-06 receiver is the only real producer, so this is defence in depth. **Fix.** Refuse unless
+         `sha256(pixels) == rawSha256 == actualSha256` and `len(pixels) == rawLength`, at one hash per frame, and
+         give the probe a true hash.
+     - **L2. The frame format is checked loosely.** `_check_format` compares `schema`, `width`, `height` and
+       `encoding`, but tolerates extra members (`preprocess.py:96-99`). Reusing the WP-06 `frames.load_format`
+       (exact members, the `MAX_DIMENSION` tool bound) would keep one definition of the record.
+     - **L3. The reference is not independent of the record.** The pure-Python reference shares the parameter
+       parsing (`PreprocessParams`) and the same formula, including the index rule. It shows numpy and Python
+       agree; it does not show the formula is the intended one. A small hand-computed expected tensor would pin the
+       semantics, for example one `area-integer` block mean and one `nearest` index at a crop offset.
+     - **L4 (scope). `nearest` uses centre sampling.** It samples at `floor((2i+1)·in/(2·out))`, which is not the
+       `floor(i·in/out)` rule of, for example, OpenCV `INTER_NEAREST`. Both U4 and training import this one
+       function, so that is consistent. Any external tool or dataset preprocessing must not be used instead; R-3
+       could state this.
+   - **Residuals R-1 to R-6.** They are honest and correctly scoped. R-2 is now strengthened: bit-equality also holds
+     at 800 × 600 on this host and build. The proposed additions are L1 and L2 under R-5 (for WP-13), and L3 and L4
+     under R-3.
