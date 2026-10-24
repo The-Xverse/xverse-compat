@@ -1193,3 +1193,14 @@ engineering stabilization candidate: not M1, not AEB evidence.
       - The VCU health-thaw bound (finding 18) does not depend on the placement.
       - Cancel-paused's observe now comes earlier, about 5.6 s after start, which only widens its margin before
         the cancel (finding 19).
+    - **Re-pin to platform main `ee91697a4` (04:35:36).** The platform stack S1a-2, S1b and S1a-3 was
+      accepted by the author and merged, and platform main `ee91697a4` was pushed (its tree equals the decisive
+      run's `a16fd1b78`).
+      - The test venv `/dev/shm/compat-p6-venv` now has the wheel `a54844d3…`, and its installed
+        `xverse_xdl/lifecycle.py` equals the platform main source.
+      - Log c (`verification-20261024-s1c2-c.log`): 1 failed, the content lock, as expected before the re-pin,
+        and 243 passed.
+      - `scripts/admit_phase4.py` re-pinned `platform-api.lock.json` to `ee91697a4` (surface `ce779e57…`,
+        26 files). Log d: 244 passed. The admission record was rebuilt against log d, and a rerun gave 244 passed.
+      - The soak's pinned environment `xverse-lite-live-20261022` was rebuilt from `ee91697a4` (wheel
+        `a54844d3…`). The `b28a2aacf` copies are kept as `*-b28a2aacf`; nothing was deleted.

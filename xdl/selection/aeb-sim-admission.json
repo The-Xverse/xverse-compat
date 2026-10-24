@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-10-23T18:44:28.714086+00:00",
+  "recordedAt": "2026-10-24T03:34:29.183052+00:00",
   "platform": {
-    "revision": "b28a2aacfcdb2651bf0169acd9528c21983b3a54",
+    "revision": "ee91697a4728d03ae5a3d6d323a9bc65efb5a71b",
     "sourceSurfaceFileCount": 26,
-    "sourceSurfaceTreeSha256": "4586c2eddff0ac4edb575e53974e3a3efb684667838964b418d645784d145682",
+    "sourceSurfaceTreeSha256": "ce779e57d888b61b2a40fa7b4a05999ad900a33e48fc71e340a082b902fb43cd",
     "schemasTree": {
       "fileCount": 7,
       "sha256": "9ea15542d657c755600d1fb1f0f0e85ee9fe9c56e6951f71f02aa5c46c963506"
     },
     "profilesTree": {
       "fileCount": 4,
-      "sha256": "c57d0931a60cf2a83e2c409d42c862d1b926454eb92de0ff476514f4beb0287f"
+      "sha256": "99a1657b625c4556c99e6d9e491b5abf47a284c510700e729ccb1a5ef7c95d19"
     },
     "xdlPackageVersion": "0.4.0"
   },
@@ -119,11 +119,11 @@
   ],
   "verification": {
     "suite": "xverse-compat tests",
-    "command": "env -u PYTHONPATH PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src python -m pytest tests -q -p no:cacheprovider",
-    "passed": 208,
+    "command": "PYTHONPATH=src python -m pytest tests -q -p no:cacheprovider",
+    "passed": 244,
     "failed": 0,
-    "logSha256": "a7540bdddd63fa29e38f44d6a670fafc2dd89625a69bdcc89f4a342fbe1c81d7",
-    "logPath": "docs/engineering/thesis-lite-stabilization/verification-20261023-s1c2-b.log"
+    "logSha256": "8ced7d2d0b505218b74a340ad1133bfc1274f85f8354459052d160f00ecad076",
+    "logPath": "docs/engineering/thesis-lite-stabilization/verification-20261024-s1c2-d.log"
   },
   "executionAuthority": "absent",
   "blockers": [
@@ -147,8 +147,8 @@
     "package": "xverse-xdl",
     "packageVersion": "0.4.0",
     "sourceKind": "reviewed-sibling-tree",
-    "treeSha256": "2696645d37f5c05feb703c8729e1efabb8341e6dbbd09b6e1a3c0517b28b74cb",
-    "platformRevision": "8b3d8c8e8ff73425787bb3bf958b3e2346eb1fb5"
+    "treeSha256": "4586c2eddff0ac4edb575e53974e3a3efb684667838964b418d645784d145682",
+    "platformRevision": "b28a2aacfcdb2651bf0169acd9528c21983b3a54"
   },
   "review": null,
   "acceptance": null,
@@ -165,7 +165,7 @@
     "package": "xverse-xdl",
     "packageVersion": "0.4.0",
     "sourceKind": "reviewed-sibling-tree",
-    "treeSha256": "4586c2eddff0ac4edb575e53974e3a3efb684667838964b418d645784d145682",
-    "platformRevision": "b28a2aacfcdb2651bf0169acd9528c21983b3a54"
+    "treeSha256": "ce779e57d888b61b2a40fa7b4a05999ad900a33e48fc71e340a082b902fb43cd",
+    "platformRevision": "ee91697a4728d03ae5a3d6d323a9bc65efb5a71b"
   }
 }
