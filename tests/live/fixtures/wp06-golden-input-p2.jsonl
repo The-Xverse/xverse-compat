@@ -1,0 +1,8 @@
+{"type":"start"}
+{"type":"command","commandId":"c1","brake":0.5,"throttle":0.25,"deadlineFrames":2}
+{"type":"tick"}
+{"type":"tick"}
+{"type":"tick"}
+{"type":"tick"}
+{"type":"tick"}
+{"type":"stop"}
