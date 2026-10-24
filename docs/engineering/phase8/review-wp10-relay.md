@@ -547,3 +547,35 @@ end: not M1, no CARLA, no live run.
    - **Lost-flow rule, clarification (editorial).** A message that passed the final delivery step before the
      verdict, and sits in a frozen unit's queue, counts as already delivered. It is replayed ahead of the `lost`
      notice. That is the behaviour of finding 7, and no code change follows.
+
+10. **Repairs of finding 9 (N1 and N2) and the suite re-run (written at 16:01:32 2026-10-24).**
+    - **N1** (`hub_relay.py` `at_step`, `_await_close`).
+      - After a `refused` ack, the hub sends `resumed` with `ackSeq` set to the ack's `seq`. That is its next frame,
+        as platform ADR decision 5 requires.
+      - It does not step again. It waits for Maestro's `close` within `stop_wait_s`, then closes and raises
+        `RelayInvalid`, which ends the run as `HubInvalidRun`. The message states whether the close was observed.
+      - The fault record `refused` carries `resumedSent` and `maestroClosed`.
+      - If Maestro has already closed its end, the `resumed` send fails. This is recorded as `resumedSent: false`
+        and is not an error of its own.
+    - **N2** (`hub.py` `_deliver`, `_replay`). A delivery to a frozen unit is linked to its `HubResult.deliveries`
+      entry. When it is replayed in a `backlog` line, the entry gains `replayedAtStep` and `replayedAtNs` (the thaw
+      step's boundary). Deliveries that were never queued have neither.
+    - **Tests.** `test_phase8_hub_relay.py` has 53 cases, 3 more than before:
+      - a refused apply, and a refused clear: `resumed` follows the hold immediately with the right `ackSeq`;
+        Maestro's close comes right after it; no frame reports a later step; and the run is invalid with
+        "close observed";
+      - every delivery queued during a freeze of front-zone has `replayedAtStep` 5 and the matching `replayedAtNs`,
+        and no other delivery has the field.
+
+      The fake Maestro now behaves as Maestro does after a refusal: it reads `resumed`, then closes. The L2 stub
+      gains the two attributes that `_replay` uses.
+    - **Controls.**
+      - The relay and hub-core files gave 104 passed in each of 3 runs.
+      - With the `resumed` send removed, both N1 cases fail. The send was reverted, and the file is byte-identical.
+    - **Suite.** The same command as finding 2 gives **588 passed, 39 subtests** (585 + 3), at a load of about 6.5–7
+      (`evidence-wp10-relay-suite-finding10.log`). No CARLA and no live run were used.
+    - **Residuals.**
+      - R-8, the interoperability gate, now includes the refused-ack case.
+      - R-11 (`backlog` in the unit runtime) stays a gate for WP-10 #5b.
+      - R-3, R-5 to R-7 and R-9 are unchanged.
+    - **Status.** Candidate for re-review. Not accepted, not merged, not pushed.

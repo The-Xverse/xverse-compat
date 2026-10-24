@@ -49,7 +49,7 @@ class FakeMaestro(threading.Thread):
     def __init__(self, sock, arms, ack="normal", close_at_step=None):
         super().__init__(daemon=True)
         self.sock, self.arms, self.ack, self.close_at_step = sock, arms, ack, close_at_step
-        self.seq, self.frames, self.acks, self.eof_at = 0, [], [], None
+        self.seq, self.frames, self.acks, self.eof_at, self.closed_at_frames = 0, [], [], None, None
 
     def send(self, kind, **fields):
         self.seq += 1
@@ -71,9 +71,17 @@ class FakeMaestro(threading.Thread):
             frame["_at"] = time.monotonic()
             self.frames.append(frame)
             if frame["kind"] == "hold" and self.ack != "never":
-                outcome = "refused" if self.ack == "refuse" else ("applied" if frame["phase"] == "apply" else "cleared")
+                refuse = self.ack == "refuse" or (self.ack == "refuse-clear" and frame["phase"] == "clear")
+                outcome = "refused" if refuse else ("applied" if frame["phase"] == "apply" else "cleared")
                 self.send("ack", entry=frame["entry"], phase=frame["phase"], step=frame["step"], outcome=outcome)
                 self.acks.append(self.seq)
+                if refuse:  # as Maestro: read the hub's resumed, then close (finding 9, N1)
+                    try:
+                        self.frames.append(json.loads(self.sock.recv(FRAME_MAX)))
+                    except (OSError, socket.timeout, ValueError):
+                        pass
+                    self.send("close", reason="run-failed")
+                    self.closed_at_frames = len(self.frames)
             if self.close_at_step is not None and frame.get("step", -1) >= self.close_at_step:
                 self.send("close", reason="run-finished")
                 return
@@ -106,9 +114,12 @@ def _relay(arms, expected=None, **kw):
     return relay, theirs
 
 
-def _run(arms, *, frames=10, ack="normal", jitter=None, close_at_step=None, link=None, hold=0.5, **relay_kw):
+def _run(arms, *, frames=10, ack="normal", jitter=None, close_at_step=None, link=None, hold=0.5, relay_capture=None,
+         **relay_kw):
     relay, theirs = _relay(arms, **relay_kw)
     maestro = FakeMaestro(theirs, arms, ack=ack, close_at_step=close_at_step)
+    if relay_capture is not None:
+        relay_capture["maestro"] = maestro
     maestro.start()
     sources = {}
     for f in RECORD["flows"]:
@@ -502,7 +513,7 @@ def test_l2_the_backlog_is_split_within_the_line_limit():
            "payload": {"blob": "x" * 20_000}}
     queue = [("delivery", dict(big, sequence=i)) for i in range(5)] + [("control", {"type": "lost", "flowId": "f05"})] + \
             [("delivery", dict(big, sequence=9))]
-    stub = types.SimpleNamespace(_frozen_queue={"u": queue},
+    stub = types.SimpleNamespace(_frozen_queue={"u": queue}, _entry_of={}, schedule=types.SimpleNamespace(boundaries=[0] * 8),
                                  units=types.SimpleNamespace(send=lambda unit, message, deadline=None: sent.append(message) or True))
     assert Hub._replay(stub, "u", 7, 0.0)
     kinds = [m["type"] for m in sent]
@@ -521,3 +532,27 @@ def test_l3_the_stop_wait_is_its_own_required_input():
     assert FaultRelay(RECORD, MaestroEnd(ours, 1.0), stop_wait_s=0.5, **common).stop_wait_s == 0.5
     ours.close()
     theirs.close()
+
+
+# ---- finding 9: N1 (resumed after a refused ack, then Maestro's close) and N2 (replay step) ---------------------
+
+@pytest.mark.parametrize("ack, phase", [("refuse", "apply"), ("refuse-clear", "clear")])
+def test_n1_a_refused_ack_is_followed_by_resumed_then_no_further_step(ack, phase):
+    relay_box = {}
+    with pytest.raises(HubInvalidRun, match="close observed"):
+        _run([arm("fault:f", "freeze", "front-zone-unit", 3, 2)], ack=ack, relay_capture=relay_box)
+    maestro = relay_box["maestro"]
+    holds = [i for i, f in enumerate(maestro.frames) if f["kind"] == "hold" and f["phase"] == phase]
+    assert len(holds) == 1
+    resumed = maestro.frames[holds[0] + 1]
+    assert resumed["kind"] == "resumed" and resumed["ackSeq"] == maestro.acks[-1] and resumed["phase"] == phase
+    assert maestro.closed_at_frames == holds[0] + 2  # nothing after resumed: no further step was reported
+    hold_step = maestro.frames[holds[0]]["step"]
+    assert all(f.get("step", -1) <= hold_step for f in maestro.frames)
+
+
+def test_n2_each_replayed_delivery_records_its_replay_step():
+    result, _, _ = _run([arm("fault:f", "freeze", "front-zone-unit", 3, 2)])
+    queued = [d for d in result.deliveries if d["to"] == "front-zone-unit" and d["step"] in (3, 4)]
+    assert queued and all(d["replayedAtStep"] == 5 and d["replayedAtNs"] == T0 + 5 * STEP for d in queued)
+    assert not any("replayedAtStep" in d for d in result.deliveries if d not in queued)

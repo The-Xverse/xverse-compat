@@ -395,6 +395,20 @@ class FaultRelay:
         hub.hold(acknowledged)
         return box["outcome"], box["seq"]
 
+    def _await_close(self) -> bool:
+        """After a refused ack: wait for Maestro's close within ``stop_wait_s``; return whether it came."""
+
+        deadline = time.monotonic() + self.stop_wait_s
+        try:
+            while time.monotonic() < deadline:
+                if self.maestro.receive(max(0.0, deadline - time.monotonic())) is not None:
+                    return False  # anything but close after a refusal: stop waiting, the run is invalid anyway
+        except MaestroClosed:
+            return True
+        except RelayInvalid:
+            return False
+        return False
+
     def at_step(self, hub: Any, step: int, elapsed_ns: int) -> None:
         """At the step boundary: check the grid, then report and act on every point of this step, apply before clear."""
 
@@ -409,8 +423,19 @@ class FaultRelay:
                 self._record(entry, f"hold-{phase}", step)
                 self.maestro.send("hold", entry=entry.entry_id, phase=phase, step=step, simNs=sim_ns)
                 outcome, ack_seq = self._await_ack(hub, entry, phase, step)
-                if outcome == "refused":  # no resumed: the simulator never steps again (ST-2)
-                    raise RelayInvalid(f"Maestro refused the {phase} of {entry.entry_id} at step {step}")
+                if outcome == "refused":
+                    # Finding 9 (N1; ADR-ML3-SIMTIME-0001 decision 5): ``resumed`` follows every ack, a refused one
+                    # included; then the hub never steps again and follows Maestro's close, within stop_wait_s.
+                    try:
+                        self.maestro.send("resumed", entry=entry.entry_id, phase=phase, step=step, ackSeq=ack_seq)
+                        resumed = True
+                    except RelayInvalid:  # Maestro may already have closed its end after the refusal
+                        resumed = False
+                    closed = self._await_close()
+                    self._record(entry, "refused", step, resumedSent=resumed, maestroClosed=closed)
+                    self.maestro.close()
+                    raise RelayInvalid(f"Maestro refused the {phase} of {entry.entry_id} at step {step}"
+                                       f" ({'close observed' if closed else 'no close within stop_wait_s'})")
                 if phase == "apply":
                     entry.active = True
                     hub.freeze_unit(entry.element)

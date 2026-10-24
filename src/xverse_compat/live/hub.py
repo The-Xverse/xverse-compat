@@ -370,6 +370,7 @@ class Hub:
         self.frozen: set[str] = set()
         # Finding 6 (M1): one ordered queue per frozen unit for control (``lost``) and delivery messages.
         self._frozen_queue: dict[str, list[tuple[str, dict]]] = {}
+        self._entry_of: dict[int, dict] = {}  # finding 9 (N2): queued delivery -> its HubResult.deliveries entry
 
     # ---- origin and verdicts ------------------------------------------------------------------------
 
@@ -477,9 +478,11 @@ class Hub:
                     for consumer in self.local_consumers.get(item.flow, []):
                         consumer.deliver(item.message)
                 else:
-                    per_unit.setdefault(dest["unit"], []).append(
-                        {"flowId": item.flow, "from": item.source_unit, "sequence": item.sequence, "originNs": item.origin_ns,
-                         "deliverAtNs": item.deliver_at_ns, "payload": item.message.get("payload")})
+                    wire = {"flowId": item.flow, "from": item.source_unit, "sequence": item.sequence, "originNs": item.origin_ns,
+                            "deliverAtNs": item.deliver_at_ns, "payload": item.message.get("payload")}
+                    per_unit.setdefault(dest["unit"], []).append(wire)
+                    if dest["unit"] in self.frozen:
+                        self._entry_of[id(wire)] = entry
         return per_unit
 
     def _round(self, step: int, rnd: int, per_unit: dict, recipients) -> None:
@@ -529,6 +532,10 @@ class Hub:
             if not batch:
                 return True
             ok = self.units.send(unit, {"type": "backlog", "step": step, "deliveries": list(batch)}, deadline=deadline)
+            for message in batch:  # finding 9 (N2): the replay step of each queued delivery
+                entry = self._entry_of.pop(id(message), None)
+                if entry is not None:
+                    entry["replayedAtStep"], entry["replayedAtNs"] = step, self.schedule.boundaries[step]
             batch.clear()
             return ok
 
