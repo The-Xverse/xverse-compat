@@ -164,7 +164,7 @@ class LiveSource:
             if scenario is not None:
                 from .scenario import spawn  # noqa: PLC0415
 
-                self._spawned = spawn(self._world, carla_module, d, scenario)  # ego, camera, radar
+                self._spawned = spawn(self._world, carla_module, d, scenario)  # ego, camera, radar[, target] (WP-02)
                 if registry is not None:  # owned-actor registry for the restore guard (live finding 06)
                     import json  # noqa: PLC0415
 
@@ -172,7 +172,7 @@ class LiveSource:
                         json.dump({"actors": [{"id": a.id, "typeId": a.type_id, "roleName": a.attributes.get("role_name")}
                                               for a in self._spawned]}, stream)
                 self._world.tick()  # the spawned actors exist from the next frame
-                ego_id, camera_id, radar_id = (actor.id for actor in self._spawned)
+                ego_id, camera_id, radar_id = (actor.id for actor in self._spawned[:3])  # a target is owned, never bound
                 self._ego_id = ego_id
             self._vehicle = self._world.get_actor(ego_id)
             if self._vehicle is None or not str(getattr(self._vehicle, "type_id", "")).startswith("vehicle."):
@@ -228,6 +228,7 @@ class LiveSource:
         """Stop the sensor callbacks and restore the saved world settings (live ground-truth actors are not
         collected in this phase: a stated limit)."""
 
+        failed = []
         try:
             for sensor in getattr(self, "_sensors", []):
                 sensor.stop()
@@ -240,8 +241,13 @@ class LiveSource:
                     pass
         finally:  # review 2 L-d: the saved settings are restored even if a stop fails
             try:
-                for actor in reversed(getattr(self, "_spawned", [])):  # owned scenario actors: sensors before the ego
-                    actor.destroy()
+                for actor in reversed(getattr(self, "_spawned", [])):  # owned scenario actors: target, sensors, then the ego
+                    try:  # each in its own try: one failure never leaves the others (review-wp02 finding 4, LOW-5)
+                        actor.destroy()
+                    except Exception as error:  # noqa: BLE001 - recorded and raised after the settings restore
+                        failed.append(f"{getattr(actor, 'id', None)} {getattr(actor, 'attributes', {}).get('role_name')}: "
+                                      f"{type(error).__name__}: {error}")
+                self.destroy_failed = failed
             finally:
                 self._world.apply_settings(self._saved)
                 if not getattr(self._saved, "synchronous_mode", False):
@@ -249,3 +255,5 @@ class LiveSource:
                         self._world.tick(2.0)
                     except Exception:  # noqa: BLE001 - the restore guard verifies the result afterwards
                         pass
+        if failed:  # after the restore; an earlier error in flight takes precedence. The restore guard removes them
+            raise RuntimeError(f"owned actors not destroyed: {'; '.join(failed)}")
