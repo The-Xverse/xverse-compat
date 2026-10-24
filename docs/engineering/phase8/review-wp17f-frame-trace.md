@@ -138,3 +138,9 @@ Verdict: PASS for this narrow fixture repair; the full owning suite remains queu
 withheld by this reviewer. This review does not independently re-review my original trace implementation;
 the coordinator's prior independent source review owns that separate scope. No scientific timing or validity
 claim follows from a TEST-ONLY fake clock or this source review.
+
+## Delegated engineering acceptance and unchanged-tree assembly gate (Codex, 2026-10-24)
+
+Exact reviewedbe1af26c5547ae773be1117ecdf67f44b7b7ef5b passed **621 passed, 2 skipped, 39 subtests passed in 72.64s (0:01:12)**. Both skips are the independently host-verified network-refusal controls because the complete suite itself is isolated. All frame trace, real unit socket and actual adapter fake-source cases executed. Full receipt/log: thesis `specs/002-assured-aeb/review/codex-final-assembly-verification-20261024/hub-frame-trace/`, log SHA256 `f436ab94c59bf6067369add3477da229aafb0b314c126f79f54acb8280b5a7b0`. Prior failing fixture evidence remains retained.
+
+Accept under recorded author engineering delegation, flagged for author review, for exact unchanged-tree integration with mainc7f92eb already included in this candidate. Verify merged tree equals this candidate tree; only this delivery finding follows verification. No extra source is admitted. Actual motion frames/origin, pre-hold host samples, explicit gaps and partial attempts are observational only. No oracle/join implementation, D4c timing bound, live CARLA, process-isolation proof, protocol freeze or scientific validity follows. Originalrc1soak inputs remain unchanged.
