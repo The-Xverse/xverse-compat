@@ -385,3 +385,26 @@ end: not M1, no CARLA, no live run.
        connected socketpair end given at spawn.
      - **R-8** (the wire test against ST-2) is the gate before any live run.
      - **Proposed addition: R-10.** Lost-flow barrier coverage for relay-held, injected and frozen-queued items (M1).
+
+6. **Dispositions of finding 5 (written at 15:49:27 2026-10-24, before code).** Source: the thesis `decisions.md`
+   row "WP-10 #4 review dispositions" (15:48, under the author's delegation, flagged for the author's review),
+   relayed by the coordinator.
+   - **M1, repair now.** The Lost-flow barrier is applied at one point, the hub's final delivery step (`_deliver`).
+     - It covers every item: schedule items, relay-held delays, F12 injections, `stale` replays and frozen-unit
+       queues.
+     - An item stopped there is not delivered. It is recorded in `HubResult.discarded` (digest only), with the
+       reason "after the lost verdict at the final delivery step".
+     - Each frozen unit has one ordered queue of control and delivery messages, so a `lost` notice keeps its place.
+       After the thaw the queue is replayed in order. A delivery on a flow that was lost while the unit was frozen
+       is stopped by the barrier, because the queued delivery is checked again at replay.
+     - **Tests.** Delay then loss; an injection after a loss; a loss during a freeze, with the ordering preserved.
+     - Residual **R-10** is adopted.
+   - **L1, repair now.** Arming refuses any `freeze` when no `SimTimeBound` is configured.
+   - **L2, repair now.** The backlog after a thaw is sent in rounds, each within the 64 KiB line limit. The unit
+     answers each backlog round, and the step's normal round follows. A single message that alone exceeds the
+     limit stays a `HubProtocolError`, as before.
+   - **L3, repair now.** `arm_timeout_s` bounds arming only. A new required input `stop_wait_s` bounds the wait at
+     an unsettled stop. Both are D-4c values (`NEEDS DATA`), with no default.
+   - **L4 and L5** are obligations of other increments: L4 belongs to the F12 provider's owner (AD-11 sets, WP-15),
+     and L5 to WP-10 #5, which maps Maestro-form element ids onto topology-form unit and flow ids. Both are recorded
+     in the WP-10 #5 design record (thesis `design/wp10-5-wiring.md`). No compat code changes for them.
