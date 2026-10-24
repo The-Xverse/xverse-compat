@@ -12,7 +12,9 @@ from __future__ import annotations
 import hashlib
 import json
 import queue
+import socket
 import threading
+import time
 
 PROTOCOL = "xverse-compat.camera-frames/1"
 FORMAT_SCHEMA = "xverse-compat.camera-frame-format/1"
@@ -20,6 +22,9 @@ FORMAT_MEMBERS = {"schema", "width", "height", "encoding"}
 ENCODINGS = {"bgra8": 4}  # CARLA raw_data layout; the 3.10 adapter does not transcode
 QUEUE_DEPTH = 2  # engineering constant: U2 consumes a step's frame before it requests the next tick (WP-12 lockstep)
 MAX_LINE = 65536
+#: Tool refusal bound on width and height (finding 4, L4): defence in depth against an absurd allocation from a
+#: malformed record. It is not a protocol value; the declared format (AD-02) is always far inside it.
+MAX_DIMENSION = 8192
 
 
 def canonical(record: dict) -> bytes:
@@ -34,8 +39,8 @@ def load_format(record) -> dict:
     if record["schema"] != FORMAT_SCHEMA:
         raise ValueError(f"frame format schema must be {FORMAT_SCHEMA}")
     for key in ("width", "height"):
-        if type(record[key]) is not int or record[key] <= 0:
-            raise ValueError(f"frame format {key} must be a positive int")
+        if type(record[key]) is not int or not 0 < record[key] <= MAX_DIMENSION:
+            raise ValueError(f"frame format {key} must be an int in [1, {MAX_DIMENSION}] (tool bound)")
     if record["encoding"] not in ENCODINGS:
         raise ValueError(f"frame format encoding must be one of {sorted(ENCODINGS)}")
     return dict(record)
@@ -60,6 +65,7 @@ class FramePublisher:
         self._lock = threading.Lock()
         self.offered = self.sent = self.dropped = 0
         self.error = None
+        self._final = None  # the close summary; once set, no counter changes (finding 4, L1)
         self._send(canonical({"type": "hello", "protocol": PROTOCOL, "format": self.fmt, "formatSha256": format_sha256(self.fmt)}) + b"\n")
         self._thread = threading.Thread(target=self._writer, name="camera-frames", daemon=True)
         self._thread.start()
@@ -76,11 +82,13 @@ class FramePublisher:
             try:
                 self._send(header + b"\n" + raw)
                 with self._lock:
-                    self.sent += 1
+                    if self._final is None:
+                        self.sent += 1
             except OSError as error:  # the socket failed: this frame and every later one count as dropped
                 with self._lock:
-                    self.error = f"{type(error).__name__}: {error}"
-                    self.dropped += 1
+                    if self._final is None:
+                        self.error = self.error or f"{type(error).__name__}: {error}"
+                        self.dropped += 1
                 self._drain()
                 return
 
@@ -93,7 +101,8 @@ class FramePublisher:
             if item is None:
                 return
             with self._lock:
-                self.dropped += 1
+                if self._final is None:
+                    self.dropped += 1
 
     def offer(self, frame: int, raw: bytes) -> bool:
         """Queue one frame (never blocks); return whether it was queued. A refused frame is counted as dropped."""
@@ -101,6 +110,8 @@ class FramePublisher:
         if len(raw) != self.length:
             raise ValueError(f"frame {frame}: {len(raw)} bytes, the declared format needs {self.length}")
         with self._lock:
+            if self._final is not None:
+                raise RuntimeError("offer after close")
             sequence = self.offered
             self.offered += 1
             failed = self.error is not None
@@ -118,21 +129,39 @@ class FramePublisher:
         return False
 
     def close(self, timeout_s: float = 5.0) -> dict:
-        """Flush within ``timeout_s``, send the ``end`` record and return the accounting."""
+        """Flush, send ``end`` and return the accounting, all within ``timeout_s`` in total (finding 4, M1).
 
+        If the writer has not finished by the deadline (a stalled reader), the socket is shut down, so the close
+        never takes longer than its bound. The summary is final and race-free: ``dropped = offered - sent``, and
+        the writer thread can no longer change a counter after it is taken (L1).
+        """
+
+        deadline = time.monotonic() + timeout_s
+        remaining = lambda: max(0.0, deadline - time.monotonic())  # noqa: E731
         try:
-            self._queue.put(None, timeout=timeout_s)
+            self._queue.put(None, timeout=remaining())
         except queue.Full:
             pass
-        self._thread.join(timeout_s)
+        self._thread.join(remaining())
+        finished = not self._thread.is_alive()
         with self._lock:
-            if self._thread.is_alive():  # still blocked in sendall: the queued frames are unsent
+            if not finished:
                 self.error = self.error or "writer did not finish within the close bound"
-            self.dropped = self.offered - self.sent if self._thread.is_alive() else self.dropped
+            self.dropped = self.offered - self.sent
             summary = {"offered": self.offered, "sent": self.sent, "dropped": self.dropped, "error": self.error}
-        if not self._thread.is_alive() and self.error is None:
+            self._final = dict(summary)
+        if finished and summary["error"] is None and remaining() > 0:
             try:
+                self._sock.settimeout(remaining())
                 self._send(canonical({"type": "end", **summary}) + b"\n")
             except OSError as error:
-                summary["error"] = f"{type(error).__name__}: {error}"
+                summary["error"] = f"end record not sent: {type(error).__name__}: {error}"
+        try:  # a stalled reader cannot hold the writer or the peer: shut the channel down in every case
+            self._sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        try:
+            self._sock.close()
+        except OSError:
+            pass
         return summary

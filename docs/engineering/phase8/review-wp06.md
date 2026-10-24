@@ -43,9 +43,9 @@ behaviour unverified (E8-3a).
      `xverse-compat.camera-frame-format/1` with exactly `schema`, `width`, `height` and `encoding`. It has
      **no defaults**, and no format file is shipped: the values belong to AD-02 and the freeze (AD-27).
      - `encoding` must be `bgra8`, CARLA's `raw_data` layout. The 3.10 adapter does not transcode.
-     - The adapter refuses to start the side channel (exit 3 before the protocol) when `--frames` is given
-       without `--frame-format`, when the record is malformed, or when its width and height differ from the
-       camera descriptor.
+     - The adapter refuses to start the side channel when `--frames` is given without `--frame-format` (an
+       argument error, **exit 2**; corrected by finding 5, it read "exit 3"), and before the protocol with exit 3
+       when the record is malformed or when its width and height differ from the camera descriptor.
      - The receiver refuses a `hello` whose format or `formatSha256` differs from its own declared record,
        and refuses any `rawLength` other than `4·width·height`.
    - **Adapter side** (`xverse_compat_carla/frames.py`, CPython 3.10, standard library only; never imports
@@ -284,3 +284,67 @@ behaviour unverified (E8-3a).
    - **L5.** Add a base-golden test comparing the stdio protocol 1 and 2 output with fixtures captured from base
      `855878a`. Correct "exit 3" to "exit 2" in finding 1.
    - **Residuals.** Add R-7 (M1, repaired here) and R-8 (L2, L3).
+5. **Repair of finding 4 (2026-10-24 12:02:02).**
+   - **M1, close order and bound.**
+     - `main._finish(source, publisher, quiet, log)` now closes the source, and with it the owned CARLA
+       actors, first. Only then does it close the publisher, with `FRAMES_CLOSE_S = 1.0`: an engineering
+       constant inside Maestro's 5 s stop action, which now only delays the process exit. The normal, exception
+       and `BaseException` paths all use it.
+     - `FramePublisher.close(timeout_s)` uses **one deadline** for the queue put, the writer join and the
+       `end` record. It always shuts the socket down (`SHUT_RDWR`) and closes it, so a stalled reader cannot
+       extend the close, and the `--linger` case no longer keeps the frames socket open.
+     - Tests:
+       - `test_wp06_m1_close_is_bounded_by_one_timeout_with_a_stalled_reader`: a peer that never reads;
+         `close(1.0)` returns within 1.2 s, with the bound error and balanced accounting (before the repair,
+         about 2 s);
+       - `test_wp06_m1_the_source_and_its_actors_close_before_the_publisher`: the recorded order is source,
+         then publisher, within `FRAMES_CLOSE_S` + 0.3 s.
+     - Probe: restoring the separate put and join timeouts fails the bound test.
+   - **L1, race-free accounting.** `close` takes one final snapshot under the lock, with
+     `dropped = offered − sent` always. After the snapshot the writer cannot change a counter, and `offer`
+     refuses. Test `test_wp06_l1_..._fails_between_the_check_and_the_put` forces the interleaving through a
+     racy queue installed at construction: offer 2 passes its `failed` check, the writer then fails and
+     drains an empty queue, and offer 2's put lands with no writer. The counter then reads 1, and the summary
+     reads `offered 2, sent 0, dropped 2`. Probe: with the old rule (recompute only while the writer is
+     alive) the test fails with `dropped 1`.
+     - The first version of this test replaced the queue after the writer had started, so it did not force the
+       race: it passed under the probe. That was found by the probe and rewritten before commit.
+   - **L2.** With `log`, `_finish` writes one stderr line, `XVERSE-COMPAT-CARLA-FRAMES: {...}`, with
+     `offered`, `sent`, `dropped` and `error`. It logs on exit 0 and on the exit-3 exception path. Exit 2
+     keeps its single stderr line, so it does not log there. Tested in the M1 order test.
+   - **L3.** `FrameReceiver.start` uses one deadline for the accept and the `hello` read. A peer that connects
+     and sends nothing is refused with `FrameChannelError` ("no valid hello within …"), and the receiver
+     closes. Test: refused within 1 s at a 0.5 s bound.
+   - **L4.**
+     - A repeated or decreasing frame number stops the channel ("does not increase").
+     - `MAX_DIMENSION = 8192` bounds width and height on both sides. It is a **tool refusal bound, not a
+       protocol value**; the declared AD-02 format is always inside it.
+     - `FrameResult` keeps the pixels outside its dataclass fields: a private attribute, set by
+       `with_pixels` and read by `pixels()` or `data`. So `dataclasses.asdict`, `repr` and `record()`
+       cannot contain them. Tested.
+     - The per-tick copy and hash are recorded under R-2 below.
+   - **L5.**
+     - `tests/live/fixtures/wp06-golden-855878a-p{1,2}.jsonl` hold the stdout of the **base** `855878a`
+       adapter. It was run from a `git archive` export in the scratchpad, deleted afterwards, over stdio on the
+       fake `nominal` source, with the input scripts `wp06-golden-input-p{1,2}.jsonl` (start, one command,
+       five ticks, stop): 23 lines each, exit 0.
+     - `test_wp06_l5_stdio_output_equals_the_base_golden[1,2]` runs the candidate on the same input and
+       requires byte-identical stdout and an empty stderr. Probe: reintroducing a misplaced stdio branch fails
+       the golden and unchanged-link tests.
+     - Finding 1's exit code is corrected in place: an argument error exits 2.
+   - **Other test change.** The failed-socket test failed once in 15 runs. Offers made before the writer has
+     detected the dead peer are still queued, and counted as dropped by the drain, so the test now waits for
+     `publisher.error` before asserting refusals. This was a test race, not a code defect.
+   - **Tests.** `tests/live/test_phase8_frames.py`: 42 tests (33 before; 9 new). The file was run 8 times
+     after the repair with no failure.
+   - **Suite.** 419 passed, 39 subtests (finding 2: 410; base `855878a`: 377).
+   - **Residuals, updated.**
+     - R-2, amended (L4): the tick path makes a second copy and SHA-256 of each 1 920 000-byte frame after
+       `camera_value` (`protocol.py` `bytes(fd.camera.raw_data)`), and the writer concatenates the header
+       and the pixels before `sendall`. These are D-4c host-cost items.
+     - R-7 (M1, repaired here): the source and its actors now close before the publisher, and the publisher's
+       close is bounded at 1 s in total.
+     - R-8 (L2 and L3, repaired here): the adapter's close summary is logged on stderr, and the receiver's
+       `hello` read is bounded.
+   - **Status.** Candidate for a focused re-review and the author's acceptance. Not accepted, not merged, not
+     pushed.

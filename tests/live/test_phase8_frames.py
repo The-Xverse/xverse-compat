@@ -8,8 +8,11 @@ tests). The frame formats here are test-only; no AD-02 value is set.
 from __future__ import annotations
 
 import ast
+import dataclasses
 import hashlib
 import json
+import queue
+import threading
 from pathlib import Path
 import socket
 import subprocess
@@ -21,6 +24,7 @@ from xverse_compat.carla_client import SocketAdapterLink
 from xverse_compat.live import frames as R
 from xverse_compat.live.frames import FrameChannelError, FrameReceiver
 from xverse_compat_carla import frames as P
+from xverse_compat_carla import main as adapter_main
 from xverse_compat_carla.frames import FramePublisher
 
 from ..carla.support import DESCRIPTORS, FIXTURES, ROOT, require_env
@@ -77,7 +81,7 @@ def test_wp06_the_adapter_side_imports_only_the_standard_library():
     tree = ast.parse(Path(P.__file__).read_text())
     imported = {a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
     imported |= {n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)}
-    assert imported == {"__future__", "hashlib", "json", "queue", "threading"}  # never xverse_compat (protocol.FORBIDDEN)
+    assert imported == {"__future__", "hashlib", "json", "queue", "socket", "threading", "time"}  # never xverse_compat (FORBIDDEN)
 
 
 # ---- in-process publisher and receiver ---------------------------------------------------------------
@@ -133,11 +137,14 @@ def test_wp06_a_failed_socket_counts_every_later_frame_as_dropped():
     receiver, publisher, sock = _pair()
     receiver.start(accept_timeout_s=5)
     receiver.close()  # the platform side goes away
-    for n in range(200):
+    deadline = time.monotonic() + 5
+    n = 0
+    while not publisher.error and time.monotonic() < deadline:  # offers before the writer sees the failure are queued
         publisher.offer(n, _raw(n))
-        if publisher.error:
-            break
-    for n in range(200, 205):
+        n += 1
+        time.sleep(0.005)
+    assert publisher.error
+    for n in range(10_000, 10_005):
         assert publisher.offer(n, _raw(n)) is False
     summary = publisher.close()
     assert summary["error"] and summary["offered"] == summary["sent"] + summary["dropped"]
@@ -309,3 +316,159 @@ def test_wp06_adapter_refuses_an_invalid_or_mismatching_declared_format_before_t
                            f"fake:{FIXTURES / 'nominal.json'}", "--descriptors", str(DESCRIPTORS), "--frames", "unix:/nonexistent2.sock",
                            "--frame-format", str(fmt_file)], cwd=ROOT / "src", capture_output=True, timeout=30)
     assert proc.returncode == 3 and b"XVERSE-COMPAT-CARLA-SOURCE" in proc.stderr
+
+
+# ---- finding 4 repairs -------------------------------------------------------------------------------
+
+
+def _stalled_pair(fmt=SENSOR):
+    """A publisher whose peer accepts and never reads (a stalled U2)."""
+
+    path = _socket_path()
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    listener.bind(path)
+    listener.listen(1)
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.connect(path)
+    peer, _ = listener.accept()
+    return FramePublisher(sock, fmt), peer, listener
+
+
+def test_wp06_m1_close_is_bounded_by_one_timeout_with_a_stalled_reader():
+    publisher, peer, listener = _stalled_pair()
+    for n in range(4):
+        publisher.offer(n, _raw(n, 1_920_000))
+    started = time.monotonic()
+    summary = publisher.close(timeout_s=1.0)
+    elapsed = time.monotonic() - started
+    assert elapsed <= 1.2, elapsed  # before the repair: about 2 x the bound (finding 3, M1)
+    assert summary["error"] == "writer did not finish within the close bound"
+    assert summary["offered"] == 4 == summary["sent"] + summary["dropped"]
+    peer.close()
+    listener.close()
+
+
+def test_wp06_m1_the_source_and_its_actors_close_before_the_publisher(capsys, monkeypatch):
+    order = []
+    publisher, peer, listener = _stalled_pair()
+    publisher.offer(0, _raw(0, 1_920_000))
+    real_close = publisher.close
+    monkeypatch.setattr(publisher, "close", lambda timeout_s: (order.append(("publisher", timeout_s)), real_close(timeout_s=timeout_s))[1])
+
+    class Source:
+        def close(self):
+            order.append(("source", None))
+
+    started = time.monotonic()
+    assert adapter_main._finish(Source(), publisher, quiet=False, log=True) == 0
+    assert time.monotonic() - started <= adapter_main.FRAMES_CLOSE_S + 0.3
+    assert order == [("source", None), ("publisher", adapter_main.FRAMES_CLOSE_S)]
+    line = [x for x in capsys.readouterr().err.splitlines() if x.startswith("XVERSE-COMPAT-CARLA-FRAMES: ")]  # L2
+    assert len(line) == 1 and json.loads(line[0].split(": ", 1)[1])["offered"] == 1
+    adapter_main._finish(Source(), None, quiet=True, log=False)  # without a publisher: nothing more is logged
+    assert "FRAMES" not in capsys.readouterr().err
+    peer.close()
+    listener.close()
+
+
+def test_wp06_l1_accounting_holds_when_the_writer_fails_between_the_check_and_the_put(monkeypatch):
+    """Force: offer 2 reads ``failed`` as False, then the writer fails and drains, then offer 2's put lands with no
+    writer left. Before the repair the summary said dropped 1 of 2 (finding 3, L1)."""
+
+    path = _socket_path()
+    receiver = FrameReceiver(path, SMALL)
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.connect(path)
+    release, writer_ended, holder = threading.Event(), threading.Event(), {}
+    real_queue = queue.Queue
+
+    class Racy(real_queue):
+        def put_nowait(self, item):
+            if holder["publisher"].offered == 2:  # the second offer, after its ``failed`` check
+                release.set()
+                holder["publisher"]._thread.join(5)  # the writer fails, drains an empty queue and ends
+                writer_ended.set()
+            return super().put_nowait(item)
+
+    monkeypatch.setattr(P.queue, "Queue", Racy)  # the publisher's queue is racy from construction
+    publisher = holder["publisher"] = FramePublisher(sock, SMALL)
+    monkeypatch.setattr(P.queue, "Queue", real_queue)
+    receiver.start(accept_timeout_s=5)
+
+    def failing_send(data):
+        release.wait(5)  # the writer is inside sendall with frame 1
+        raise OSError(32, "Broken pipe")
+
+    publisher._send = failing_send
+    assert publisher.offer(1, _raw(1))
+    deadline = time.monotonic() + 5
+    while not publisher._queue.empty() and time.monotonic() < deadline:  # the writer has taken frame 1
+        time.sleep(0.005)
+    assert publisher.offer(2, _raw(2)) and writer_ended.is_set() and not publisher._thread.is_alive()
+    assert publisher.dropped == 1  # the counter at that moment misses the stranded frame 2
+    summary = publisher.close(timeout_s=1.0)
+    assert summary == {"offered": 2, "sent": 0, "dropped": 2, "error": "BrokenPipeError: [Errno 32] Broken pipe"}
+    sock.close()
+    receiver.close()
+
+
+def test_wp06_l3_a_peer_that_sends_no_hello_is_refused_within_the_bound():
+    path = _socket_path()
+    receiver = FrameReceiver(path, SMALL)
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.connect(path)
+    started = time.monotonic()
+    with pytest.raises(FrameChannelError, match="no valid hello within"):
+        receiver.start(accept_timeout_s=0.5)
+    assert time.monotonic() - started <= 1.0
+    sock.close()
+
+
+def test_wp06_l4_repeated_or_decreasing_frame_numbers_are_refused():
+    path = _socket_path()
+    receiver = FrameReceiver(path, SMALL)
+    header = lambda frame, seq: P.canonical({"type": "frame", "frame": frame, "sequence": seq,  # noqa: E731
+                                             "rawSha256": hashlib.sha256(_raw(frame)).hexdigest(), "rawLength": 48, "dropped": 0}) + b"\n"
+    sock = _raw_client(path, [header(5, 0) + _raw(5), header(5, 1) + _raw(5)])
+    receiver.start(accept_timeout_s=5)
+    deadline = time.monotonic() + 5
+    while receiver.error is None and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert "does not increase" in receiver.error and not receiver.reconcile()["ok"]
+    sock.close()
+    receiver.close()
+
+
+def test_wp06_l4_width_and_height_have_a_tool_bound_on_both_sides():
+    for record in ({**SMALL, "width": P.MAX_DIMENSION + 1}, {**SMALL, "height": P.MAX_DIMENSION + 1}):
+        with pytest.raises(ValueError, match="tool bound"):
+            P.load_format(record)
+        with pytest.raises(ValueError, match="tool bound"):
+            R.load_format(record)
+    assert P.MAX_DIMENSION == R.MAX_DIMENSION and P.load_format({**SMALL, "width": P.MAX_DIMENSION})
+
+
+def test_wp06_l4_a_frame_result_cannot_dump_its_pixels():
+    receiver, publisher, _ = _pair()
+    receiver.start(accept_timeout_s=5)
+    publisher.offer(7, _raw(7))
+    result = receiver.take(_item(7, _raw(7)), wait_s=5)
+    assert result.status == "verified" and result.pixels() == result.data == _raw(7)
+    dumped = dataclasses.asdict(result)
+    assert set(dumped) == set(result.record()) and not any(isinstance(v, (bytes, bytearray)) for v in dumped.values())
+    assert _raw(7).hex() not in repr(result) and str(_raw(7)) not in repr(result)
+    publisher.close()
+    receiver.close()
+
+
+@pytest.mark.parametrize("protocol", [1, 2])
+def test_wp06_l5_stdio_output_equals_the_base_golden(protocol):
+    """Protocols 1 and 2 over stdio, without --frames, against outputs captured from base 855878a (finding 5)."""
+
+    fixtures = Path(__file__).resolve().parent / "fixtures"
+    proc = subprocess.run(["env", "-i", "PATH=/usr/bin", "HOME=/nonexistent-carla-home", str(require_env()), "-s", "-B", "-m",
+                           "xverse_compat_carla.main", "--protocol", str(protocol), "--source", f"fake:{FIXTURES / 'nominal.json'}",
+                           "--descriptors", str(DESCRIPTORS)], cwd=ROOT / "src",
+                          input=(fixtures / f"wp06-golden-input-p{protocol}.jsonl").read_bytes(), capture_output=True, timeout=60)
+    assert proc.returncode == 0 and proc.stderr == b""
+    assert proc.stdout == (fixtures / f"wp06-golden-855878a-p{protocol}.jsonl").read_bytes()

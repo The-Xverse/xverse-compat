@@ -150,19 +150,33 @@ def _main(argv) -> int:
         code = run(source, descriptors, stdin, stdout, sys.stderr, carla_version=carla_version, ground_truth=args.ground_truth,
                    protocol=args.protocol, frames=publisher)
     except Exception as error:  # noqa: BLE001 - e.g. a broken stdout: one stderr line, exit 3 (review 5 N1)
-        if publisher is not None:
-            publisher.close(timeout_s=1.0)
-        _close(source, quiet=True)
+        _finish(source, publisher, quiet=True, log=True)
         print(f"XVERSE-COMPAT-CARLA-SOURCE: {type(error).__name__}: {error}", file=sys.stderr)
         _discard_stdout()
         return 3
     except BaseException:
-        _close(source, quiet=True)
+        _finish(source, publisher, quiet=True)
         raise
-    if publisher is not None:
-        publisher.close()  # sends the end record (offered, sent, dropped) when the channel is healthy
-    closed = _close(source, quiet=code == 2)  # always closed; exit 2 keeps its single stderr line (review 5 L1)
+    closed = _finish(source, publisher, quiet=code == 2, log=code != 2)  # exit 2 keeps its single stderr line (review 5 L1)
     return code or closed
+
+
+#: Total bound of the frame publisher's close (WP-06 finding 4, M1): an engineering constant inside Maestro's 5 s stop
+#: action. The source and its owned actors are closed before it, so the bound only delays the process exit.
+FRAMES_CLOSE_S = 1.0
+
+
+def _finish(source, publisher, quiet: bool, log: bool = False) -> int:
+    """Close the source (and its owned CARLA actors) first, then the frame publisher within ``FRAMES_CLOSE_S``; return
+    the source close code. With ``log`` the publisher's summary (``offered``, ``sent``, ``dropped``, ``error``) is one
+    stderr line (finding 4, M1 and L2); exit 2 keeps its single stderr line, so it does not log."""
+
+    closed = _close(source, quiet=quiet)
+    if publisher is not None:
+        summary = publisher.close(timeout_s=FRAMES_CLOSE_S)
+        if log:
+            print("XVERSE-COMPAT-CARLA-FRAMES: " + json.dumps(summary, sort_keys=True), file=sys.stderr)
+    return closed
 
 
 def _connect(path: str, timeout_s: float) -> socket.socket:

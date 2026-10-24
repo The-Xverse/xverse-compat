@@ -13,7 +13,7 @@ The declared frame format is a protocol value (AD-02): there is no default.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import hashlib
 import json
 import os
@@ -28,6 +28,7 @@ FORMAT_MEMBERS = {"schema", "width", "height", "encoding"}
 ENCODINGS = {"bgra8": 4}
 CAPACITY = 2
 MAX_LINE = 65536
+MAX_DIMENSION = 8192  # tool refusal bound, not a protocol value (finding 4, L4; equal to the adapter side)
 STATUSES = ("verified", "mismatch", "dropped", "lost", "missing", "failed")
 HEX = frozenset("0123456789abcdef")
 
@@ -45,8 +46,9 @@ def load_format(record) -> dict:
 
     if not isinstance(record, dict) or set(record) != FORMAT_MEMBERS or record["schema"] != FORMAT_SCHEMA:
         raise ValueError(f"frame format must be exactly {sorted(FORMAT_MEMBERS)} with schema {FORMAT_SCHEMA}")
-    if any(type(record[k]) is not int or record[k] <= 0 for k in ("width", "height")) or record["encoding"] not in ENCODINGS:
-        raise ValueError("frame format needs positive int width and height and a supported encoding")
+    if any(type(record[k]) is not int or not 0 < record[k] <= MAX_DIMENSION for k in ("width", "height")) \
+            or record["encoding"] not in ENCODINGS:
+        raise ValueError(f"frame format needs int width and height in [1, {MAX_DIMENSION}] (tool bound) and a supported encoding")
     return dict(record)
 
 
@@ -60,7 +62,8 @@ def _sha(value) -> bool:
 
 @dataclass
 class FrameResult:
-    """The outcome of one ``take``; ``data`` is never part of ``record()``."""
+    """The outcome of one ``take``. The pixels are not a dataclass field, so neither ``repr``, ``record()`` nor
+    ``dataclasses.asdict`` can include them; only ``pixels()`` (or ``data``) returns them (finding 4, L4)."""
 
     status: str
     frame: int
@@ -68,7 +71,19 @@ class FrameResult:
     rawLength: int
     actualSha256: str | None = None
     reason: str | None = None
-    data: bytes | None = field(default=None, repr=False)
+
+    @classmethod
+    def with_pixels(cls, pixels: bytes | None, *args, **kwargs) -> "FrameResult":
+        result = cls(*args, **kwargs)
+        object.__setattr__(result, "_pixels", pixels)
+        return result
+
+    def pixels(self) -> bytes | None:
+        """The verified frame bytes, for the in-process consumer only; ``None`` unless ``verified``."""
+
+        return getattr(self, "_pixels", None)
+
+    data = property(pixels)
 
     def record(self) -> dict:
         return {"status": self.status, "frame": self.frame, "rawSha256": self.rawSha256, "rawLength": self.rawLength,
@@ -111,14 +126,21 @@ class FrameReceiver:
     def start(self, accept_timeout_s: float) -> dict:
         """Accept the adapter's connection within ``accept_timeout_s`` and read ``hello``; return it."""
 
+        deadline = time.monotonic() + accept_timeout_s  # one bound for the accept and the hello
         self._listener.settimeout(accept_timeout_s)
         try:
             self._conn, _ = self._listener.accept()
         except OSError as error:
             raise FrameChannelError(f"adapter frames channel did not connect: {error}") from error
-        self._conn.settimeout(None)
+        # the hello read is bounded too (finding 4, L3): a peer that connects but sends no full line is refused
+        self._conn.settimeout(max(0.001, deadline - time.monotonic()))
         self._reader = self._conn.makefile("rb")
-        hello = self._header()
+        try:
+            hello = self._header()
+        except (OSError, EOFError, ValueError) as error:
+            self.close()
+            raise FrameChannelError(f"no valid hello within {accept_timeout_s} s: {type(error).__name__}: {error}") from error
+        self._conn.settimeout(None)
         if (hello.get("type") != "hello" or hello.get("protocol") != PROTOCOL or hello.get("format") != self.fmt
                 or hello.get("formatSha256") != self.format_sha256 or set(hello) != {"type", "protocol", "format", "formatSha256"}):
             self.close()
@@ -174,6 +196,8 @@ class FrameReceiver:
                 with self._cond:
                     if sequence <= self._last_sequence or dropped < self._last_dropped:
                         raise FrameChannelError("sequence or drop counter went backwards")
+                    if self._latest_frame is not None and frame <= self._latest_frame:  # finding 4, L4
+                        raise FrameChannelError(f"frame {frame} does not increase after {self._latest_frame}")
                     gap, reported = sequence - self._last_sequence - 1, dropped - self._last_dropped
                     self._pending_drops += min(gap, reported)
                     self.counts["gapUnaccounted"] += max(0, gap - reported)  # a gap the adapter did not account for
@@ -214,8 +238,8 @@ class FrameReceiver:
                     ok = actual == want and len(data) == length
                     status = "verified" if ok else "mismatch"
                     self.counts[status] += 1
-                    return FrameResult(status, frame, want, length, actual, None if ok else "bytes differ from the item's rawSha256",
-                                       data if ok else None)
+                    return FrameResult.with_pixels(data if ok else None, status, frame, want, length, actual,
+                                                   None if ok else "bytes differ from the item's rawSha256")
                 passed = (self._latest_frame is not None and self._latest_frame > frame) or self.end is not None or self.eof
                 if passed:  # the frame will not come: the adapter dropped it, or it was lost
                     if self._pending_drops > 0:
