@@ -2,19 +2,37 @@
 
 X-Verse vNext is a multi-industry cyber-physical systems experimentation platform under development.
 
-Owns external descriptors, compatibility adapters, and deployment glue for unchanged legacy assets. Keep business/domain logic out; no adapters or XDL descriptors are implemented in M0.
+Owns external descriptors, compatibility adapters, and deployment glue for unchanged legacy assets. Keep business/domain logic out.
 
 ## Current maturity
-This repository contains engineering setup, the reviewed design, and a controlled target-neutral
-conformance implementation for the companion side of the M3 compatibility-provider boundary. It
-also contains a controlled derivative-rebuild envelope that verifies exact source and external patch
-identities, builds in two clean stages, and compares the declared outputs. The target-specific patch
-remains a separately controlled, gated input.
+This repository is part of X-Verse Lite 1.0 rc.1, an engineering-integration baseline across
+`xverse-platform`, `xverse-compat` and `xverse-blueprints`. It is not AEB validation, not M1 and not a
+scientific result. See the release record [docs/releases/xverse-lite-1.0.md](docs/releases/xverse-lite-1.0.md).
+For X-Verse Lite it contains:
+- the compatibility descriptors and the admission record of the selected CARLA 0.9.15 server and
+  bridge artifacts (`xdl/descriptors/aeb-sim/`, `xdl/selection/`; Thesis Lite Phase 4). The admission
+  record keeps `executionAuthority` absent;
+- the bridge route adapter (`src/xverse_compat/adapters/`; Phase 6);
+- the owned CARLA client adapters on the pinned `carla` 0.9.15 cp310 client (`src/xverse_compat_carla/`;
+  Phases 4b and 7), including the restore guard `xverse_compat_carla.restore`;
+- the owned live units of the Lite CARLA closed loop, the driver and the stimulus, and their nonce-marker
+  readiness helper (`src/xverse_compat/live/`; Phase 7 and stabilization S1c).
 
-There is no target-specific provider, execution authorization, compatibility evidence, or executable
-blueprint. Rebuild success does not permit the resulting artifact to run.
-The sibling platform repository contains prototype XDL tooling and isolated M3 lifecycle mechanics;
-those results do not certify any legacy component.
+The blueprint that runs them is in `xverse-blueprints`, `automotive/thesis-lite-carla-closed-loop/`. The
+engineering logs are under `docs/engineering/thesis-lite-*`. The offline suite runs against the
+installed platform wheel:
+
+```sh
+env -u PYTHONPATH PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src <venv>/bin/python -m pytest tests -q -p no:cacheprovider
+```
+
+The repository also keeps its earlier engineering setup: the reviewed design and the controlled
+target-neutral conformance implementation for the companion side of the M3 compatibility-provider
+boundary, and a controlled derivative-rebuild envelope that verifies exact source and external patch
+identities, builds in two clean stages, and compares the declared outputs. The target-specific patch
+remains a separately controlled, gated input. The SD-0001 gateway provider stays blocked, and rebuild
+success does not permit the resulting artifact to run.
+Platform results do not certify any legacy component.
 
 ## Engineering workflow
 Spec Kit **0.14.0** is initialized with its official generic integration, Bash scripts, templates,
@@ -51,7 +69,7 @@ links assume sibling checkouts with their repository names, as in this workspace
 
 M0 documents are intended for public-safe review. Referenced private GitHub evidence requires
 existing repository access. Review of inventory boundaries, classifications, interfaces, and
-dependencies is required before M1. Changes from this delivery remain local and unpublished.
+dependencies is required before M1.
 
 ## License
 See [LICENSE](LICENSE); the existing license is unchanged.
