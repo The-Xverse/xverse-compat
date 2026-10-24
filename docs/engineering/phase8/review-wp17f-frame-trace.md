@@ -109,3 +109,16 @@ unproven. No CARLA/pytest/adapter process was executed in this read-only pass.
 Assemble with accepted compat mainc7f92eb (training/sensor tools, independent605passed/2network-refusal-skips/39subtests)
 and run the complete owning suite with all environments available and namespace isolation. The independent host
 refusal controls already cover those namespace-only skips. Candidate remains unaccepted until that result.
+
+## Owning-suite finding and TEST-ONLY relay fixture repair design (Codex, 2026-10-24)
+
+Exact assembled4e61adf48a3349bb2a857d7d50c44ddc0138027a gives1failed,620passed,2host-network-
+refusal skips,39subtests in72.59s. Full log/receipt: thesisreview/codex-hub-verification-20261024/hub-frame-trace/.
+The new host-sampling control's fakeRelay supplies arm/at_step/finish but omits the preexistingfilter(step,due)
+method called by Hub._rounds. This raisesAttributeError after the observation and before assertions; no product
+error is demonstrated. The fake must represent the unchanged no-message-fault relay seam completely.
+
+Repair design, before code: add only identityfilter(step,due) to that TEST-ONLY fake, retaining host advancement
+and hold assertions, genuine hub loop and expected simulator times. No product/control/clock change. Repeat the
+exact test and full owning suite. Another reviewer must inspect the test-only delta before acceptance. No acceptance
+or merge follows the failing run; retain its evidence.
