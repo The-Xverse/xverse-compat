@@ -348,3 +348,66 @@ behaviour unverified (E8-3a).
        `hello` read is bounded.
    - **Status.** Candidate for a focused re-review and the author's acceptance. Not accepted, not merged, not
      pushed.
+6. **Focused re-review of findings 4 and 5 (2026-10-24 12:05:31).** Reviewer: the same independent Claude agent as
+   finding 3. Scope: `dd67004` and `cccb83a` on `5719039`. **Verdict: PASS.** Every item of finding 3 is
+   repaired as finding 4 required. Two new LOW notes follow, and **nothing blocks the merge**. The merge itself
+   still needs the author's or coordinator's acceptance, which this finding does not give.
+   - **Independent checks.**
+     - **Suite.** The offline compat suite gave **419 passed, 39 subtests**. `test_phase8_frames.py` was run
+       3 more times: 42 passed each time.
+     - **Golden fixtures.** I exported the base `855878a` (`855878a92c96…`) and `HEAD` with `git archive`,
+       and ran each over stdio, protocols 1 and 2, with `wp06-golden-input-p{1,2}.jsonl` and the pinned 3.10
+       interpreter. The **base** stdout equals `wp06-golden-855878a-p{1,2}.jsonl` byte for byte, with exit 0
+       and an empty stderr. The candidate's stdout does too. The fixtures are therefore genuine base captures.
+       The test (`tests/live/test_phase8_frames.py`, the L5 case) compares bytes exactly and requires an empty
+       stderr.
+     - **Unchanged link without `--frames`.** My finding 3 differential was rerun against `HEAD`: stdio
+       protocol 1, stdio protocol 2, `--connect`, and `--connect --marker`. All four are byte-identical to
+       the base. `_finish` with no publisher reduces to the base `_close(source, quiet=…)` on all three paths,
+       and prints nothing more (`main.py` `_finish`).
+     - **M1, repaired.**
+       - **Order.** `_finish` closes the source, and so the owned actors, before the publisher on the normal,
+         exception and `BaseException` paths.
+       - **Bound.** `close` uses one deadline for the put, the join and `end`, then always calls
+         `shutdown(SHUT_RDWR)` and `close` (`src/xverse_compat_carla/frames.py`, `close`).
+       - **Probe.** My finding 3 stall probe (an unread peer, four 1.92 MB frames) now returns in **1.0 s** at
+         `timeout_s=1.0`; it was 2.0 s before.
+       - **Writer near the deadline.** A slow-reader probe, where the writer finishes just before the deadline,
+         returned in 0.95 s with balanced accounting and `end` sent. A partial `end` sent near the deadline
+         would make the receiver fail closed (a truncated header).
+     - **L1, repaired.** My finding 3 forced-interleaving probe now gives `offered 2, sent 0, dropped 2`, so the
+       invariant holds. `_final` freezes the counters, and `offer` after `close` raises. The committed test
+       installs the racy queue at construction, so it does force the interleaving. The record states that its
+       first version did not.
+     - **L2, repaired.** One `XVERSE-COMPAT-CARLA-FRAMES: {…}` stderr line is written on exit 0 and exit 3. It is
+       not written on exit 2.
+     - **L3, repaired.** `start` uses one deadline for the accept and the hello. A silent peer is refused within
+       the bound, and the receiver closes.
+     - **L4, repaired.**
+       - Non-increasing frame numbers stop the channel.
+       - `MAX_DIMENSION = 8192` is equal on both sides and is recorded as a tool bound, not a protocol value.
+       - The pixels are not a dataclass field, so `asdict`, `repr` and `record()` cannot carry them. Only
+         `vars()` or `pickle` would reach `_pixels`.
+       - R-2 names the extra copy and hash.
+     - **L5, repaired.** The golden fixtures and the test are as above. The in-place correction of finding 1's exit
+       code is attributed to finding 5 in the text, so the edit stays traceable.
+   - **New notes (LOW; neither blocks the merge).**
+     - **N1. Some hello refusals do not clean up.**
+       - `start` closes the receiver on a timeout, on EOF, on a decode error, and on a format mismatch. It does
+         **not** close it when `_header` itself raises `FrameChannelError`: a non-object header, a NaN or
+         Infinity constant, or an oversized or truncated line. `FrameChannelError` is a `RuntimeError`, outside
+         the `except (OSError, EOFError, ValueError)` in `start`.
+       - **Probe.** For `[]`, `{"a": NaN}` and a truncated line, the error is raised (fail-closed), but the
+         listener stays open and the socket path stays on disk until the caller calls `close()`.
+       - **Repair.** Add `FrameChannelError` to that `except`, or close in a `finally` on any failure. It is
+         harmless when the WP-12 caller always closes.
+     - **N2. Exit 3 with `--frames` now writes two stderr lines.** These are the `XVERSE-COMPAT-CARLA-FRAMES`
+       summary and then the `XVERSE-COMPAT-CARLA-SOURCE` error. The error stays the last line, and the base
+       one-line rule (review 5 N1) is unchanged without `--frames`. The contract note amendment (R-5) should
+       state it.
+   - **Residuals R-1 to R-8.**
+     - R-1 to R-6 are unchanged and honest. R-2 is correctly amended.
+     - R-7 and R-8 are repaired as stated, and their tests discriminate. I checked this through my own probes, not
+       only the record's.
+     - Still open, and not blocking: N1 and N2 above. So is the live verification that R-2 and E8-3a still
+       require.
