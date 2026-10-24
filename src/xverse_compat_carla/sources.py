@@ -164,7 +164,7 @@ class LiveSource:
             if scenario is not None:
                 from .scenario import spawn  # noqa: PLC0415
 
-                self._spawned = spawn(self._world, carla_module, d, scenario)  # ego, camera, radar
+                self._spawned = spawn(self._world, carla_module, d, scenario)  # ego, camera, radar[, target] (WP-02)
                 if registry is not None:  # owned-actor registry for the restore guard (live finding 06)
                     import json  # noqa: PLC0415
 
@@ -172,7 +172,7 @@ class LiveSource:
                         json.dump({"actors": [{"id": a.id, "typeId": a.type_id, "roleName": a.attributes.get("role_name")}
                                               for a in self._spawned]}, stream)
                 self._world.tick()  # the spawned actors exist from the next frame
-                ego_id, camera_id, radar_id = (actor.id for actor in self._spawned)
+                ego_id, camera_id, radar_id = (actor.id for actor in self._spawned[:3])  # a target is owned, never bound
                 self._ego_id = ego_id
             self._vehicle = self._world.get_actor(ego_id)
             if self._vehicle is None or not str(getattr(self._vehicle, "type_id", "")).startswith("vehicle."):
@@ -240,7 +240,7 @@ class LiveSource:
                     pass
         finally:  # review 2 L-d: the saved settings are restored even if a stop fails
             try:
-                for actor in reversed(getattr(self, "_spawned", [])):  # owned scenario actors: sensors before the ego
+                for actor in reversed(getattr(self, "_spawned", [])):  # owned scenario actors: target, sensors, then the ego
                     actor.destroy()
             finally:
                 self._world.apply_settings(self._saved)

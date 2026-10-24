@@ -101,3 +101,65 @@ behaviour unverified (E8-3a).
        ego only; close destroys the target.
      - Restore guard: listed and registry paths hold, await and destroy the target.
      - Observer: the target role is accepted by `TRACK_ROLE`.
+2. **Implementation of finding 1 (2026-10-24 10:49:53).**
+   - **Change.**
+     - `src/xverse_compat_carla/scenario.py`: `SCHEMA_1`, `SCHEMA_2`, `TARGET_ROLE`, `TARGET_HOLD`;
+       `target_of` (schema and target validation); `target_transform` (in-lane placement); `spawn`
+       validates and places before the first spawn, spawns the target last and applies its one hold
+       control (throttle 0, brake 1, steer 0, hand brake) inside the existing partial-spawn rollback.
+     - `src/xverse_compat_carla/sources.py`: `LiveSource` binds ego, camera and radar from the first
+       three spawned actors; two comments updated. Registry, actuation and close are unchanged code and
+       now cover the target because it is in `_spawned`.
+     - `restore.py`, `observe.py`, `main.py`, `protocol.py` and the shipped
+       `xdl/descriptors/aeb-sim/live-scenario.json` (schema 1, no target) are unchanged.
+   - **Tests.** `tests/live/test_phase8_target.py`: 34 tests (parametrized cases included), offline,
+     reusing the Phase 7 fake world with a lane map.
+     - Schema: schema 1, no schema, the shipped descriptor and schema 2 without a target give no target; 21
+       invalid scenarios (target under schema 1 or without schema, unknown schema, unknown top-level or
+       target member, `target: null` or a list, a missing, zero, negative, bool, NaN, infinite, string or
+       null distance, a non-vehicle or non-string blueprint, two wrong roles, the `physics-off` hold, a
+       non-object scenario) are refused, and in each case nothing is spawned and no waypoint is queried.
+     - Placement: one waypoint 40 m ahead along the lane, lane heading, the map's 0.6 m spawn-point lift
+       (fake values); no waypoint, two waypoints, a junction and an off-lane spawn point are refused with
+       nothing spawned.
+     - Spawn: `[ego, camera, radar, target]`; exactly one hold control on the target; none on the ego;
+       a failed target spawn or a failed hold destroys every partial spawn.
+     - LiveSource: the ego is bound; the registry lists four actors including the target's id, `typeId`
+       and `roleName`; runtime commands reach the ego only; close destroys the target first and the ego
+       last, and writes no further control to the target.
+     - Restore guard after a simulated SIGKILL: listing path and registry path both hold the target, await
+       its standstill (listing path) and destroy it; `remaining == []`, `restored: true`.
+     - Observer: `TARGET_ROLE` matches the WP-01 `TRACK_ROLE`.
+   - **Mutation checks (not committed; restored).** Removing the spawn hold fails 3 tests; a default
+     `distanceAheadM` of 30 fails the missing-distance case; unpacking every spawned id fails 3 tests.
+   - **CPython 3.10.12.** `scenario`, `sources` and `main` import under `env -i ... /usr/bin/python3.10
+     -s -B` with `forbidden_modules_loaded() == []`, without loading `carla`; `target_of` of the shipped
+     descriptor is `None`.
+   - **Suite.** 308 passed, 39 subtests (base `d5d7be8`: 274).
+   - **Hold-still recommendation.** Option (A), brake and hand brake once at spawn with physics on, is
+     implemented and is the only accepted `hold`. (B) `set_simulate_physics(False)` is not implemented.
+     The live check under E8-3a (with D-2): with observer v2 tracking ego and target, the target's
+     displacement and speed after settling stay within a declared tolerance (`TODO: measurement`) with
+     the ego held and while it approaches; the guard's standstill record lists the target.
+   - **Residuals.**
+     - R-1. Live behaviour is unverified: whether hold (A) keeps a CARLA 0.9.15 vehicle still, how it
+       settles from the spawn-point lift, and the radar return from it (E8-3a, D-2). No CARLA was run.
+     - R-2. No scenario with a target is shipped. `distanceAheadM` and its conversion to the AD-04
+       bumper-to-bumper initial gap (with the WP-01 extents) are protocol values for the freeze (AD-27);
+       characterisation scenarios declare their distances before the runs (P-3).
+     - R-3. Blueprint increment (separate, not made here):
+       - `units.py` 60 hard-codes the compat `live-scenario.json`, so selecting a target scenario needs a
+         blueprint change;
+       - `soak/audit.py`: add the target role to `OWNED_ROLES` when the scenario declares one; classify
+         the P8 path by held ego, not by any held vehicle; judge the target's stillness from observer v2;
+       - the observer v2 wiring (WP-01 R-2).
+     - R-4. Placement checks one continuation and no junction only. The segment's straightness and the
+       target's lateral position are not checked in code (FR-029 offline validity check; spawn point 1,
+       K-9). The ego spawn-point lift is reused for the target; a spawn collision is refused with
+       rollback.
+     - R-5. The `map` member is not checked against the loaded world, under either schema (pre-existing).
+     - R-6. Schema-2 strictness (unknown members refused) does not apply to schema 1, which keeps its
+       Phase 7 leniency for compatibility.
+     - R-7. Once hit, a physical target moves; that is the intended physics, and the oracle reads it from
+       observer v2.
+   - **Status.** Candidate for independent review. Not accepted, not merged, not pushed.
