@@ -258,3 +258,34 @@ end: not M1, no CARLA, no live run.
    - **Change planned.** `live/hub_relay.py`: the `arm` key set, its field checks, and arming completion by `count`
      and `index`. New tests: completion by count; a wrong count; an index gap; a repeated index; a duplicated entry;
      and a count that disagrees with the harness list.
+
+4. **R-1 implemented: arming ends by `count` and `index`, and the suite was re-run (written at 15:44:40 2026-10-24).**
+   - **Change** (`live/hub_relay.py`):
+     - The `arm` key set gains `count` and `index`. Each must be an integer of at least 1, with `index` ≤ `count`.
+     - Arming ends when the batch holds `count` entries.
+     - The first frame's `count` must equal the harness `expected_entries` (the cross-check).
+     - Every later frame must carry the same `count`, and `index` must be exactly the next one. A repeated or
+       unexpected entry is refused, as before.
+     - Every refusal sends nothing, closes the link and ends the run.
+     - R-2 and R-4 need no compat code (finding 3).
+   - **Tests.** `test_phase8_hub_relay.py` now has 44 cases, 6 more than before:
+     - completion at `index == count`;
+     - a `count` that disagrees with the harness list;
+     - a changed `count`;
+     - an index gap (2 first);
+     - a repeated index;
+     - a duplicated entry at the next index.
+
+     The batch-incomplete case now declares `count: 2` and sends one frame. The codec case adds an `arm` without
+     `count` and `index`, one with `index` above `count`, and one with `count: 0`. The fake Maestro adds `count` and
+     `index` to every arm frame.
+   - **Mutation control (run, then reverted; the file is byte-identical).** With the index check disabled, both
+     gap and repeat cases fail.
+   - **Suite.** The same command as finding 2 gives **579 passed, 39 subtests** (573 + 6), at load about 5.7
+     (`evidence-wp10-relay-suite-finding4.log`). No CARLA and no live run were used.
+   - **Residuals.**
+     - R-1 is closed on the hub side. The platform must emit `count` and `index` in ST-2.
+     - R-2 belongs to WP-10 #5.
+     - R-4 is adopted. The full-buffer case is a declared residual (AD-12).
+     - R-3 and R-5 to R-9 are unchanged.
+   - **Status.** Candidate for independent review. Not accepted, not merged, not pushed.

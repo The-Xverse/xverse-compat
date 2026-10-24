@@ -56,8 +56,8 @@ class FakeMaestro(threading.Thread):
         self.sock.send(_frame(self.seq, kind, **fields))
 
     def run(self):
-        for descriptor in self.arms:
-            self.send("arm", **descriptor)
+        for index, descriptor in enumerate(self.arms, 1):  # ST-2 R-1: count and 1-based index, unless overridden
+            self.send("arm", **{"count": len(self.arms), "index": index, **descriptor})
         self.sock.settimeout(10)
         while True:
             try:
@@ -151,7 +151,12 @@ def test_topology_record_carries_fault_admission_and_freeze_targets():
 def test_maestro_frame_codec_is_closed_and_canonical():
     good = _frame(1, "ack", entry="fault:f", phase="apply", step=3, outcome="applied")
     assert decode_maestro_frame(good)["step"] == 3
-    for bad in (good.replace(b'"seq":1', b'"seq": 1'), _frame(1, "ack", entry="fault:f", phase="up", step=3, outcome="applied"),
+    armed = _frame(1, "arm", **{**arm("fault:a", "stale", "f09-radar-vc", 2, 2), "count": 1, "index": 1})
+    assert decode_maestro_frame(armed)["index"] == 1
+    for bad in (good.replace(b'"seq":1', b'"seq": 1'),
+                _frame(1, "arm", **{**arm("fault:a", "stale", "f09-radar-vc", 2, 2), "count": 1, "index": 2}),
+                _frame(1, "arm", **{**arm("fault:a", "stale", "f09-radar-vc", 2, 2), "count": 0, "index": 0}),
+                _frame(1, "arm", **arm("fault:a", "stale", "f09-radar-vc", 2, 2)), _frame(1, "ack", entry="fault:f", phase="up", step=3, outcome="applied"),
                 _frame(1, "hold", entry="x", phase="apply", step=1, simNs=1), _frame(0, "close", reason="x"),
                 _frame(1, "close", reason="x", extra=1), b"x" * (FRAME_MAX + 1)):
         with pytest.raises(RelayInvalid):
@@ -185,7 +190,17 @@ def _arm_only(arms, expected=None, **kw):
     ([arm("fault:a", "stale", "f09-radar-vc", 2, 2, step_ns=STEP // 2)], None, {}, "differs from the hub step"),
     ([dict(arm("fault:a", "stale", "f09-radar-vc", 2, 2), onsetStep=3)], None, {}, "do not match"),
     ([arm("fault:a", "stale", "f09-radar-vc", 2, 2)], ["fault:b"], {}, "unexpected or repeated"),
-    ([arm("fault:a", "stale", "f09-radar-vc", 2, 2)], ["fault:a", "fault:b"], {"arm_timeout_s": 0.3}, "arming incomplete"),
+    ([dict(arm("fault:a", "stale", "f09-radar-vc", 2, 2), count=2)], ["fault:a", "fault:b"], {"arm_timeout_s": 0.3}, "arming incomplete"),
+    ([arm("fault:a", "stale", "f09-radar-vc", 2, 2)], ["fault:a", "fault:b"], {}, "disagrees with the harness list"),
+    ([dict(arm("fault:a", "stale", "f09-radar-vc", 2, 2), count=2, index=1),
+      dict(arm("fault:b", "assurance.evidence-loss", "f13-qualified-evidence", 2, 2), count=3, index=2)],
+     ["fault:a", "fault:b"], {}, "count changed"),
+    ([dict(arm("fault:a", "stale", "f09-radar-vc", 2, 2), count=2, index=2)], ["fault:a", "fault:b"], {}, "gap or repeat"),
+    ([dict(arm("fault:a", "stale", "f09-radar-vc", 2, 2), count=3, index=1),
+      dict(arm("fault:b", "assurance.evidence-loss", "f13-qualified-evidence", 2, 2), count=3, index=1)],
+     ["fault:a", "fault:b", "fault:c"], {}, "gap or repeat"),
+    ([dict(arm("fault:a", "stale", "f09-radar-vc", 2, 2), count=2, index=1),
+      dict(arm("fault:a", "stale", "f09-radar-vc", 2, 2), count=2, index=2)], ["fault:a", "fault:b"], {}, "unexpected or repeated"),
     ([arm("fault:a", "assurance.proposal-unsafe", "f12-proposal", 2, 2)], None, {}, "proposal sets"),
     ([arm("fault:a", "stale", "f09-radar-vc", 2, 2), arm("fault:b", "assurance.evidence-loss", "f13-qualified-evidence", 2, 2, seed=8)],
      None, {}, "more than one seed"),
@@ -415,3 +430,11 @@ def test_st2_a_settled_hub_closes_at_its_stop_and_an_unsettled_one_waits_for_mae
     assert pending.eof_at is not None and pending.eof_at - pending.frames[-1]["_at"] >= 0.5
     stop = [r for r in result.faults if r["action"] == "stopped-with-pending"]
     assert stop and stop[0]["pending"] == ["fault:b"]
+
+
+def test_r1_arming_completes_at_index_equal_to_count():
+    arms = [arm("fault:a", "stale", "f09-radar-vc", 2, 2), arm("fault:b", "assurance.evidence-loss", "f13-qualified-evidence", 2, 2)]
+    relay, maestro = _arm_only(arms)
+    relay.maestro.close()
+    maestro.join(5)
+    assert relay.armed and [f["entry"] for f in maestro.frames if f["kind"] == "armed"] == ["fault:a", "fault:b"]

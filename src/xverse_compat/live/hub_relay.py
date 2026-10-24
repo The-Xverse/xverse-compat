@@ -25,8 +25,9 @@ RELAY_KINDS = ("delay", "loss", "stale", "assurance.proposal-unsafe", "assurance
 PROPOSAL_KINDS = ("assurance.proposal-unsafe", "assurance.proposal-mistimed")
 _IDENT = re.compile(r"[A-Za-z0-9_.:#/-]{1,256}")
 MAESTRO_FRAMES = {
+    # ST-2 (thesis decisions.md "WP-10 #4 relay alignment", R-1): ``count`` and 1-based ``index`` end the batch.
     "arm": {"entry", "fault", "faultKind", "mode", "collection", "element", "atNs", "durationNs", "onsetStep",
-            "clearStep", "parameters", "seed", "stepNs"},
+            "clearStep", "parameters", "seed", "stepNs", "count", "index"},
     "ack": {"entry", "phase", "step", "outcome"},
     "close": {"reason"},
 }
@@ -86,7 +87,8 @@ def decode_maestro_frame(data: bytes) -> dict:
         if (not all(type(body[k]) is str and _IDENT.fullmatch(body[k]) for k in ("entry", "fault", "faultKind", "element"))
                 or body["mode"] not in (RELAY, HOLD) or body["collection"] not in ("flows", "componentInstances")
                 or not all(_int(body[k]) for k in ("atNs", "durationNs", "onsetStep", "clearStep", "seed"))
-                or not _int(body["stepNs"], 1) or type(body["parameters"]) is not dict):
+                or not _int(body["stepNs"], 1) or type(body["parameters"]) is not dict
+                or not _int(body["count"], 1) or not _int(body["index"], 1) or body["index"] > body["count"]):
             raise RelayInvalid("arm frame fields")
     elif kind == "ack":
         if (type(body["entry"]) is not str or body["phase"] not in ("apply", "clear") or not _int(body["step"])
@@ -322,16 +324,26 @@ class FaultRelay:
 
         deadline = time.monotonic() + self.arm_timeout_s
         batch: list[dict] = []
+        count: int | None = None
         try:
-            while len(batch) < len(self.expected):
+            while count is None or len(batch) < count:  # the batch ends at index == count (ST-2, R-1)
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
-                    raise RelayInvalid(f"arming incomplete within {self.arm_timeout_s} s: {len(batch)} of {len(self.expected)}")
+                    raise RelayInvalid(f"arming incomplete within {self.arm_timeout_s} s: {len(batch)} of "
+                                       f"{count if count is not None else '?'}")
                 frame = self.maestro.receive(remaining)
                 if frame is None:
                     continue
                 if frame["kind"] != "arm":
                     raise RelayInvalid(f"{frame['kind']} before arming completed")
+                if count is None:
+                    count = frame["count"]
+                    if count != len(self.expected):  # the harness list stays a cross-check
+                        raise RelayInvalid(f"arm count {count} disagrees with the harness list of {len(self.expected)}")
+                if frame["count"] != count:
+                    raise RelayInvalid(f"arm count changed from {count} to {frame['count']}")
+                if frame["index"] != len(batch) + 1:
+                    raise RelayInvalid(f"arm index {frame['index']} where {len(batch) + 1} was due (gap or repeat)")
                 if frame["entry"] not in self.expected or any(b["entry"] == frame["entry"] for b in batch):
                     raise RelayInvalid(f"unexpected or repeated entry {frame['entry']}")
                 batch.append(frame)
