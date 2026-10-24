@@ -292,3 +292,68 @@ behaviour unverified (E8-3a).
        lateral placement is verified live.
      - LOW-4: R-2 is amended. The gap conversion needs the bounding-box offsets and the ego's offset from
        the projected waypoint.
+5. **Repair of finding 4 (2026-10-24 10:56:09).**
+   - **LOW-1, bounded lane walk.** `target_transform` walks from the projected ego spawn waypoint in
+     `ceil(distanceAheadM / WALK_STEP_M)` steps, with `WALK_STEP_M = 1.0` m (the last step is the
+     remainder, so the walk ends exactly at the declared distance). Every step must return exactly one
+     continuation (a lane end or a branch is refused), and neither the spawn waypoint nor any waypoint on
+     the way may be in a junction. The target transform is the walk's last waypoint. An instrument guard
+     `MAX_DISTANCE_M = 1000.0` bounds the walk to 1000 steps; it is not a protocol value (far beyond the
+     120 m lane, K-9, and the 100 m radar range, K-10), and a larger distance is refused at validation.
+   - **LOW-3, schema-2 base members.** Required: `schema`, `egoBlueprint` (a `vehicle.*` string),
+     `spawnPointIndex` (an int, not a bool, ≥ 0) and `map` (a non-empty string). Optional: `note` (a
+     string) and `target`. Each is checked in `target_of`, before any spawn or waypoint query. Schema 1
+     is unchanged (R-6).
+   - **LOW-5, close.** `LiveSource.close` destroys each owned actor in its own `try`, records failures in
+     `destroy_failed`, continues with the next actor, restores the settings, and then raises one
+     `RuntimeError` naming each failure, so `main._close` still exits 3. An error already in flight from
+     the sensor stop takes precedence.
+   - **Tests.** `tests/live/test_phase8_target.py` now has 53 tests (19 new). The lane fake gains a junction
+     span, a branch point and a lane end.
+     - Walk: 40 steps of 1 m; a 40.5 m walk ends with a 0.5 m step at x 50.5; refused for a lane end at
+       step 21, a branch at step 15 and at the target, a junction at step 10 (between ego and target) and
+       at step 38, and a spawn waypoint in a junction; `distanceAheadM` above the guard refused.
+     - Base members: missing `egoBlueprint`, `spawnPointIndex` or `map`; a non-vehicle or null
+       `egoBlueprint`; a bool, string, negative or float `spawnPointIndex`; `map: 42` and an empty
+       `map`; a non-string `note`. Each is refused with nothing spawned and no waypoint queried.
+     - Close: a failing target destroy leaves only the target, destroys camera, radar and ego, records
+       one failure, restores the settings, and raises.
+   - **Mutation checks (not committed; restored).** Checking the junction at the last step only fails the
+     intermediate-junction case; dropping the required-member check fails 4 tests; catching only
+     `ZeroDivisionError` at close fails the close test.
+   - **CPython 3.10.12.** `scenario`, `sources` and `main` import with `forbidden_modules_loaded() == []`,
+     without loading `carla`; `target_of` of the shipped descriptor is `None`.
+   - **Suite.** 327 passed, 39 subtests (finding 2: 308).
+   - **E8-3a and D-2 input: hold-still live-check criteria (MEDIUM-1; no code change).** Each tolerance and
+     count is `TODO: measurement`, and its owner is WP-17 (oracle and characterisation harness), which
+     declares it before the run. No value is set here.
+     - (a) Settle criterion: the target's speed below a declared threshold for a declared number of
+       consecutive frames; the first such frame is the reference.
+     - (b) Horizon: a declared span in simulation frames from the reference.
+     - (c) Quantities in the lane frame of the target waypoint: along-lane and lateral displacement from
+       the reference, yaw change, and peak speed over the horizon.
+     - (d) Lateral placement: the target's lateral offset from the ego lane centre, and the ego's, at the
+       reference (FR-029 "in the ego lane"; see R-4).
+     - (e) Resolution: observer v2 (`--track xverse-lite-ego --track xverse-lite-target`) resolves both
+       roles, with a `boundingBoxStatus: observed` resolution line for each.
+     - (f) Radar: the D-2 radar return from the target (detection, range and range rate) at the declared
+       distances (GA-38).
+     - (g) Phases: ego held; ego approaching and braking; the restore guard (the target listed in
+       `held` and in the standstill record).
+   - **Residuals, amended.**
+     - R-2, amended (LOW-4): the AD-04 bumper-to-bumper initial gap is
+       `distanceAheadM − (ego.locationM.x + ego.extentM.x) − (target.extentM.x − target.locationM.x)`,
+       corrected for the ego's along-lane offset between its spawn point and the projected spawn waypoint
+       from which the walk starts. Both offsets come from the map and the WP-01 resolution lines; the
+       freeze (AD-27) owns the formula and the values.
+     - R-4, amended (LOW-1, LOW-2): the walk now refuses junctions and branches anywhere between ego and
+       target. The real `Map.get_waypoint` projects any point onto the nearest driving lane, so the
+       off-lane refusal fires only on fakes; "in the ego lane" means the projected nearest driving lane,
+       and the lateral placement is verified live (criterion (d)). Straightness of the segment stays the
+       FR-029 offline validity check.
+     - R-5, unchanged: `map` is now required and typed under schema 2, but it is still not compared with
+       the loaded world.
+     - R-8 (LOW-5, repaired): a failed destroy at close no longer skips the remaining actors; the restore
+       guard still covers any that remain.
+   - **Status.** Candidate for re-review of the repair and for the author's acceptance. Not accepted,
+     not merged, not pushed.

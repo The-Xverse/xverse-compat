@@ -20,6 +20,13 @@ SCHEMA_2 = "xverse-compat.carla-live-scenario/2"
 TARGET_ROLE = ROLE_PREFIX + "target"
 TARGET_HOLD = "brake-and-hand-brake"
 SCENARIO_2_MEMBERS = {"schema", "egoBlueprint", "spawnPointIndex", "map", "note", "target"}
+SCENARIO_2_REQUIRED = {"schema", "egoBlueprint", "spawnPointIndex", "map"}  # ``note`` and ``target`` are optional
+#: The lane is walked from the ego spawn waypoint to the target in steps of at most this length, and every
+#: waypoint on the way must be a single continuation outside a junction (review-wp02 finding 4, LOW-1).
+WALK_STEP_M = 1.0
+#: Instrument guard on the walk (at most 1000 steps), not a protocol value: far beyond the 120 m straight lane
+#: of spawn point 1 (K-9) and the 100 m radar range (K-10).
+MAX_DISTANCE_M = 1000.0
 TARGET_MEMBERS = {"blueprint", "roleName", "distanceAheadM", "hold"}
 CAMERA_MOUNT = (1.5, 0.0, 2.4)
 RADAR_MOUNT = (2.0, 0.0, 1.0)
@@ -53,6 +60,17 @@ def target_of(scenario):
     unknown = set(scenario) - SCENARIO_2_MEMBERS
     if unknown:
         raise ValueError(f"unknown live-scenario members {sorted(unknown)}")
+    missing = SCENARIO_2_REQUIRED - set(scenario)
+    if missing:
+        raise ValueError(f"missing live-scenario members {sorted(missing)}")
+    if not isinstance(scenario["egoBlueprint"], str) or not scenario["egoBlueprint"].startswith("vehicle."):
+        raise ValueError("egoBlueprint must be a vehicle.* blueprint")
+    if type(scenario["spawnPointIndex"]) is not int or scenario["spawnPointIndex"] < 0:
+        raise ValueError("spawnPointIndex must be a non-negative int")
+    if not isinstance(scenario["map"], str) or not scenario["map"]:
+        raise ValueError("map must be a non-empty string")
+    if "note" in scenario and not isinstance(scenario["note"], str):
+        raise ValueError("note must be a string")
     if "target" not in scenario:
         return None
     target = scenario["target"]
@@ -65,8 +83,8 @@ def target_of(scenario):
     if target["roleName"] != TARGET_ROLE:
         raise ValueError(f"target roleName must be {TARGET_ROLE}")
     distance = target["distanceAheadM"]
-    if not _finite(distance) or distance <= 0:
-        raise ValueError(f"target distanceAheadM must be a finite number > 0; got {distance!r}")
+    if not _finite(distance) or distance <= 0 or distance > MAX_DISTANCE_M:
+        raise ValueError(f"target distanceAheadM must be a finite number in (0, {MAX_DISTANCE_M:g}]; got {distance!r}")
     if target["hold"] != TARGET_HOLD:
         raise ValueError(f"target hold must be {TARGET_HOLD!r}")
     return target
@@ -75,19 +93,28 @@ def target_of(scenario):
 def target_transform(world_map, point, distance, carla):
     """Return the transform ``distance`` metres ahead of spawn ``point`` along its lane (fail-closed).
 
-    Exactly one waypoint must lie ahead (no lane end, no branch), outside a junction. The rotation is the
-    lane heading; the height is lifted by the map's own spawn-point lift above its waypoint.
+    The lane is walked in steps of at most ``WALK_STEP_M``: each step must have exactly one continuation (no
+    lane end, no branch) and no waypoint from the spawn waypoint to the target may lie in a junction. The
+    rotation is the lane heading; the height is lifted by the map's own spawn-point lift above its waypoint.
+    ``get_waypoint`` projects the spawn point onto the nearest driving lane: the lateral placement is a live
+    check (R-4).
     """
 
     start = world_map.get_waypoint(point.location)
     if start is None:
         raise ValueError("the ego spawn point is not on a driving lane")
-    ahead = list(start.next(distance))
-    if len(ahead) != 1:
-        raise ValueError(f"{len(ahead)} lane waypoints {distance} m ahead of the ego spawn point; exactly one is required")
-    waypoint = ahead[0]
-    if waypoint.is_junction:
-        raise ValueError("the target waypoint lies in a junction")
+    if start.is_junction:
+        raise ValueError("the ego spawn waypoint lies in a junction")
+    steps = math.ceil(distance / WALK_STEP_M)
+    waypoint = start
+    for i in range(steps):
+        step = WALK_STEP_M if i < steps - 1 else distance - WALK_STEP_M * (steps - 1)
+        ahead = list(waypoint.next(step))
+        if len(ahead) != 1:
+            raise ValueError(f"{len(ahead)} lane continuations at step {i + 1} of {steps} towards the target; exactly one is required")
+        waypoint = ahead[0]
+        if waypoint.is_junction:
+            raise ValueError(f"the lane enters a junction at step {i + 1} of {steps} towards the target")
     lift = point.location.z - start.transform.location.z
     location, rotation = waypoint.transform.location, waypoint.transform.rotation
     if not all(_finite(v) for v in (lift, location.x, location.y, location.z, rotation.pitch, rotation.yaw, rotation.roll)):

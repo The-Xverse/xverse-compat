@@ -36,21 +36,25 @@ def _loc(x, y, z):
 
 
 class _Waypoint:
-    """A straight lane along +x at road height 0.0; ``next`` returns ``branches`` waypoints."""
+    """A straight lane along +x at road height 0.0, with an optional junction span, branch point and lane end."""
 
     def __init__(self, x, lane_map):
         self.x, self.map = x, lane_map
-        self.is_junction = lane_map.junction_from is not None and x >= lane_map.junction_from
+        self.is_junction = lane_map.junction is not None and lane_map.junction[0] <= x < lane_map.junction[1]
         self.transform = SimpleNamespace(location=_loc(x, 5.0, 0.0), rotation=SimpleNamespace(pitch=0.0, yaw=0.0, roll=0.0))
 
     def next(self, distance):
         self.map.asked.append(distance)
-        return [_Waypoint(self.x + distance, self.map) for _ in range(self.map.branches)]
+        nx = self.x + distance
+        if self.map.end_at is not None and nx > self.map.end_at:
+            return []
+        branches = 2 if self.map.branch_at is not None and self.x < self.map.branch_at <= nx else 1
+        return [_Waypoint(nx, self.map) for _ in range(branches)]
 
 
 class _LaneMap:
-    def __init__(self, branches=1, junction_from=None, on_lane=True):
-        self.branches, self.junction_from, self.on_lane, self.asked = branches, junction_from, on_lane, []
+    def __init__(self, junction=None, branch_at=None, end_at=None, on_lane=True):
+        self.junction, self.branch_at, self.end_at, self.on_lane, self.asked = junction, branch_at, end_at, on_lane, []
         self.points = [SimpleNamespace(location=_loc(0.0, 0.0, 0.3)), SimpleNamespace(location=_loc(10.0, 5.0, 0.6))]
 
     def get_spawn_points(self):
@@ -93,6 +97,19 @@ def test_wp02_schema_1_and_no_schema_keep_the_phase7_scenario():
     ({"egoBlueprint": "vehicle.audi.etron", "spawnPointIndex": 1, "target": TARGET}, "needs schema"),
     ({**_scenario(), "schema": "xverse-compat.carla-live-scenario/3"}, "unknown live-scenario schema"),
     ({**_scenario(), "weather": "ClearNoon"}, "unknown live-scenario members"),
+    ({k: v for k, v in _scenario().items() if k != "egoBlueprint"}, "missing live-scenario members"),
+    ({k: v for k, v in _scenario().items() if k != "spawnPointIndex"}, "missing live-scenario members"),
+    ({k: v for k, v in _scenario().items() if k != "map"}, "missing live-scenario members"),
+    ({**_scenario(), "egoBlueprint": "walker.pedestrian.0001"}, "egoBlueprint"),
+    ({**_scenario(), "egoBlueprint": None}, "egoBlueprint"),
+    ({**_scenario(), "spawnPointIndex": True}, "spawnPointIndex"),
+    ({**_scenario(), "spawnPointIndex": "1"}, "spawnPointIndex"),
+    ({**_scenario(), "spawnPointIndex": -1}, "spawnPointIndex"),
+    ({**_scenario(), "spawnPointIndex": 1.0}, "spawnPointIndex"),
+    ({**_scenario(), "map": 42}, "map must be"),
+    ({**_scenario(), "map": ""}, "map must be"),
+    ({**_scenario(), "note": {"text": "x"}}, "note must be"),
+    ({k: v for k, v in _scenario().items() if k not in ("egoBlueprint", "target")}, "missing live-scenario members"),
     ({**_scenario(), "target": None}, "must be an object"),
     ({**_scenario(), "target": [TARGET]}, "must be an object"),
     ({**_scenario(), "target": {k: v for k, v in TARGET.items() if k != "distanceAheadM"}}, "members must be exactly"),
@@ -102,6 +119,7 @@ def test_wp02_schema_1_and_no_schema_keep_the_phase7_scenario():
     (_scenario(distanceAheadM=True), "distanceAheadM"),
     (_scenario(distanceAheadM=math.nan), "distanceAheadM"),
     (_scenario(distanceAheadM=math.inf), "distanceAheadM"),
+    (_scenario(distanceAheadM=S.MAX_DISTANCE_M + 0.5), "distanceAheadM"),
     (_scenario(distanceAheadM="40"), "distanceAheadM"),
     (_scenario(distanceAheadM=None), "distanceAheadM"),
     (_scenario(blueprint="walker.pedestrian.0001"), "vehicle"),
@@ -130,16 +148,25 @@ def test_wp02_the_target_role_is_trackable_by_the_wp01_observer():
 def test_wp02_target_is_placed_in_the_ego_lane_at_the_declared_distance():
     lane_map = _LaneMap()
     at = target_transform(lane_map, lane_map.points[1], 40.0, CARLA)
-    assert lane_map.asked == [40.0]
+    assert lane_map.asked == [S.WALK_STEP_M] * 40 and S.WALK_STEP_M == 1.0  # walked in 1 m steps
     assert (at.location.x, at.location.y) == (50.0, 5.0)  # one waypoint 40 m ahead along the lane
     assert at.location.z == pytest.approx(0.6)  # the map's own spawn-point lift above its waypoint, not an invented one
     assert (at.rotation.pitch, at.rotation.yaw, at.rotation.roll) == (0.0, 0.0, 0.0)  # lane heading
 
 
+def test_wp02_the_walk_ends_exactly_at_a_fractional_distance():
+    lane_map = _LaneMap()
+    at = target_transform(lane_map, lane_map.points[1], 40.5, CARLA)
+    assert len(lane_map.asked) == 41 and lane_map.asked[-1] == 0.5 and at.location.x == 50.5
+
+
 @pytest.mark.parametrize("lane_map, message", [
-    (_LaneMap(branches=0), "0 lane waypoints"),
-    (_LaneMap(branches=2), "2 lane waypoints"),
-    (_LaneMap(junction_from=30.0), "junction"),
+    (_LaneMap(end_at=30.0), "0 lane continuations at step 21 of 40"),  # the lane ends before the target
+    (_LaneMap(branch_at=50.0), "2 lane continuations at step 40 of 40"),  # a branch at the target
+    (_LaneMap(branch_at=25.0), "2 lane continuations at step 15 of 40"),  # a branch between ego and target
+    (_LaneMap(junction=(48.0, 60.0)), "junction at step 38 of 40"),  # the target in a junction
+    (_LaneMap(junction=(20.0, 30.0)), "junction at step 10 of 40"),  # a junction between ego and target (LOW-1)
+    (_LaneMap(junction=(5.0, 15.0)), "ego spawn waypoint lies in a junction"),
     (_LaneMap(on_lane=False), "not on a driving lane"),
 ])
 def test_wp02_ambiguous_or_missing_placement_is_refused_before_anything_is_spawned(lane_map, message):
@@ -189,6 +216,21 @@ def test_wp02_live_source_binds_the_ego_registers_the_target_and_writes_the_ego_
     source.close()
     assert world.actors == [] and destroyed[0] == "xverse-lite-target" and destroyed[-1] == "xverse-lite-ego"
     assert len(target.controls) == 1  # the close holds the ego, never the target
+
+
+def test_wp02_close_destroys_every_actor_even_when_one_destroy_fails():
+    world = _TargetWorld()
+    world.attributes_ok = True
+    source = LiveSource(SimpleNamespace(get_world=lambda: world), -1, -1, -1, D, carla_module=CARLA, scenario=_scenario())
+    target = world.actors[3]
+
+    def refuse():
+        raise RuntimeError("destroy failed")
+    target.destroy = refuse
+    with pytest.raises(RuntimeError, match="owned actors not destroyed: .*xverse-lite-target: RuntimeError: destroy failed"):
+        source.close()
+    assert world.actors == [target]  # camera, radar and ego destroyed after the target's failure (LOW-5)
+    assert len(source.destroy_failed) == 1 and world.settings.synchronous_mode is False  # settings restored
 
 
 # ---- restore guard -----------------------------------------------------------------------------------
