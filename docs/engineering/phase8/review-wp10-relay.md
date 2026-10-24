@@ -129,3 +129,109 @@ end: not M1, no CARLA, no live run.
      - N1 and N2;
      - PAIR-1 determinism: two runs with different unit answer jitter give identical deliveries and fault records,
        host times aside.
+
+2. **Implementation, conformance to platform amendment ST-2, and offline verification (written at 15:41:25
+   2026-10-24).**
+   - **Commits.** `11e117a` is finding 1, before any code; `5bb35ba` is the code and tests.
+   - **Contract change during the increment (ST-2).** The coordinator relayed platform review finding 3:
+     ADR-ML3-SIMTIME-0001 amendment ST-2, and the thesis row "WP-10 #3 review dispositions". The platform side is
+     not merged. This branch conforms to the contract as specified, tested with fakes.
+     - **`resumed`.** A new hub frame `resumed` (`entry`, `phase`, `step`, `ackSeq`) is the hub's next frame after
+       Maestro's `ack` of a hold. It echoes the ack's `seq`, entry, phase and step. Only then does the simulator
+       step again, and no frame is sent between `hold` and `resumed`.
+       - After a `refused` ack, no `resumed` is sent. The run ends (`HubInvalidRun`) and the simulator never steps
+         again.
+     - **`armed` first.** Every `armed` precedes any report: the hub arms the whole batch before its first tick.
+     - **Benign close.** The hub closes its end at its own stop only when settled, that is, when every entry is
+       final and no hold or report is pending.
+       - Otherwise it records `stopped-with-pending` with the pending entries.
+       - It then keeps the channel open until Maestro closes it, at most `arm_timeout_s`, and only then closes.
+       - When Maestro's `close` arrives mid-run, the hub stops every active relay fault (`cleared-by-close`) and
+         ends with `end_reason: maestro-closed`.
+   - **What was built.** It follows the design in finding 1.
+     - `live/hub_relay.py` (+~420 lines, standard library) and hooks in `live/hub.py`.
+     - Optional `faultAdmission` and `freezeTargets` in the topology record.
+     - The frozen-unit rules (R-9), and the repairs of N1 (one deadline per round) and N2 (a failed `lost` or
+       `origin` send loses the unit at once).
+     - The platform package is not imported. The frame contract is re-implemented from the ADR.
+   - **Tests.** `tests/live/test_phase8_hub_relay.py` has 38 cases, offline. Maestro is a fake end on a
+     `SOCK_SEQPACKET` socketpair; the units and the adapter link are the hub-core fakes, over the real MLOC topology
+     form `5f71cde`.
+     - **Topology and codec:**
+       - fault admission and freeze targets come from the form, and an unknown freeze unit is refused;
+       - the Maestro frame codec refuses 6 malformed frames.
+     - **Arming re-check (15 refusals):**
+       - kind not admitted on F12; a non-hub flow; a refused unit;
+       - CC-1 with a lone member, and CC-1 with mismatched onsets;
+       - a duration above the thaw bound, and an unknown bound;
+       - both loss parameters given; `delay-ticks`;
+       - a different `stepNs`; mismatched grid steps;
+       - an unexpected entry; arming not completed in time;
+       - proposal kinds with no sets; two seeds.
+
+       In every refusal case nothing is sent and the link is closed. A complete CC-1 pair with a bounded duration
+       is armed. A refusal through the hub is a `HubInvalidRun`.
+     - **Reports and the grid:**
+       - reports come at the exact steps, ordered apply before clear, with `resumed` after each hold;
+       - `time` frames come only after arming;
+       - every `simNs` equals `step · step_ns`;
+       - an off-grid frame is an invalid run.
+     - **Message faults:**
+       - `loss` with `every` drops exactly the alternate in-window sequences, with digest-only records and
+         `cleared.items` equal to the number dropped;
+       - `loss-ratio` is a pure function of the seed, the entry and the sequence (equal under different unit
+         jitter, different under another seed);
+       - `stale` redelivers the previous sequence;
+       - `delay-ns` of one step plus 1 ns releases after two steps;
+       - F12 proposals are replaced and injected through `ProposalSets`, with the injection at the onset step;
+       - F13 delivers nothing inside the window.
+     - **Handshake:**
+       - the frozen unit gets no round at steps 3 and 4, its queued deliveries come first at step 5, it produces
+         nothing in the window, and the run stays valid;
+       - a refused ack and a missed ack (the hold bound) are invalid runs;
+       - Maestro's close stops the relay;
+       - no unit receives any fault identifier.
+     - **N1 and N2.** All sends of a round share one deadline, and a failed `lost` send loses the unit in the same
+       step.
+     - **PAIR-1.** Two runs with four faults (ratio loss, freeze, stale and F13 loss) and different unit-answer
+       jitter give identical fault records (host time aside), identical deliveries and identical Maestro-side frame
+       sequences.
+     - **ST-2:**
+       - `resumed` immediately follows each `hold`, echoing the ack's sequence number;
+       - `armed` precedes every report;
+       - a settled hub closes at once, and an unsettled one waits for Maestro, at least 0.5 s of a 0.6 s bound,
+         recording the pending entry.
+     - **Stability.** 38 of 38 passed in each of 3 consecutive runs.
+     - **Mutation controls (run, then reverted; the files are byte-identical to `5bb35ba`):**
+       - with no `resumed`, 2 cases fail;
+       - when frozen units still get rounds, the handshake case fails;
+       - with CC-1 disabled, both CC-1 refusals fail;
+       - with loss selection by host time, the ratio and PAIR-1 cases fail.
+   - **Suite.** `env -u PYTHONPATH PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src /dev/shm/compat-p6-venv/bin/python
+     -m pytest tests -q -p no:cacheprovider` gives **573 passed, 39 subtests**, including the 38 new cases. The
+     51 existing hub-core cases are unchanged and pass with the N1 and N2 repairs. No CARLA and no live run were
+     used.
+   - **Residuals (open).**
+     - **R-1 (P-1): the platform `arm` has no batch end.** The hub requires `expected_entries` from the harness
+       (increment #5). The proposed platform amendment is a `count` (and `index`) on `arm`.
+     - **R-2 (P-2): the time domains differ.**
+       - The blueprints key simulator-time faults to `carla-simulation`.
+       - The platform requires `SimulationClock.domain`, the single Maestro-form domain `experiment-time`.
+       - Increment #5 must align them, or the platform must accept the topology-form domain.
+     - **R-3. The H3 proposal sets** are an interface only: AD-11 and AD-27 data, which do not exist yet.
+       Injection happens once, in round 0 of the onset step.
+     - **R-4. Deliveries to a frozen unit are queued and delivered after the thaw, rather than dropped.** This
+       models a frozen process whose socket buffer is kept. It is deterministic by step, and is a design choice
+       for the author and AD-12.
+     - **R-5. Values.** `step_ns`, `grid_tolerance_ns`, `arm_timeout_s` (which also bounds the wait at an
+       unsettled stop), the Maestro send timeout, the hold bound, the wait bound and the `SimTimeBound` are D-4c
+       or K-10 inputs, and every one is required.
+     - **R-6. Peer authentication.** The hub connects to a path that the harness supplies, and does not
+       authenticate Maestro. Maestro checks only the uid (platform R3).
+     - **R-7. A frozen unit's link failures surface only after the thaw.** Its inbox is not read while it is
+       frozen.
+     - **R-8. Interoperability.** A wire-level test against the real platform `HubChannel`, with ST-2, has not
+       run, because the platform side is unmerged and compat does not import it. It belongs to increment #5 or a
+       harness check.
+     - **R-9. Live behaviour.** CARLA, the real frame grid tolerance and D-4c are unverified (E8-3a, increment #5).
+   - **Status.** Candidate for independent review. Not accepted, not merged, not pushed.
