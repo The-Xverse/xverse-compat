@@ -1503,3 +1503,28 @@ engineering stabilization candidate: not M1, not AEB evidence.
       - **LOW-7 (`run-live.sh:37-38`).** A partially failed `cp -a` can leave a truncated `$RUN/owned-actors.json`.
         The fallback to the stage then does not apply, because the file exists. Use the stage registry whenever
         the copy failed.
+54. **Dispositions of finding 53 (written at 05:48:56 2026-10-24; blueprints `1650473`).**
+    - **Repaired.**
+      - **LOW-1.** `clean_readiness_failure` excuses `P8.pathHolds` only on the `adapter-close` path with no
+        control frame ever sent. It reads the run's `soak-audit.json`, and two new parametrized cases cover it.
+        This is the observed pattern in both recorded cold failures (dev3 `035633` and dev6 `045227`).
+      - **LOW-3.** The soak report's note now says the results describe a warmed-up server.
+      - **LOW-7.** After a failed or partial copy, `run-live.sh` gives the guard the stage's own registry, even
+        where a truncated copy exists.
+      - Soak logic tests: 31 passed.
+    - **Declared.**
+      - **LOW-2.** The `warmup-` naming in `run_one` is tested only through the soak itself. The fake bypasses
+        `run_one`, and the naming is checked again in the first soak manifest.
+      - **LOW-6.** The stale-stage refusal is visible in the soak console and gives a FAIL that stops the soak.
+    - **Errata.**
+      - **LOW-4.** The population of finding 52 was every `maestro-run.json` with a coverage file under
+        `runs/lite-stabilization-s1/*/`, excluding those that ended at start-up with `ML-PROBE-NOT-READY`.
+        Finding 53 counts 66 and 70 by different globs.
+        - The Phase 7 run `lite-20261023T002318-nominal` (20 health rows unverifiable) falls outside that
+          population.
+        - It predates S1a, under a different pattern, and is not part of this record.
+      - **LOW-5.** dev6 was the H2 live set on `7677078` (H1 = 1.95 s). Its first run after the server start failed
+        readiness (adapter not ready by 1.70 s). The other seven runs passed, including cancel-paused three times.
+        - The cold-start adapter latencies recorded so far are 1.31, 1.36, >1.45, 1.74, 1.68, >1.70 and 1.28 s.
+        - At 1.7 s (last attempt at 1.45 s), about half of the S1d warm-ups are therefore expected to fail cleanly
+          and be excused. This is not a regression.
