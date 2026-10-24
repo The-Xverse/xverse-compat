@@ -324,3 +324,35 @@ Findings are recorded before repairs. This is offline engineering tooling, never
    - **Suite.** With the venvs: 478 passed, 39 subtests (finding 2: 477). Without them: 467 passed, 11 skipped. Both venvs
      are bytecode-free.
    - **Status.** Candidate for a focused re-review and the author's acceptance. Not accepted, not merged, not pushed.
+
+6. **Independent focused re-review by Codex (2026-10-24), PASS WITH NOTES.**
+   - **Input.** Candidate `4d1ee3535359459dff2aba7f21d689ffa57bdf7e`, product and tests from finding 5. Reviewed the
+     complete repair diff from `848aa86`, the build script and training test/probe entry paths, the four delegated
+     LOW dispositions, and the amended thesis `design/wp09-training-pipeline.md` §5. No product change was made.
+   - **LOW-1:** closed by the explicit `irVersion == 7` export assertion and the design amendment. The record's
+     original IR-8 statement is historical; the current method is the pinned exporter's IR 7 at opset 13.
+   - **LOW-2:** closed in source. Every torch/ONNX Runtime test has `needs_netns`, and `_run` unconditionally prefixes
+     `unshare -rn`; there is no networked fallback. The interpreter arguments remain `-S -s -B`, with bytecode
+     disabled. A missing namespace facility skips these tests rather than running an inference/training import.
+   - **LOW-3:** closed for the declared Linux build path. Before any environment access, creation or import, the
+     script checks `/proc/self/net/dev` and rejects visible non-loopback interfaces. Independently exercised this
+     refusal on the current host using `--record-only` with deliberately nonexistent environment/wheel paths and a
+     temporary record path: **exit 6**, the expected diagnostic, **no record created**. No venv was opened or rebuilt.
+   - **LOW-4:** closed in source and the existing small identity record. It includes `installer.baseSitePackages` and
+     `basePthHooks`; independently matched every recorded hook hash against the current small `.pth` files and
+     matched the lock SHA-256. The existing record names schema `xverse-compat.training-env-record/1`, import return
+     code 0, interfaces `["lo"]`, and repository revision `848aa86daeca35fd90b623362c92c6ad182d209c` as finding 5 states.
+     This metadata inspection does not repeat the full environment-tree verification.
+   - **Other checks performed now:** `bash -n tools/training/make-training-env.sh`, Python AST parsing of
+     `tests/training/test_training_env.py`, and `git diff --check`; all pass. The script still uses a clean environment,
+     the hash-locked offline install, no dependencies/compilation, the isolated import pattern and the post-freeze
+     bytecode check. `--record-only` skips creation and installation and keeps its import check network-isolated.
+   - **Verification explicitly deferred:** no pytest, torch/ONNX Runtime import, wheel/environment-tree rehash,
+     build or training was run in this pass, because the full platform installed-wheel regression is active. Finding
+     5's **478 passed / 39 subtests**, and its no-venv **467 passed / 11 skipped**, remain previously recorded
+     evidence only. After assembly with current compat main (which now includes WP-08b), run the full owning suite
+     once on a quiet host with the training and U4 venvs available, with torch and ORT inside `unshare -rn`. Recompute
+     the identity/tree checks then; this re-review does not claim those results on an assembled tree.
+   - **Residuals:** R-3 to R-10 stay carried as recorded. The real model and its tolerance remain later WP-09 #4 work,
+     with no new numeric protocol value. This finding is a source re-review verdict, **not acceptance, a merge, a
+     push, a real-model validation or a live-execution authorization**.
