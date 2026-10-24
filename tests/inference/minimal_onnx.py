@@ -79,8 +79,8 @@ def _node(op: str, inputs: list[str], outputs: list[str], name: str, ints: dict 
     return body
 
 
-def model_bytes() -> bytes:
-    """Return the serialized ``ModelProto``."""
+def model_bytes(metadata_in: dict | None = None) -> bytes:
+    """Return the serialized ``ModelProto``; ``metadata_in`` adds ``metadata_props`` entries (sorted by key)."""
 
     nodes = [_node("Conv", ["X", "W1", "B1"], ["c"], "conv", {"kernel_shape": [3, 3]}),
              _node("Relu", ["c"], ["r"], "relu"),
@@ -94,6 +94,8 @@ def model_bytes() -> bytes:
              + _bytes(11, _value_info("X", X_SHAPE)) + _bytes(12, _value_info("Y", (1, 1))))
     opset = _str(1, "") + _int(2, 13)
     metadata = _bytes(14, _str(1, "purpose") + _str(2, "xverse-compat WP-08 test model; not a thesis model"))
+    for key, value in sorted((metadata_in or {}).items()):
+        metadata += _bytes(14, _str(1, key) + _str(2, value))
     return _int(1, 8) + _str(2, "xverse-compat-minimal-onnx") + _str(3, "1") + _bytes(7, graph) + _bytes(8, opset) + metadata
 
 

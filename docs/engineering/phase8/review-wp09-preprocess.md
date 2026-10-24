@@ -63,3 +63,51 @@ repairs. This is an engineering increment verified offline; no parameter value i
        - the `preprocess_frame` refusals;
        - an ONNX test model carrying the binding: its digest changes with any parameter change, ONNX Runtime exposes the
          entries (`custom_metadata_map`), and `verify_binding` accepts the matching parameters and refuses others.
+2. **Implementation of finding 1 (2026-10-24 15:26:12).**
+   - **Change.**
+     - `src/xverse_compat/inference/preprocess.py` (new): `load_params` returning `PreprocessParams`,
+       `preprocess`, `preprocess_frame`, `binding`, `verify_binding` and `code_sha256`. It imports only the
+       standard library at module level.
+     - `tests/inference/minimal_onnx.py`: `model_bytes(metadata_in=None)` adds sorted `metadata_props` entries.
+       With no argument the bytes are unchanged; the WP-08 fixture digest `29f7e86b…` still holds and its test passes.
+     - `tests/inference/preprocess_probe.py` (new, venv side) and `tests/inference/test_preprocess.py` (new).
+   - **Tests.** 24 tests.
+     - 19 run everywhere:
+       - 16 refused records: missing or extra members, wrong schema, encoding, sizes, bools, a crop outside the input,
+         a non-integer `area-integer` factor, an unknown method or channel order, bad `mean`/`std`, `None`;
+       - the binding covers every parameter (six variants give seven distinct digests), the code hash and the numpy
+         version; `verify_binding` refuses each mismatch and an empty map;
+       - the U4 lock pins `numpy==2.5.4`;
+       - the module's standard-library imports.
+     - 5 run in the U4 venv and skip cleanly without it (`XVERSE_COMPAT_INFERENCE_ENV=/nonexistent-env`: 19 passed,
+       5 skipped):
+       - **both methods** (`area-integer` 8×6 to 4×3; `nearest` with a 7×5 crop at (1, 1) to 3×2, `bgr`) are
+         **bit-equal to an independent pure-Python implementation** cast with `struct`, and equal on repetition, with
+         shape `[1, 3, h, w]`, float32 and C-contiguous;
+       - bit-exact across three fresh processes;
+       - `preprocess_frame` gives the same tensor through a `verified` WP-06 `FrameResult`, and refuses
+         `mismatch`, `missing`, a differing frame format and a short buffer;
+       - **the binding in a model:** the test ONNX model carries the four entries; ONNX Runtime exposes them through
+         `custom_metadata_map`; `verify_binding` passes; numpy is 2.5.4; and the two parameter sets give two model
+         digests.
+   - **Mutation checks (not committed; restored).** Each fails tests:
+     - float32 arithmetic instead of the float64 step: 2;
+     - `nearest` with `floor(i·in/out)`: 1;
+     - a binding with a constant code hash: 1.
+   - **Venv integrity.** No `__pycache__` or `.pyc` in the U4 venv after the runs (the probe runs with `-B`). The
+     WP-08 identity test, which recomputes the venv tree digests, still passes.
+   - **Suite.** With the venv: 443 passed, 39 subtests (base `95e9e7a`: 419). Without it: 433 passed, 10 skipped.
+   - **Residuals.**
+     - R-1. Every parameter value is `TODO: author decision` (AD-02): crop, method, output size, channel order,
+       `mean` and `std`. The `input` member must equal the WP-06 frame format, which AD-02 also fixes.
+     - R-2. Bit-exactness is shown **on this host** for numpy 2.5.4. The method uses only exact integer arithmetic and
+       single elementwise IEEE-754 operations, but no claim is made for other hosts or numpy builds. The WP-09 #3
+       training venv must pin `numpy==2.5.4`, and `verify_binding` refuses a model bound under another numpy version.
+     - R-3. Two resize methods only, and no colour transform beyond channel selection. `area-integer` needs integer
+       factors, and `nearest` aliases. The choice is an AD-02 item.
+     - R-4. The code hash covers this module's source bytes, so any edit, even a comment, invalidates every bound model.
+       That is intended; freezing makes the module immutable for the campaign.
+     - R-5. Writing the binding into the real model is WP-09 #4; calling `verify_binding` in U4 after `load_model` is
+       WP-13.
+     - R-6. The per-frame cost at 800 × 600 is not measured (V-5, D-4c).
+   - **Status.** Candidate for independent review. Not accepted, not merged, not pushed.
