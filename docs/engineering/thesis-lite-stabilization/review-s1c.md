@@ -1423,3 +1423,83 @@ engineering stabilization candidate: not M1, not AEB evidence.
       - Recorded as platform finding 30 on the successor branch `candidate/lite-stabilization-s1a6-20261024` (from
         main `ee91697a4`), where it is being diagnosed before any repair.
       - S1c-2 acceptance and the S1d soak wait for that repair.
+53. **Independent re-review of the finding 50 repairs (blueprints `46a3497`, compat `517c2b8`, findings 51–52,
+    thesis DR-19 and the plan.md soak amendment; evidence `s1c2-part2-dev6` and `-dev7`; written at 05:45:49
+    2026-10-24): PASS WITH NOTES, 0 HIGH, 0 MEDIUM and 7 LOW. Every finding 50 item is closed or validly
+    declared. No new item blocks S1c-2 acceptance or the S1d soak.** S1c-2 acceptance still waits for platform
+    finding 30 / DR-20, as finding 52 records; this review does not assess DR-20.
+    - **Checks performed.** Read-only.
+      - The blueprints worktree is clean at `46a3497`. `soak/test_run_soak_logic.py`: 29 passed. Compat `tests`: 244
+        passed, 39 subtests passed.
+      - `sha256sum -c` passes for dev3–dev7, and every file in those sets is listed in its `SHA256SUMS`.
+      - The dev6 and dev7 `maestro-run.json`, `run-live.log`, `restore-guard.json`, `argus-verify.txt`,
+        `identities.txt` and every `lifecycle-coverage.json` under `runs/` were read.
+      - `soak/audit.py`, which only reads its inputs, was run on the recorded cold `ML-PROBE-NOT-READY` runs
+        dev6 `045227` and dev3 `035633`.
+    - **Finding 50 items.**
+      - **HIGH-1: closed.**
+        - H1 = 1.7 s (`test_live_closed_loop.py:114`).
+        - dev7 ran blueprints `46a3497` and platform-src `ee91697a4`. Over its 23 marker start steps,
+          L − t0 − 2.63 − W = 0.371–0.539 s, with none cut. This matches finding 52.
+      - **MEDIUM-1: closed.**
+        - `clean_readiness_failure` (`run_soak.py:76-85`) requires `ML-PROBE-NOT-READY`, `cleanupComplete`, a
+          healthy server after the run and an empty residue list. Audit failures must stay within
+          `WARM_UP_EXCUSED_CHECKS` (`:68`), and the check names match `audit.py:176-233`.
+        - A missing file returns False, so the check fails closed. A restore failure (unhealthy after) is not
+          excused, nor are `P1.noResidue`, `P1.worldRestoredNoVehicles`, P7 or `P8.observerFooterSigterm`.
+        - `CriterionStop` (`:367`) is caught in `execute` (`:415`), which calls `_stop`; the `finally` stops the
+          server.
+        - The audit of the two real cold runs gives exactly {P1.flowRootClosedComplete,
+          P1.maestroRootClosedComplete, P1.succeededWithMarkers, P8.pathHolds}, on the adapter-close path. A
+          real cold warm-up is therefore excused, as intended.
+      - **MEDIUM-2: closed.** On `46a3497`, dev7 shows all of the following:
+        - every one of the 8 `run-live.log` files has "staged run directory copied", before the guard;
+        - no `/dev/shm/xverse-lite-run-*` is left;
+        - in both cancel-paused runs, the guard destroyed ego, camera and radar through the copied registry,
+          with `destroyFailed` and `remaining` empty and the world restored;
+        - the copied driver flow roots verify as expected: closed and complete, or open where DR-6 (c) applies.
+
+        DR-19 (3) and the plan.md amendment declare the tmpfs condition.
+      - **MEDIUM-3: closed.** The seals are valid and complete. `SEALED-AFTER-RUN.txt` states the sealing time for
+        dev3–dev6.
+      - **LOW-1 to LOW-9: closed or declared.** The errata in LOW-3/4/5 are recorded in finding 51. The code repairs
+        for LOW-1, LOW-7 and LOW-8 are correct. In LOW-9, the command is now the one actually run, and the log hash
+        is unchanged. The stale comment is corrected. Cancel-paused at observe tick 24 has now passed start-up (dev6
+        ×3, dev7 ×2). The residuals are listed below.
+    - **Finding 52 accuracy.**
+      - These items are accurate as written: the results, margins (1.029 and 1.974 s), the cold adapter at
+        1.277 s, the times 05:08–05:19 and the two `ML-SCHEDULE-EVIDENCE-INCOMPLETE` runs.
+      - The two failed runs match the record. Each has one `unverifiable` row, `…g1.health.5` of the
+        carla-adapter, with a health event id. The Maestro writer is `failed`. Cleanup is complete, the reap
+        codes are 0 and there is no persistence failure.
+      - The failure is fail-closed. Attributing it to the platform coverage assessment, and not to the harness,
+        is reasonable, and it is stated as suspected.
+      - See LOW-4 below for the run count.
+    - **LOW (none blocking).**
+      - **LOW-1 (`run_soak.py:68`).** `P8.pathHolds` is excused on any path, but a cold failure fails it only
+        because no control tick exists: adapter-close with `lastControlFrame` None. A guard-path violation (the
+        ego driven before the destroy) in a warm-up would also be excused. No control is sent before tick 1, so
+        the risk is small. Narrow the excuse to adapter-close with no control tick.
+      - **LOW-2.** The `warmup-` naming and tag-before-save in `run_one` (`:296`) are untested, because
+        `Fake.run_one` (`test_run_soak_logic.py:22`) bypasses the real `run_one`. Add a test with `subprocess.run`
+        and the audit stubbed.
+      - **LOW-3 (`run_soak.py:532`).** The report `note` still does not say that the results describe a warmed-up
+        server. plan.md does say so.
+      - **LOW-4.** Finding 52's "71 recorded runs that got past start-up" does not name its population. I count 66
+        under `lite-stabilization-s1` including dev6, and 70 over `runs/*/*/*`.
+        - Phase 7 `xverse-lite-live-20261022/lite-20261023T002318-nominal` (`ML-SCHEDULE-TEARDOWN-INCOMPLETE`)
+          has all 20 owned health rows `unverifiable`, with the same diagnostic text.
+        - That is a different signature, but "only these two" holds only for a single in-bracket row. Name the
+          population and the signature.
+      - **LOW-5.** The dev6 results are not recorded. Its first nominal after the server start failed
+        `ML-PROBE-NOT-READY` at W = 1.95 s, with the adapter not ready by 1.70 s, fail-closed and clean.
+        - Cold adapter latencies are now 1.311, 1.36, > 1.45, 1.74, 1.681, > 1.70 and 1.277 s.
+        - At 1.7 s (last attempt at 1.45 s), about half of the S1d warm-ups are therefore expected to fail. They
+          will be excused under DR-19 (2). Declare this expectation so that frequent warm-up failures are not
+          read as a regression.
+      - **LOW-6 (`run-live.sh:20`).** The stale-stage refusal exits before the log and the cleanup trap, so its
+        message is only in the soak's `.console`. In the soak, a missing run directory is classified as FAIL and
+        stops the soak, which is fail-closed. Note only.
+      - **LOW-7 (`run-live.sh:37-38`).** A partially failed `cp -a` can leave a truncated `$RUN/owned-actors.json`.
+        The fallback to the stage then does not apply, because the file exists. Use the stage registry whenever
+        the copy failed.
