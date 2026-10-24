@@ -1561,3 +1561,32 @@ engineering stabilization candidate: not M1, not AEB evidence.
     - **S1c-2 acceptance.** S1c-2 (findings 28–56) is accepted under the author's acceptance of 2026-10-24
       (thesis `author-decisions-20261023.md`, "Author acceptance"), which names S1c-2 acceptance. It is merged into
       compat and blueprints main and pushed.
+57. **S1d soak attempt 1 stopped by the soak's own health check (written at 07:56:06 2026-10-24, before any
+    repair).**
+    - **The attempt.** It started at 07:20 WEST from the clean detached main worktrees (compat `e05d467`, blueprints
+      `aceb5ae`) on platform `a9db0ac39`, with the pinned environment.
+      - The three gap no-carla runs PASS.
+      - Server 1 then failed its initial health check, and so did the restart, server 2.
+      - DR-11 stopped the soak at 07:23 (server failures 2; both servers were killed after ignoring TERM, and
+        recorded).
+      - Evidence: `runs/lite-stabilization-s1/s1d-soak-20261024-attempt1` (`SHA256SUMS`).
+    - **Cause.**
+      - `soak/health_check.py` waits passively for a frame (`wait_for_tick(5.0)`).
+      - A freshly started CARLA server on this host is synchronous (`fixedDeltaSeconds` 0.05) with no tick owner.
+        Every recorded first run after a server start shows `world-before.json` `synchronousMode: true`, across
+        eleven sets (Phase S1c dev to dev8, and VS-09).
+      - So no frame comes, and the check times out (`RuntimeError: time-out of 5000ms …`).
+      - The live harness handles this state: the adapter owns the ticks during a run, and the restore guard
+        restores a synchronous state with no tick owner to asynchronous (DLG-11a).
+      - The soak runner's server start was never exercised live before attempt 1, and the offline tests replace
+        it with fakes.
+    - **This is a soak-tooling defect.** It is not the stack or the harness run path.
+    - **Proposed repair (thesis DR-21).**
+      - In a synchronous world the health check never ticks. It is healthy if the server answers `get_world`,
+        `get_settings`, the map, the actor listing and a non-blocking `get_snapshot`, and it records
+        `tickProbe: skipped-synchronous`.
+      - In an asynchronous world it is unchanged.
+      - `classify()`: an after-cleanup check that reports a synchronous world is a restore failure (FAIL) whether
+        or not it is healthy. This is stricter than DR-12.
+      - Tests come with a fake `carla` module. Then a live check of the start and the runs, and the soak restarts
+        from zero (FR-020).
