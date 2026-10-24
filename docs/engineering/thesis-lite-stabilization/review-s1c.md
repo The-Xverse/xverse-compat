@@ -1144,3 +1144,6 @@ engineering stabilization candidate: not M1, not AEB evidence.
       1.95 s (attempts at 0, 0.85 and 1.70 s), above the slowest measured adapter latency of 1.31 s. A cut window ends
       as `ML-PROBE-WINDOW-CUT`, and the harness records `readinessWindows` (W, W′, L, t0) from the dispatch result.
       Blueprints commits `4aa6d55` (H1 at 2.25 s, H3) and its successor (H1 at 1.95 s, readinessWindows).
+    - **Revision 2 (02:16:40).** Platform finding 26 (LOW-4) and thesis DR-17: H1 is 1.7 s (attempts at 0,
+      0.725 and 1.45 s), with 0.29 s headroom below the 1.99 s bound for the RA2 renewal and pre-release work. No harness
+      file imports the removed `CANCEL_CLOSE_RESERVE_SECONDS` (checked by grep over both S1c-2 worktrees).
