@@ -122,3 +122,19 @@ Repair design, before code: add only identityfilter(step,due) to that TEST-ONLY 
 and hold assertions, genuine hub loop and expected simulator times. No product/control/clock change. Repeat the
 exact test and full owning suite. Another reviewer must inspect the test-only delta before acceptance. No acceptance
 or merge follows the failing run; retain its evidence.
+
+## Finding 3: independent review of TEST-ONLY relay fixture successor (2026-10-24), PASS
+
+Reviewed root-authored repair `91a26533eea5c0c2fc71342c7a799f48a44460a8` after its recorded finding/design
+`46f56031cc11206927dcf55373b378dfa8950373`. The entire repair delta is the missing `filter(self, step, due)`
+method returning the identical `due` object in the host-sampling test's no-message-fault fake. The genuine
+`Hub._rounds` already calls this seam. There is no product code, clock, control, delivery, namespace, fixture
+expectation or host-sampling-point change. Existing hold advancement and expected host/simulator assertions remain.
+The previous full-suite failure is correctly attributed to the incomplete fake interface and is retained above.
+
+Independent source inspection and a tiny stdlib AST control confirm the exact identity method/signature;
+`git diff --check` passes. No pytest, adapter process, live CARLA or heavy check was run by this reviewer.
+Verdict: PASS for this narrow fixture repair; the full owning suite remains queued and acceptance/merge are
+withheld by this reviewer. This review does not independently re-review my original trace implementation;
+the coordinator's prior independent source review owns that separate scope. No scientific timing or validity
+claim follows from a TEST-ONLY fake clock or this source review.
