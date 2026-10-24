@@ -29,6 +29,8 @@ NETNS = shutil.which("unshare") is not None and subprocess.run(["unshare", "-rn"
 needs_venv = pytest.mark.skipif(not (PY313.is_file() and (SITE / "torch").is_dir() and (ENV / "identity.json").is_file()),
                                 reason=f"training venv absent: {ENV}")
 needs_both = pytest.mark.skipif(not ((SITE / "torch").is_dir() and (U4_SITE / "onnxruntime").is_dir()), reason="training or U4 venv absent")
+# finding 4, LOW-2: torch and ONNX Runtime run only without a network, so these tests skip when unshare -rn is unavailable
+needs_netns = pytest.mark.skipif(not NETNS, reason="unprivileged network namespaces (unshare -rn) unavailable")
 
 
 def _lock(path):
@@ -39,7 +41,7 @@ def _lock(path):
 def _run(site, module, *args, tmp):
     env = {"PATH": "/usr/bin", "HOME": "/nonexistent-training-home", "TMPDIR": str(tmp), "PYTHONDONTWRITEBYTECODE": "1",
            "OMP_NUM_THREADS": "1", "ORT_DISABLE_TELEMETRY": "1", "PYTHONPATH": f"{site}:{ROOT}"}
-    cmd = (["unshare", "-rn"] if NETNS else []) + [str(PY313), "-S", "-s", "-B", "-m", module, *map(str, args)]
+    cmd = ["unshare", "-rn", str(PY313), "-S", "-s", "-B", "-m", module, *map(str, args)]  # never with a network (LOW-2)
     proc = subprocess.run(cmd, env=env, cwd=ROOT, capture_output=True, text=True, timeout=300)
     assert proc.returncode == 0, proc.stderr[-2000:]
     return json.loads(proc.stdout.strip().splitlines()[-1])
@@ -79,15 +81,30 @@ def test_wp09_identity_record_matches_the_lock_and_the_venv_on_disk():
     assert not [p for p in (ENV / "venv").rglob("*") if p.name == "__pycache__" or p.suffix == ".pyc"]
     assert _tree(SITE) == record["sitePackagesTree"] and _tree(ENV / "venv") == record["venvTree"]
     assert "pip" not in {i.split("==")[0] for i in record["installed"]}
+    base = Path(record["installer"]["baseSitePackages"])  # finding 4, LOW-4: the base .pth hooks the installer runs
+    assert record["installer"]["basePthHooks"] == {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(base.glob("*.pth"))}
+    assert record["networkInterfaces"] == ["lo"]
 
 
 @needs_venv
+def test_wp09_the_build_script_refuses_when_a_network_interface_is_visible(tmp_path):
+    interfaces = [line.split(":")[0].strip() for line in Path("/proc/self/net/dev").read_text().splitlines()[2:]]
+    if interfaces == ["lo"]:
+        pytest.skip("only loopback is visible here: the refusal cannot be shown")
+    proc = subprocess.run(["bash", str(SCRIPT), "--record-only", str(ENV), "/nonexistent", str(LOCK), str(tmp_path / "r.json")],
+                          capture_output=True, text=True, timeout=60)
+    assert proc.returncode == 6 and "non-loopback network interfaces visible" in proc.stderr and not (tmp_path / "r.json").exists()
+
+
+@needs_venv
+@needs_netns
 def test_wp09_torch_is_the_cpu_build_and_uses_only_the_cpu(tmp_path):
     out = _run(SITE, "tests.training.train_probe", "cpu", tmp_path, tmp=tmp_path)
     assert out == {"version": "2.14.1+cpu", "cuda": None, "cudaAvailable": False, "threads": 1, "deterministic": True}
 
 
 @needs_venv
+@needs_netns
 def test_wp09_training_is_bit_reproducible_across_fresh_processes(tmp_path):
     first = _run(SITE, "tests.training.train_probe", "train", tmp_path, tmp=tmp_path)
     second = _run(SITE, "tests.training.train_probe", "train", tmp_path, tmp=tmp_path)
@@ -95,13 +112,16 @@ def test_wp09_training_is_bit_reproducible_across_fresh_processes(tmp_path):
 
 
 @needs_venv
+@needs_netns
 def test_wp09_export_uses_only_v1_operators_at_opset_13(tmp_path):
     out = _run(SITE, "tests.training.train_probe", "export", tmp_path, tmp=tmp_path)
     assert set(out["operators"]) <= V1_OPERATORS and out["opset"] == [13]
+    assert out["irVersion"] == 7  # finding 4, LOW-1: the IR the pinned exporter emits for opset 13 (design section 5)
     assert out["sha256"] == hashlib.sha256((tmp_path / "tiny.onnx").read_bytes()).hexdigest()
 
 
 @needs_both
+@needs_netns
 def test_wp09_the_export_runs_in_the_u4_onnx_runtime_and_matches_pytorch(tmp_path):
     exported = _run(SITE, "tests.training.train_probe", "export", tmp_path, tmp=tmp_path)
     out = _run(U4_SITE, "tests.training.ort_compare", tmp_path / "tiny.onnx", exported["sha256"], tmp_path / "io.json", tmp=tmp_path)

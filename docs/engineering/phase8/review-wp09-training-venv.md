@@ -274,3 +274,53 @@ Findings are recorded before repairs. This is offline engineering tooling, never
      unless one is needed.
    - The residuals cite the rows "WP-09 #3 unit isolation" and WP-08b; `jinja2` BSD-3-Clause is added to the licence
      list.
+5. **Repair of finding 4 (2026-10-24 15:50:25).**
+   - **LOW-1.** `test_wp09_export_uses_only_v1_operators_at_opset_13` asserts `irVersion == 7`, the IR that the pinned
+     exporter emits for opset 13 (thesis design §5, amended), so a change of exporter or `onnx` version is detected.
+     V-1 is re-run on the real model's IR in #4.
+   - **LOW-2.** `_run` always runs inside `unshare -rn`, with no plain-subprocess fallback. The four torch and ONNX
+     Runtime tests carry `needs_netns` and skip when unprivileged network namespaces are unavailable, as the WP-08
+     test does.
+   - **LOW-3.** `make-training-env.sh` refuses (exit 6, with the list of interfaces) unless the only interface in
+     `/proc/self/net/dev` is `lo`. **The check deliberately does not use `/sys/class/net`:** a sysfs mount shows the
+     namespace that mounted it, so inside `unshare -rn` it still lists every host interface (verified here: it listed
+     `enp67s0`, `docker0`, `tailscale0` and others), and the refusal would fire even when isolated.
+     `/proc/self/net/dev` follows the calling process's namespace: `lo` only inside `unshare -rn`, and the full host
+     list outside. The record now states `networkInterfaces: ["lo"]`. Test
+     `test_wp09_the_build_script_refuses_when_a_network_interface_is_visible` runs the script outside a namespace and
+     expects exit 6 with no record written; it skips on a host that shows loopback only.
+   - **LOW-4.**
+     - The record's `installer` gains `baseSitePackages` and `basePthHooks`, the SHA-256 of each `.pth` file in the
+       base pyenv site-packages that the installing pip (which cannot use `-S`) executes:
+       - `__editable__.xverse_hwsim-0.1.0.pth`: `89c6da71a76f26f85c787e6c734c7342b1164307a77e4f61691fb2a56be794e2`;
+       - `_editable_impl_xverse_xdl.pth`: `b6ee78a01b8e5fa7a6e5e0dbccdc4dbf305274d0f1415f7175df37b551de73ac`;
+       - `a1_coverage.pth`: `ef2ed06d19867ec669c09a804060666a9cd5e383af0a9d11aa2de79b77d448e8`.
+     - The identity test checks them against the files on disk.
+     - **`identity.json` was regenerated read-only, with no rebuild.** A new `--record-only` mode skips the venv
+       creation and the install, and still runs the network refusal, the wheel hash checks, the `-S -s -B` import check,
+       `pip freeze` and the bytecode check, all inside `unshare -rn`.
+     - Compared with the previous record:
+       - **added** `installer.basePthHooks`, `installer.baseSitePackages` and `networkInterfaces`;
+       - **changed** `lock.repositoryRevision` (`5ab0dc6` to `848aa86`, the checkout at regeneration) and
+         `envSizeKiB` (+8 KiB: `du` now includes the existing record, which the first build had not yet written);
+       - **unchanged**: everything else, including `sitePackagesTree`, `venvTree`, `installed`, the wheels and the
+         interpreter digests.
+       - No bytecode was written.
+   - **Licences.** `jinja2` 3.1.6 is **BSD-3-Clause**: its wheel classifier is "OSI Approved :: BSD License", and
+     `dist-info/licenses/LICENSE.txt` is the three-clause text, with the "Neither the name …" clause. This closes the
+     `TODO` of finding 2.
+   - **Residuals, updated.**
+     - R-1 and R-2 are **decided** in `decisions.md` row "WP-09 #3 unit isolation (R-1, R-2, R-9)" (15:39):
+       - every Phase 8 unit command uses `-S -s -B` and `PYTHONDONTWRITEBYTECODE=1`;
+       - the Phase 7 and S1 units are unchanged until after the soak, a declared limit of 1.0;
+       - `xverse_compat/__init__.py` becomes lightweight.
+       The repair is increment **WP-08b** (compat `candidate/phase8-wp08b-isolation-20261024`, `840091a`), which also
+       adds the U4 unit command template (`xverse_compat.inference.unit`). After WP-08b merges, `ort_compare.py` can
+       import `xverse_compat.inference.loader` normally instead of by file path (a cleanup for #4).
+     - R-9 is decided in the same row and repaired in WP-08b (the WP-08 build script's bytecode order).
+     - R-10 (new, LOW-4): the installing pip runs the base `.pth` hooks. The lock hashes protect what is installed,
+       the hooks are now recorded, and no unit runs them (`-S`).
+   - **Tests.** `tests/training/test_training_env.py`: 8 tests (7 before, plus the network-refusal test).
+   - **Suite.** With the venvs: 478 passed, 39 subtests (finding 2: 477). Without them: 467 passed, 11 skipped. Both venvs
+     are bytecode-free.
+   - **Status.** Candidate for a focused re-review and the author's acceptance. Not accepted, not merged, not pushed.
