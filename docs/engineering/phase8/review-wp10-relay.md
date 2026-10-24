@@ -457,3 +457,76 @@ end: not M1, no CARLA, no live run.
      - R-3 and R-5 to R-9 are unchanged. R-8, the wire test against the platform with ST-2, is the gate before any
        live run.
    - **Status.** Candidate for independent re-review. Not accepted, not merged, not pushed.
+
+8. **Focused re-review of findings 6 and 7 (written at 15:57:28 2026-10-24).** Reviewer: the same independent Claude
+   agent as finding 5. Scope: `af63416..cf2d106` (`68c57fe` and `cf2d106`). **Verdict: PASS WITH NOTES.**
+   - **Nothing blocks the merge of increment #4.** The merge still needs the author's or the coordinator's
+     acceptance, which this finding does not give.
+   - **R-8**, the wire test against the platform with ST-2, and **R-11**, `backlog` in the unit runtime, stay the
+     gates before any live run.
+   - **What was checked, and the result.**
+     - **Suite at `cf2d106`, with a clean worktree.** **585 passed, 39 subtests** in 42 s. The relay and hub-core
+       files were run once more: 101 passed.
+     - **M1, one barrier. Repaired.** `_deliver` checks every item against `schedule.lost` before delivery
+       (`hub.py:465`), and records a stopped item in `discarded` with digests only.
+       - **Every source passes it:** schedule items, relay-held delays, F12 injections and replacements, and
+         `stale` replays all go through `relay.filter` and then `_deliver`.
+       - **Frozen units:** a frozen unit's queue is filled only from `_deliver`'s output (`:488`) and from
+         `_notify` (`:410`).
+       - **Tests:** the delay-then-loss and injection-after-loss cases fail with the barrier disabled, which the
+         record states.
+     - **The corrected claim of finding 7, against the "Lost-flow rule" and "WP-10 #4 review dispositions" rows.**
+       The claim was: deliveries queued before the verdict go out before the `lost` notice, and nothing after the
+       verdict enters the queue.
+       - **The implementation holds it.** A delivery enters a frozen unit's queue only after it has passed the
+         barrier, so before the verdict. The `lost` notice is appended in order. `_replay` sends the queue in that
+         order, as `backlog` lines with each `lost` in its place (`:521-544`). Nothing on a lost flow can be
+         appended after the verdict.
+       - **It matches the rows under the reading that the dispositions row and R-4 imply.**
+         - That row puts the barrier at "one point, the hub's final delivery step" and gives frozen units "one
+           ordered queue … so a `lost` notice keeps its place".
+         - R-4 models a stopped process whose socket buffer still accepts. In that model, data written before the
+           verdict is delivered on thaw.
+       - **A second reading exists.** The Lost-flow rule says the hub "discards every pending message on that
+         flow". Under a wire-time reading, a queued delivery not yet sent to the frozen unit is still pending at the
+         verdict, and would have to be discarded. Finding 6 first said exactly that, and finding 7 corrected it.
+       - **Assessment.** The record-time reading of finding 7 is consistent with R-4 and with the "keeps its place"
+         clause, and it is deterministic.
+       - **Recommendation (LOW, editorial; for the thesis note).** Clarify the row: "an item enters a frozen unit's
+         queue only through the barrier; queued items are delivered on thaw in order, before any later `lost`
+         notice".
+     - **The other repairs.**
+       - **L1.** Arming refuses every freeze without a `SimTimeBound` ("a freeze needs a configured SimTimeBound").
+       - **L2.** The backlog goes out as `backlog` lines within 64 KiB. A single delivery above the limit still
+         raises `HubProtocolError`.
+       - **L3.** `stop_wait_s` is a separate required input, and `finish` uses it. `arm_timeout_s` now bounds arming
+         only.
+     - **Against the platform's final ST-2 reading** (`ADR-ML3-SIMTIME-0001` amendment ST-2 at `00bd41ba2`).
+       - **Frames.** The `arm` key sets match exactly, with `count` and `index`, and so do those of `resumed`
+         (`entry`, `phase`, `step`, `ackSeq`). The hub's batch check (the first `count` equal to the harness list,
+         the same `count`, the next `index`) is compatible with the platform's `check_arm_batch`.
+       - **R9 replaced by the per-entry M3 rule.** The platform now requires only that `armed` precede any step at
+         or after that entry's onset. The relay sends every `armed` before its first tick, which satisfies the rule
+         and is stricter. They are compatible.
+       - **Benign close.** The hub closes only when settled, with every entry done and `resumed` sent at once
+         after each ack. The platform accepts an end-of-file once every entry is final and no `resumed` is
+         pending, so the two agree.
+   - **New notes (LOW; neither blocks the merge).**
+     - **N1. A refused ack: the hub and the ADR disagree.**
+       - Platform ST-2 decision 5 requires `resumed` after **every** hold ack, "with any outcome".
+       - After a `refused` ack, the relay sends no `resumed`. It ends the run (`hub_relay.py:412`) and closes, so
+         the platform then sees an end-of-file with `resumed` pending, which is `XVERSE-FAULT-SIMTIME-PROTOCOL`.
+       - Both sides fail closed. For a refused clear, however, the platform's run then ends on a protocol failure
+         and not only as `incomplete-clearing`.
+       - **Fix.** Align one side: the hub sends `resumed` after a refused ack and then stops, or the ADR exempts
+         refused acks. Record the choice for R-8's wire test.
+     - **N2. Evidence for a frozen unit's backlog.** `HubResult.deliveries` logs a queued delivery at its enqueue
+       step, with `deliveredAtNs` set to that step's boundary. The unit actually receives it at the thaw step, in a
+       `backlog` line, and nothing records the replay step. For PAIR-1 and AD-12 analysis, add the replay step
+       (`replayedAtStep`) to the record of each backlog delivery, or emit one replay record per `backlog` line.
+   - **Residuals.**
+     - **R-10** is closed for every item source.
+     - **R-11** (`backlog` in the unit runtime, WP-10 #5b) is honest, and is a gate for #5b.
+     - **L4 and L5** are recorded as obligations elsewhere, as the dispositions row specifies.
+     - **R-3 and R-5 to R-9** are unchanged.
+     - **R-8** remains the interoperability gate. It should include N1.
