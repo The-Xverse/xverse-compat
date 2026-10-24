@@ -427,3 +427,17 @@ faults, live behaviour unverified (E8-3a, D-4c).
      - **R-1** is resolved.
      - **R-2 to R-8** are unchanged and honest.
      - N1 and N2 should be recorded, or fixed with increment #4, where frozen units make sends time out.
+
+## 7. Acceptance (written at 15:23:35 2026-10-24)
+
+- **Accepted** under the author's delegation of 2026-10-24 (thesis `specs/002-assured-aeb/decisions.md` §G and
+  the rows "WP-10 fault relay", "AD-30 delivery rule", "Hub delay semantics" and "Lost-flow rule"). It is flagged for
+  the author's review.
+- **Basis:** finding 3 (PASS WITH NOTES), repaired in findings 4–5, and finding 6 (PASS). The suite gives 470 passed
+  and 39 subtests. Verification is offline only; there are no faults in this increment.
+- **Carried to increment #4:**
+  - N1: a round is made of per-send bounds plus the wait bound, so it can last up to about (units + 1) × the wait
+    bound. Use one deadline per round, or state this in D-4c.
+  - N2: a failed `lost` or `origin` send defers `_unit_gone` to the next round.
+  - R-9: a frozen unit is exempt from send-timeout loss while frozen.
+- **Merged** into compat main and pushed (see the merge commit).
