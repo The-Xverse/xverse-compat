@@ -77,3 +77,126 @@ evidence, and no model of the thesis (GA-35).
    - **Not in scope.** The U4 unit and V-2 (Maestro launch) belong to the blueprint increment with WP-12;
      V-3 (the readiness budget) and V-5 (inference time) need the real model and host load, and are
      NEEDS DATA; the NumPy fallback; any thesis model.
+2. **Implementation of finding 1 and results (2026-10-24 11:25:09).**
+   - **Wheelhouse.** `.x-verse-build/cache/xverse-aeb-inference-wheels-20261024/`, filled at 11:19 with
+     `pip download --no-cache-dir --only-binary=:all: --no-deps --python-version 3.13 --implementation cp
+     --abi cp313 --platform manylinux_2_28_x86_64 --index-url https://pypi.org/simple`. This ran the pyenv
+     3.13.13 interpreter's pip 26.1.1 under `env -i` and installed nothing. The versions were the newest on
+     PyPI with a cp313 manylinux x86_64 wheel (PyPI JSON API, `info.version`). Each downloaded SHA-256
+     and size equals the PyPI-published value.
+
+     | Wheel | Size (bytes) | SHA-256 | PyPI upload |
+     | --- | --- | --- | --- |
+     | `onnxruntime-1.31.0-cp313-cp313-manylinux_2_28_x86_64.whl` | 23760708 | `37fd78cee5160c7a43a1730ccb3682ffd880af9c9e80385d625c0c2f8b125809` | 2026-10-09T04:18:40Z |
+     | `numpy-2.5.4-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl` | 16718044 | `6ffa07666f8da0eef81d149934a626d0d95fbd6838432a33e66245423a9062c0` | 2026-10-10T20:03:21Z |
+
+     PyPI metadata at download:
+     - `onnxruntime`: licence "MIT License"; `requires_dist` `flatbuffers`, `numpy>=1.21.6`,
+       `packaging`, `protobuf>=4.25.8`, with `sympy` and `ml_dtypes` only as extras.
+     - `numpy`: licence expression `BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0`.
+     - Both need Python ≥ 3.11 or ≥ 3.12, and the manylinux tags need glibc ≤ 2.28; the host has 2.35.
+   - **Lock.** `tools/inference/u4-inference.lock` (SHA-256 `8d0689ee070344da55b9569ee90c25c8987a03236fa9c93d2a353666a3582367`)
+     holds exactly the two pins with their hashes.
+   - **Build script.** `tools/inference/make-inference-env.sh`, as in finding 1, with one addition: the
+     import check sets `ORT_DISABLE_TELEMETRY=1` (see the telemetry finding below). The venv was built
+     twice. The first build, made before the telemetry finding, was removed by its exact path, a directory
+     this task had created; the second is the venv kept. Both gave the **same `site-packages` tree
+     digest**, so the build is reproducible on this host.
+   - **Venv and identity record.** `.x-verse-build/cache/xverse-aeb-inference-20261024/`, 151952 KiB,
+     with `identity.json`:
+     - `pipFreeze`: `numpy==2.5.4`, `onnxruntime==1.31.0`, and `pip==26.0.1` from `ensurepip`;
+     - `sitePackagesTreeSha256` `16c8546d3451b1b50321ed6dbb307410c715ff4db849020caeb266938299f5cd`;
+     - interpreter `/home/jefferson/.pyenv/versions/3.13.13/bin/python3.13`, SHA-256
+       `9907c621375bc585b55087a939f30310d5bc6e3b6b15a986f734dc24077cf968`;
+     - glibc 2.35; CPU Intel Core i9-14900HX, with its flags;
+     - import check return code 0.
+     The build took about 6 s. No other venv was touched, and `.x-verse-build/cache/xverse-lite-live-20261022`
+     and `.x-verse-build/worktrees/*` were neither read nor written.
+   - **Finding during V-1: the ONNX Runtime 1.31 Linux wheel embeds Microsoft 1DS telemetry.**
+     - Evidence, by static inspection of the installed binaries:
+       - `libonnxruntime.so.1.31.0` and the pybind module contain `telemetry_1ds.cc`, a `OneDsTelemetry`
+         class, the collector URL `https://mobile.events.data.microsoft.com/OneCollector/1.0`, and the
+         environment variable name `ORT_DISABLE_TELEMETRY`;
+       - the Python API exposes `disable_telemetry_events()`.
+     - At import with defaults it logs "Failed to persist telemetry device ID; using an in-memory
+       identifier".
+     - **Probe.** A session on the test model and 10 runs, with a 2 s wait, traced with `strace -f` for
+       `socket`, `connect`, `sendto`, `sendmsg` and `openat`. It ran in an unprivileged network
+       namespace with no network (`unshare -rn`), so nothing could leave the host. Results:
+       - **defaults**: no `AF_INET` or `AF_INET6` socket and no `connect`. The process read host
+         fingerprint files that the disabled run does not read: `/sys/class/dmi/id/{board_vendor,
+         product_name,sys_vendor}`, `/proc/sys/kernel/osrelease`, `/proc/1/cgroup`, `/.dockerenv`,
+         `/run/.containerenv`, `/run/systemd/container` and `/sys/devices/system/cpu/online`. It logged the
+         device-ID warning;
+       - **`ORT_DISABLE_TELEMETRY=1`**: none of those reads and no warning, so the 1DS initialisation is
+         skipped;
+       - **`disable_telemetry_events()` only**: the warning is still logged, because initialisation
+         happens at import, before the call;
+       - **both**: as with the variable alone.
+     - **Limit.** With no network, absence of a socket does not show what the default build does on a
+       networked host; that was deliberately not tried.
+     - **Mitigation, implemented.** The loader refuses unless `ORT_DISABLE_TELEMETRY=1` is set before
+       ONNX Runtime is imported, and calls `disable_telemetry_events()` as a second line. The U4 unit
+       environment must set the variable (R-5).
+     - **Also present in the wheel:** an `AzureExecutionProvider` (`get_available_providers()`). The
+       loader passes only `CPUExecutionProvider` and refuses unless the session's providers are exactly
+       that.
+   - **Loader.** `src/xverse_compat/inference/loader.py` (`verified_bytes`, `load_model`,
+     `ModelRefused`, `LoadedModel`), as in finding 1, plus the telemetry and provider checks. Session
+     options: one intra-op thread, one inter-op thread, `ORT_SEQUENTIAL`, `ORT_ENABLE_BASIC`,
+     `use_deterministic_compute`. It imports only the standard library at import time.
+   - **Test model.** `tests/inference/minimal_onnx.py` (standard library) writes
+     `tests/inference/fixtures/tiny-cnn.onnx`: 497 bytes, SHA-256
+     `29f7e86bd6ab25f3dcf6abc7dd9785025101d44c9aba32620b63112458a89d64`, IR 8, opset 13,
+     `Conv`-`Relu`-`GlobalAveragePool`-`Flatten`-`Gemm`-`Sigmoid`. No `onnx` package was used or
+     installed. `tests/inference/probe.py` runs it through the loader in the U4 pattern.
+   - **V-1: met.** In the U4 pattern (`env -i`, the real 3.13.13 interpreter with `-s -B`,
+     `PYTHONPATH` to the venv's `site-packages` plus compat `src`, single-threaded, telemetry off),
+     `onnxruntime` 1.31.0 imports and runs the test model with **only numpy installed, `--no-deps`**. The
+     declared `flatbuffers`, `packaging` and `protobuf` are not needed for this path. Output
+     0.4240870177745819 (float32) against the independent NumPy reference 0.4240870215725029; providers
+     `["CPUExecutionProvider"]`; no telemetry message.
+   - **V-4: met for this model on this host.** 100 repeats in one process and 10 in each of four further
+     fresh processes give one output hash,
+     `cd42b6e6fece44ab0546c3ceebc5764955d95b4ba9830db7cea3e00b7de6d2b8`. Three manual runs of 100 repeats
+     gave the same hash.
+   - **V-6: met.**
+     - A model with one changed byte is refused with "model digest ... differs from the declared ...",
+       with `onnxruntime` not imported, both in the compat test venv and in the U4 pattern.
+     - Ill-formed declared digests (7 cases), a missing file, and a telemetry variable that is unset or
+       `0` are refused before the import.
+     - A declared input schema that the model does not match is refused after the session is created.
+   - **Tests.** `tests/inference/test_inference_env.py`, 16 tests:
+     - 12 run everywhere: the fixture determinism, the digest forms, V-6 before import, the telemetry guard,
+       the loader's standard-library imports, and the lock and script;
+     - 4 need the venv and skip cleanly without it (`XVERSE_COMPAT_INFERENCE_ENV=/nonexistent-env`:
+       12 passed, 4 skipped): the identity record against the lock, V-1, V-4, and V-6 in the venv with the
+       schema refusal.
+   - **Mutation checks (not committed; restored).** Bypassing the digest comparison fails 2 tests;
+     removing the telemetry guard fails 2 tests.
+   - **Suite.** 375 passed, 39 subtests (base `34cc046`: 359).
+   - **Residuals.**
+     - R-1 (telemetry). The 1.31 wheel embeds 1DS telemetry, and by default fingerprints the host.
+       `ORT_DISABLE_TELEMETRY=1` demonstrably skips its initialisation, and the loader enforces it. The
+       egress behaviour of the default build on a networked host is unknown. Unit-level network isolation
+       for U4 would be a platform matter. The author may prefer to review this dependency; it is flagged.
+     - R-2. V-1 covers the import and six operators at opset 13. A code path that imports `packaging`,
+       `protobuf` or `flatbuffers` (tooling, quantisation, model-editing APIs) would fail closed with
+       `ImportError`; the real WP-09 model must pass V-1 again.
+     - R-3. V-4 holds per host and only for the test model. The real model repeats V-4 under WP-09 and
+       WP-13. `ORT_ENABLE_BASIC` is an engineering choice; `ORT_ENABLE_ALL` was not assessed.
+     - R-4. V-2 (Maestro launch), V-3 (readiness budget, NEEDS DATA) and V-5 (inference time) are not done.
+       They need the blueprint U4 unit and the real model.
+     - R-5 (blueprint wiring). The U4 environment is `PATH=/usr/bin`, `HOME=<run>/home`,
+       `ORT_DISABLE_TELEMETRY=1`, `OMP_NUM_THREADS=1` and `OPENBLAS_NUM_THREADS=1`, with `PYTHONPATH` set
+       to `<venv>/lib/python3.13/site-packages:<compat src>`. Arguments: `-s -B`. The run records the
+       identity-record digest; the descriptor's environment identity (thesis WP-08 record F-5) is a
+       WP-12 / harness item.
+     - R-6. The thesis record `design/wp08-inference-stack.md` needs a thesis-side correction, not made
+       here:
+       - its dependency list for ONNX Runtime (`coloredlogs` and `sympy` are no longer required);
+       - its licence line for NumPy (the full expression above);
+       - the new telemetry finding R-1.
+     - R-7. The loader reads the whole model into memory. That suits the small AD-02 network; a large model
+       would need a streamed digest.
+   - **Status.** Candidate for independent review. Not accepted, not merged, not pushed.
