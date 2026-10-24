@@ -369,3 +369,61 @@ faults, live behaviour unverified (E8-3a, D-4c).
        for the run. Increment #5 and WP-13 must not expect a recovery of a lost flow.
    - **Status.** Candidate for a focused re-review and the author's acceptance. Not accepted, not merged, not
      pushed.
+6. **Focused re-review of findings 4 and 5 (2026-10-24 15:22:44).** Reviewer: the same independent Claude agent as
+   finding 3. Scope: `b23b902` and `6677fc1` on `37933d7`. **Verdict: PASS.** Every finding 3 item is repaired as
+   finding 4 required, and R-9 and R-10 hold. Two new LOW notes follow. **Nothing blocks the merge.** The merge
+   still needs the author's or the coordinator's acceptance, which this finding does not give.
+   - **Independent checks.**
+     - **Suite.** The offline compat suite gave **470 passed, 39 subtests**. `test_phase8_hub.py` was run twice more:
+       51 passed each time.
+     - **Re-run of the finding 3 probes on `6677fc1`.**
+       - **Non-reading unit (M1).** At `send_timeout_s=0.5`, `send()` returns `False` at the 12th 4 KB round, with
+         `failed = "TimeoutError: unit send bound exceeded"`. The probe thread is no longer blocked after 3 s, and
+         `close()` returns at once. Before the repair, both calls were still blocked after 3 s.
+       - **F17 queued ahead of a disconnect (M2).** The lost verdict comes at step 1. The pending F17 is recorded in
+         `discarded` ("pending at the lost verdict") and **never delivered**: the reader got `mark_lost` once and no
+         delivery. Before the repair, it was delivered at step 4.
+       - **New probe: a late F17 after a start-up-deadline loss.** The deadline is one step, and F17 is produced
+         from step 3. F17 is lost at step 1, and the messages of steps 3, 4 and 5 are discarded ("admitted after the
+         lost verdict"). There is no delivery and one `mark_lost`.
+       - **Zero-delay cycle (L1).** It is still refused at the cap, and the declared delay still ends normally.
+     - **M1, repaired.**
+       - `_send_bounded` (`hub.py:154-171`) waits on `select` and then calls `send(..., MSG_DONTWAIT)` against a
+         deadline, while the socket stays blocking for its reader thread.
+       - A timeout or error closes the unit for good, records `failed` and shuts it down (`:248-265`). Because a
+         partial line may already be on the wire, the link is not reused.
+       - `_round` treats a failed send as `_unit_gone` (`:446-451`). `close` uses one shared deadline, then shuts down
+         and closes, and is idempotent (`:274-292`).
+     - **M2, repaired.** It follows the `decisions.md` row "Lost-flow rule" (15:15).
+       - `_mark_lost` calls `schedule.discard_flow` before notifying.
+       - Every pending message on the flow is removed and recorded as evidence with digests only, never the payload.
+       - Later admissions on the flow are discarded and recorded. The flow stays lost for the run (`HubSchedule.lost`).
+       - `HubResult.discarded` carries the evidence.
+     - **L1 to L7, repaired.**
+       - **L1.** The round cap and three-or-more-round chaining are now tested.
+       - **L2.** The record now says the caller owns the adapter link, and a test pins that.
+       - **L3.** A non-list `messages` is a protocol error of that unit. In my probe the run ends normally, with no
+         bare `TypeError`.
+       - **L4.** An outbound line above `MAX_LINE` raises `HubProtocolError` at the hub.
+       - **L5.** The boundary comes only from the `vehicle-motion` item. A tick without one gives no step and is
+         recorded in `boundary_gaps`.
+       - **L6.** R-1 cites "Hub delay semantics".
+       - **L7.** A refused construction closes the frame receiver, and `Hub.close()` releases everything without
+         `run()`.
+   - **New notes (LOW; neither blocks the merge).**
+     - **N1. One round can take longer than the wait bound.** Each round send has its own bound (`send_timeout_s`
+       = `wait_bound_s`, `hub.py:260,356`), and the sends run in sequence before the round's wait deadline is set
+       (`:450-452`).
+       - With *n* targets that all fail by timeout, a round can last about (*n* + 1) × `wait_bound_s`. That is
+         still bounded, but it is not the single wait bound that D-4c will measure.
+       - **Fix.** Use one round deadline for the sends and the wait, or state this composition in the D-4c bound.
+     - **N2. A failed `lost` or `origin` send has a delayed effect.** If such a send fails (`hub.py:399-406`; the
+       `_bind_origin` sends), the unit is closed, but `_unit_gone` runs only at its next round send.
+       - The verdicts on flows that unit produces are therefore delayed until that round. The step at which they
+         occur can depend on host timing, so this is a determinism note under failures only.
+       - **Fix.** Call `_unit_gone` directly when one of these sends fails.
+   - **Residuals.**
+     - **R-9 and R-10** are repaired and tested as stated.
+     - **R-1** is resolved.
+     - **R-2 to R-8** are unchanged and honest.
+     - N1 and N2 should be recorded, or fixed with increment #4, where frozen units make sends time out.
