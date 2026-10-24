@@ -1147,3 +1147,22 @@ engineering stabilization candidate: not M1, not AEB evidence.
     - **Revision 2 (02:16:40).** Platform finding 26 (LOW-4) and thesis DR-17: H1 is 1.7 s (attempts at 0,
       0.725 and 1.45 s), with 0.29 s headroom below the 1.99 s bound for the RA2 renewal and pre-release work. No harness
       file imports the removed `CANCEL_CLOSE_RESERVE_SECONDS` (checked by grep over both S1c-2 worktrees).
+47. **Part 2 re-verification on the repaired platform stack (platform `a16fd1b78`, wheel `a54844d3`; blueprints
+    `24dae38`, H1 = 1.7 s; dev venv `xverse-lite-live-s1stack-e`; CARLA instances 18 and 19; runs 03:56–04:5x;
+    written at 04:08:12 2026-10-24, before any change).**
+    - **Evidence.** `runs/lite-stabilization-s1/s1c2-part2-dev3-20261024`.
+    - **Repaired failures.** freeze-vcu and cancel-paused PASS (load 5.4 and 5.9). The cancel was confirmed
+      natively, cleanup was complete, and there was no persistence failure. The bootstrap and storage reap facts
+      are clean (returncode 0), and the readiness windows were uncut (W′ = W = 1.7 s).
+    - **Other cases.** long-run PASS (601 ticks, load 5.7). Warm nominal PASS twice (adapter 0.293 and 0.329 s).
+      no-carla fails closed as designed (`ML-PROBE-NOT-READY`, cleanup complete, audit PASS under DR-14).
+    - **New observation: readiness after a cold CARLA start.**
+      - The first nominal run after CARLA instance 18 started failed `ML-PROBE-NOT-READY`: the carla-adapter
+        failed all three attempts (last at 1.45 s). The failure was fail-closed and clean (`cleanupComplete`
+        true, reap codes 0, window not cut).
+      - The first nominal run after instance 19 passed, with the adapter ready at 1.36 s on its third attempt.
+        Finding 45's first run had 1.311 s.
+      - Warm adapter latency is 0.29–0.36 s. The cold-start effect is CARLA's first owned-scenario setup after a
+        server start, not the stack.
+    - **Disposition (thesis DR-18).** H1 = 1.95 s, inside the 1.99 s bound. The S1d soak declares one warm-up run
+      per CARLA start, recorded and excluded from the statistics. Re-verification from a fresh cold start follows.
