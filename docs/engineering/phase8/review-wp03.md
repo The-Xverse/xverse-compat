@@ -83,3 +83,77 @@ verified offline only: not M1, not AEB evidence, live behaviour unverified (E8-3
      - Closed loop: `LiteVehicleLoop` on an in-process fake link with a fake longitudinal vehicle reaches
        and holds the target speed, then zeroes throttle from the tick of a brake request.
      - Phase 7 unchanged: `driver.py`, `stimulus.py` and `loop.py` are byte-identical to the base.
+2. **Implementation of finding 1 (2026-10-24 11:03:40).**
+   - **Change.** One new module, `src/xverse_compat/live/driver_profile.py`:
+     - `SpeedHoldParams.from_record`: the `xverse-compat.driver-profile/1` record, exactly five members,
+       no defaults, with a SHA-256 digest of the canonical record carried in every tick's meta;
+     - `SpeedHold.step`: the PI law on simulation time with conditional-integration anti-windup;
+     - `arbitrate`: the ED-15 rule;
+     - `ArbitratedDriver`: the `LiteVehicleLoop` command source.
+     - One refinement of finding 1: the integrator is reset on every tick in which the arbiter forces
+       throttle to 0, for an invalid request as well as an active one.
+     - `live/driver.py`, `live/stimulus.py`, `live/loop.py` and `xverse_compat_carla/` are unchanged
+       (`git diff --quiet 372e6b7` on them succeeds). The pytest check of finding 1, "byte-identical",
+       is this recorded `git diff` instead, because the suite does not depend on the Git history.
+   - **Tests.** `tests/live/test_phase8_driver_profile.py`: 29 tests, offline, with test-only parameter
+     values and fake longitudinal dynamics.
+     - Parameters: 18 refusals: each missing member; an extra member; a wrong schema; bool, NaN, infinite,
+       string and null values; non-positive `targetSpeedMps` and `kp`; negative `ki`; `throttleMax` 0
+       and 1.2; a non-object. Plus the digest test.
+     - Law: P and I terms with `dt` from simulation time, the clamp, anti-windup, never a negative
+       throttle, a decreasing or NaN simulation time refused; throttle 0 and no integration without a
+       valid runtime motion item.
+     - Arbitration: the rule table; an active request zeroes throttle and resets the integrator; release
+       resumes from the reset integrator; invalid requests zero throttle and hold the last valid brake.
+     - Never brakes or steers: over swept requests and speeds the brake is always the request, and no
+       command or meta carries a steering member.
+     - Determinism: two closed-loop runs give identical commands; driving the arbiter with every host
+       clock function patched to raise gives the same outputs; the module imports only `dataclasses`,
+       `hashlib`, `json`, `math` and `typing`.
+     - Closed loop on `LiteVehicleLoop` with an in-process fake link: the speed is within 0.1 m/s of the
+       target from 15 s to 25 s, the brake is 0 until the request, and from the first tick decided at
+       25 s the command is `(0, 1)` with `aebActive`.
+   - **Mutation checks (not committed; restored).** Passing the driver throttle through during braking
+       fails 5 tests; a default `targetSpeedMps` fails the missing-member case; removing the lower
+       throttle clamp fails 2 tests.
+   - **Observation during testing.** In `driver-ticks.jsonl` a row's `simS` is the simulation time
+     after its tick; the command of that row was decided at the previous row's `simS` (`loop.py` 94 and
+     115), and the first two ticks are both decided at 0.0. The closed-loop test keys on the decision
+     time. See R-5.
+   - **Suite.** 356 passed, 39 subtests (base `372e6b7`: 327).
+   - **Blueprint and topology wiring needed later (not made here).**
+     - B-1. A U2 vehicle-loop unit entry point (WP-12) that builds
+       `LiteVehicleLoop(link, ArbitratedDriver(params, brake_request), ...)` beside the gateway, flow
+       receivers and the other U2 modules (E-3 to E-6, E-11, E-15). `live/driver.py` stays the Phase 7
+       `lite-driver`.
+     - B-2. In `xverse-blueprints` `automotive/assured-aeb`: the U2 unit command in its `units.py`
+       (the K-11 pattern: a real ELF interpreter, `PYTHONPATH` to the pinned venv), passing the path of
+       the driver-profile parameter record taken from the AD-27 protocol record.
+     - B-3. The `brake_request` source: the latest brake request of the WP-04 brake/ESC node through the
+       U2 hub (WP-12), keyed to simulation time, with its validity and staleness rules declared there. For
+       D-1, a declared characterisation schedule (brake at a declared simulation time) may stand in, as
+       engineering data only.
+     - B-4. A Phase 8 run command that records `driver-ticks.jsonl`. The Phase 7 `run-live.sh`,
+       `run-baseline.sh`, their `units.py` and the soak are not changed.
+   - **Residuals.**
+     - R-1. Live behaviour is unverified (E8-3a, D-1): convergence and overshoot on the CARLA vehicle.
+       `targetSpeedMps`, `kp`, `ki` and `throttleMax` are protocol values (AD-27) chosen after D-1;
+       stability depends on them. "Reaches and holds" is shown on test-only fake dynamics only.
+     - R-2. Reading the parameters by identifier from the signed protocol record (FR-024) is the WP-17
+       loader. No parameter file is shipped.
+     - R-3. The brake request's source, validity window and staleness in simulation time belong to WP-04
+       and WP-12. The invalid-request rule (throttle 0, last valid brake held) reuses the Phase 7 stale
+       rule and is confirmed under the ED-15 review.
+     - R-4. After an AEB release the hold resumes, from a reset integrator (FR-030 literal). A latch at
+       zero after an intervention is a scenario-protocol choice (AD-25, AD-27), not implemented.
+     - R-5. Decision timing: each command is decided from the previous frame's motion and simulation
+       time, so the response to a brake request first takes effect one frame later in simulation time.
+       This is inherent to `LiteVehicleLoop` and must be accounted for in the D-1 latency analysis and
+       the AD-30 declaration.
+     - R-6. The driver reads the adapter's `vehicle-motion` item, which shares the `World.get_snapshot`
+       source with the ground truth (C-12). This is permitted for the scenario environment (E-5, FR-030);
+       it is not an AEB runtime input (AD-32 covers those).
+     - R-7. A decreasing simulation time raises in the command source and so ends the loop (fail-closed);
+       in U2 that ends the run.
+     - R-8. Spawn-at-speed (AD-38 C, GA-33) is not implemented; finding 1 lists its needs.
+   - **Status.** Candidate for independent review. Not accepted, not merged, not pushed.
