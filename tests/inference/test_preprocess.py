@@ -14,7 +14,7 @@ import subprocess
 
 import pytest
 
-from xverse_compat.inference import preprocess as P
+from xverse_compat.inference import preprocess as P, unit
 
 from .test_inference_env import LOCK, PY313, ROOT, SITE, needs_env
 
@@ -26,10 +26,8 @@ NEAREST = {**AREA, "crop": {"x": 1, "y": 1, "width": 7, "height": 5}, "resize": 
 
 
 def _probe(case, record):
-    env = {"PATH": "/usr/bin", "HOME": "/nonexistent-inference-home", "OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1",
-           "ORT_DISABLE_TELEMETRY": "1", "PYTHONPATH": f"{SITE}:{ROOT / 'src'}:{ROOT}"}
-    proc = subprocess.run([str(PY313), "-s", "-B", "-m", "tests.inference.preprocess_probe", case, json.dumps(record)], env=env, cwd=ROOT,
-                          capture_output=True, text=True, timeout=120)
+    proc = subprocess.run(unit.command(PY313, "tests.inference.preprocess_probe", case, json.dumps(record)),
+                          env=unit.environment(SITE, (ROOT / "src", ROOT)), cwd=ROOT, capture_output=True, text=True, timeout=120)
     assert proc.returncode == 0, proc.stderr
     return json.loads(proc.stdout.strip().splitlines()[-1])
 

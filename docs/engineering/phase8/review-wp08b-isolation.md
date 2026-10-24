@@ -65,3 +65,60 @@ offline.
          provider name is used;
        - the template's flags and environment.
      - The full suite must give an equal or higher count.
+2. **Implementation of finding 1 (2026-10-24 15:45:49).**
+   - **R-2.** `src/xverse_compat/__init__.py` now uses PEP 562 lazy exports:
+     - `__version__` and `__all__` are unchanged;
+     - an `_EXPORTS` table maps the 13 names to `provider`, `platform_pin` and `rebuild`;
+     - `__getattr__` imports the owning submodule on first use and caches the value; `__dir__` lists `__all__`;
+     - the eager imports remain only under `TYPE_CHECKING`.
+     - No caller changed: `from xverse_compat import (...)` (`test_provider_conformance.py`) and `from xverse_compat
+       import admission` (`test_admission.py`) pass unchanged.
+   - **R-1 (U4 part).** `src/xverse_compat/inference/unit.py` (new, standard library):
+     - `INTERPRETER_FLAGS = ("-S", "-s", "-B")`;
+     - `FIXED_ENVIRONMENT` (`PYTHONDONTWRITEBYTECODE`, `ORT_DISABLE_TELEMETRY`, `OMP_NUM_THREADS` and
+       `OPENBLAS_NUM_THREADS`, each `1`);
+     - `environment(site_packages, extra_paths, home)` and `command(interpreter, module, *args)`.
+     The U4 harnesses `test_inference_env.py::_u4` and `test_preprocess.py::_probe` now use the template, so every
+     existing U4-venv test runs under `-S -s -B`. The default-telemetry bypass test removes only
+     `ORT_DISABLE_TELEMETRY`, inside `unshare -rn`. No other unit command exists in compat `src`.
+   - **R-9.** `tools/inference/make-inference-env.sh`:
+     - `PYTHONDONTWRITEBYTECODE=1` in `CLEAN` for every step;
+     - the import check under `-S -s -B`;
+     - the bytecode check moved after `pip freeze`, immediately before the record.
+     **The real U4 venv was not rebuilt.** Its site-packages has no `.pth` (tested), so the old order could not have
+     written bytecode, and the WP-08 identity test still recomputes its trees on disk and passes.
+     **Exercise of the modified script:** a build into a scratch directory, inside `unshare -rn` from the existing
+     wheelhouse only. It gave import 0, no bytecode, `installed`, `wheels` and lock hash equal to the real record,
+     and 1 252 site-packages files. The file-by-file comparison with the real venv differs **only** in
+     `numpy-2.5.4.dist-info/RECORD` and `onnxruntime-1.31.0.dist-info/RECORD`, which hash the path-bearing console
+     scripts (compat review-wp08 R-8). The scratch build was then removed.
+   - **Requirement (a), the U4 venv under `-S`.** At base `34b514d`, `import xverse_compat.inference.loader` failed
+     with `ModuleNotFoundError: xverse_xdl`. Now, under `unshare -rn` with `-S -s -B`:
+     - `loader`, `preprocess` and `live.frames` import;
+     - `xverse_xdl` is **not importable** and `provider` is not loaded;
+     - `sys.path` has no base site-packages and no editable path, `site` is not imported, and the flags are
+       `no_site`, `no_user_site` and `dont_write_bytecode`;
+     - the WP-08 probe passes V-1 through the template with no telemetry message;
+     - the venv stays bytecode-free.
+   - **Tests.** `tests/inference/test_unit_isolation.py`: 6 tests.
+     - The template's argv and exact environment.
+     - The lazy exports are the same objects as the submodules', with `dir()`, an `AttributeError` for an unknown name,
+       and both public import forms.
+     - Importing the root and `inference.loader` does not load `provider` until a provider name is used.
+     - Requirement (a) in the U4 venv, and the V-1 probe through the template (both skip without the venv or
+       `unshare`).
+     - The build-script order and flags.
+     - Probe: with the eager base `__init__` restored, 4 of the 6 tests fail.
+   - **Suite (requirement (b)).** Base `34b514d`, measured in a temporary detached worktree that was then removed: 535
+     passed, 39 subtests. Candidate with the U4 venv: **541 passed, 39 subtests** (+6). Without it
+     (`XVERSE_COMPAT_INFERENCE_ENV=/nonexistent`): 529 passed, 12 skipped. The U4 venv has no bytecode after the runs.
+     - A first attempt at the base count from a `git archive` export gave 1 failure and 24 subtests, because the export
+       is not a git checkout. It is not used as the baseline.
+   - **Residuals.**
+     - R-1. The Phase 7 and S1 `lite-driver` and `driver-stimulus` units keep `-s` only until after the soak: a
+       declared limit of 1.0, repaired in a later 1.0.x increment ("WP-09 #3 unit isolation").
+     - R-2. The blueprint U4 unit (#5) and WP-13 must use `xverse_compat.inference.unit`. The other Phase 8 units (U2,
+       U3, U5, U6) need the same flags in their own command templates (WP-12, #5).
+     - R-3. Lazy exports defer an `xverse_xdl` failure from package import to first use of a provider name. That is
+       intended: a deployment without `xverse_xdl` fails exactly where it is needed.
+   - **Status.** Candidate for independent review. Not accepted, not merged, not pushed.
