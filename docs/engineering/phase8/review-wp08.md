@@ -482,3 +482,20 @@ evidence, and no model of the thesis (GA-35).
    - **Recommendation.** Ready for the author's acceptance. LOW-A and LOW-B are one-line record or residual
      amendments, best made before the merge or recorded in the acceptance. LOW-C and LOW-D are optional or
      informational.
+
+## 7. Acceptance (written at 11:36:51 2026-10-24)
+
+- **Accepted** under the author's delegation of 2026-10-24 (thesis `specs/002-assured-aeb/decisions.md` §G and
+  the "WP-08 inference stack" row; the design record correction and amendment). It is flagged for the author's review.
+- **Basis:** findings 3 and 6, both PASS WITH NOTES with no blocker. The suite gives 377 passed with the venv, and
+  372 passed and 5 skipped without it. The read-only rehash of every recorded tree matches `identity.json`.
+- **Declared (LOW-A, R-5 amended).** The 5265 standard-library `.pyc` files of the shared pyenv 3.13.13 install are
+  outside `stdlibTree`. They are trusted as part of the host interpreter install, whose integrity is a host property
+  (ED-14), not a venv property. The WP-13 entry point does not change it.
+- **R-8 amended (LOW-B).** The venv tree is reproducible at its build path but not relocatable. The path is embedded
+  in two `dist-info/RECORD` files, the `pyvenv.cfg` `command` line, the `bin/` script shebangs and the
+  `python3.13` symlink.
+- LOW-C is optional; LOW-D is informational (the WP-13 entry-point check stays the primary control).
+- **R-1 stays flagged for the author:** ONNX Runtime embeds telemetry, mitigated and enforced, with the owned NumPy
+  forward pass as the decided alternative.
+- **Merged** into compat main and pushed (see the merge commit).
