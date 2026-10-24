@@ -342,3 +342,85 @@ verified offline only: not M1, not AEB evidence, live behaviour unverified (E8-3
        FRAME rule, D-1).
    - **Status.** Candidate for re-review of the repair and for the author's acceptance. Not accepted,
      not merged, not pushed.
+6. **Independent re-review of the repair, findings 4 and 5 (2026-10-24 11:11:08).**
+   - **Reviewer and method.** The finding 3 reviewer.
+     - Read `018040d` and `edd7897` against `08115b3`, and the thesis AD-38 amendment row (`decisions.md`
+       277), read-only, together with rows 85 (AD-38) and 107 (ED-15) and `spec.md` FR-030.
+     - Ran the offline suite and probes for stale motion, the latch, the clamp and the digest on the
+       venv's CPython 3.13.13.
+     - The worktree was not changed except for this entry.
+   - **Verdict: PASS WITH NOTES. Nothing blocks the merge.** The merge still awaits the author's
+     acceptance.
+   - **Evidence.**
+     - Suite: 359 passed, 39 subtests.
+     - Phase 7 is unchanged: `git diff --quiet 372e6b7 -- src/xverse_compat/live/driver.py
+       src/xverse_compat/live/stimulus.py src/xverse_compat/live/loop.py src/xverse_compat_carla`
+       succeeds. The candidate changes only `driver_profile.py`, its test and this log.
+   - **Items.**
+     - **MEDIUM-1: closed** (driver_profile.py 100–109 and 162–166).
+       - A motion item whose `originNs` is not greater than the last fresh one is stale. It gives throttle
+         0 and no integration, with the integrator kept, `motionStale` and reason `motion-stale`.
+       - A tick without items repeats `last_motion` (`loop.py` 123–124), so its decision is stale.
+       - Probe: origins 50, 100, 100 and 150 gave throttle 0.8, 0.8, 0.0 (stale) and 0.8.
+       - The first item is fresh, and a non-int `originNs` is treated as no motion.
+     - **MEDIUM-2: closed** (112–123). Probe: `brake_of(1.0000001)` and `brake_of(7)` give
+       `(1.0, valid, clamped)`; `inf` and `True` are invalid, and `-0.0` is a valid zero. `brakeClamped`
+       is recorded, as Phase 7 `driver.py` 56 behaves.
+     - **MEDIUM-3: closed as amended** (154, 160–161 and 137–138).
+       - The first valid request above 0, including a clamped one, sets `latched`. From then on the
+         throttle is 0, the integrator is held at 0, and a later request of 0 commands `(0, 0)`, with
+         reason `latched`.
+       - An invalid request does not latch, but it zeroes the throttle anyway.
+       - This matches the amendment row (`decisions.md` 277). See MEDIUM-A for what the amendment leaves
+         unstated.
+     - **LOW-1: closed** (183). `aebActive` is `command_brake > 0`, so it is true for a held brake under an
+       invalid request.
+     - **LOW-2: closed** (31–35 and 63). `canonical` converts every int or float to float before the
+       sorted JSON, and the probe confirms that 8 and 8.0 give equal digests. Bools never reach the
+       digest, because validation refuses them first.
+     - **LOW-3: closed.** B-3 now says the source returns 0.0 whenever no request is active, including
+       before the first message, and `None` only for a stale or lost source. B-1 carries the motion
+       freshness.
+     - **Residuals R-1 to R-9.**
+       - R-1, R-2 and R-5 to R-8 are unchanged and accurate.
+       - R-3 (the clamp) and R-4 (replaced by the latch) are accurate. R-4 correctly records that FR-030
+         is not yet aligned on the thesis side.
+       - R-9 is accurate and honest: a wrong speed carried on an advancing `originNs` is not detectable
+         here.
+   - **New notes (none blocking).**
+     - **MEDIUM-A: under the latch, an unneeded AEB activation ends the approach, and the amendment does
+       not say how outcomes treat that.**
+       - Where: driver_profile.py 160–161; `decisions.md` 277.
+       - Probe: a single 0.05 s request of 0.05 at 1.0 s, with the ego at the target speed, latched the
+         run. The ego then coasts to a stop with `(0, 0)` to the end.
+       - The ego then stops short, never reaches the target, and records "no collision". FR-037's
+         outcome criteria would credit this even though the activation was unneeded. Without the latch,
+         the inattentive driver would have resumed.
+       - The amendment is still the right choice for outcome validity, as finding 3's MEDIUM-3 argued,
+         but it moves this burden to the oracle. Before evaluation runs, AD-14 and FR-037 (WP-17) must
+         classify an activation that the per-cycle braking-needed label marks as unneeded. They must also
+         declare how the remaining run is scored, and AD-27 must record that.
+       - A thesis-side note on the amendment row is enough, or a residual R-10 here naming WP-17. Whether
+         the latch should need a declared minimum request or duration is also an AD-38 question, for the
+         author.
+     - **LOW-A: thesis-side traceability of the amendment.**
+       - In the thesis working tree, `specs/002-assured-aeb/decisions.md` shows as untracked
+         (`git status --short`: `??`), so the amendment row 277 is not yet under version control.
+       - AD-38 row 85 ("throttle zeroed during AEB braking"), ED-15 row 107 ("throttle zero while an AEB
+         brake request is active") and `spec.md` FR-030 still carry the pre-amendment wording, with no
+         cross-reference to row 277.
+       - Row 277 says it replaces FR-030's "resumes" wording, but FR-030 does not contain that word. It
+         says "set to zero while an AEB brake request is active".
+       - These are thesis-side edits for the author's review, not made here.
+     - **LOW-B: a single tick without items drops the throttle to 0 for one tick.**
+       - Where: 163 and 166.
+       - This is fail-closed by design, as finding 5 states. At a sustained rate of missed frames the
+         throttle would chatter.
+       - D-1 should report the count of `motionStale` ticks, which `driver-ticks.jsonl` already carries.
+   - **Recommendation.**
+     - Ready for the author's acceptance.
+     - Record MEDIUM-A as an input to the WP-17 oracle and the AD-14 and AD-27 freeze. Optionally add it
+       as R-10 here.
+     - LOW-A goes to the thesis side: commit `decisions.md`, cross-reference AD-38, ED-15 and FR-030 to
+       the amendment, and correct the "resumes" wording.
+     - LOW-B is informational.
