@@ -1396,3 +1396,30 @@ engineering stabilization candidate: not M1, not AEB evidence.
       - LOW-6: `leaseFacts` is the harness's initial lease. The renewed lease is in `readinessWindows`.
       - The other part of LOW-7: `reapFacts` is None when the drain happens in `dispose()`.
       - The remainder of LOW-9: no change beyond the rebuilt admission record.
+52. **Re-verification on the repaired harness (blueprints `46a3497`, H1 = 1.7 s, observe at tick 24, H2; pinned
+    environment from platform main `ee91697a4`; CARLA instance 23; runs 05:08–05:19; written at 05:20:43
+    2026-10-24).**
+    - **Evidence.** `runs/lite-stabilization-s1/s1c2-part2-dev7-20261024` (`SHA256SUMS`).
+    - **The repairs hold.**
+      - **H2:** every run's `run-live.log` shows "staged run directory copied", and no stage was left behind. The
+        restore guard read the copied registry in both cancel-paused runs (`destroyFailed` empty) and the world was
+        restored. The driver's Argus root verifies in the copied run directories.
+      - **H1:** the readiness slack at 1.7 s was 0.371–0.539 s over 23 start steps. That is the platform's
+        L − (2.0 + op + 0.25) − t0 − W.
+      - **Results:**
+        - cancel-paused passed twice and freeze-vcu once (margins 1.029 and 1.974 s).
+        - The first nominal after the server start passed, with the adapter at 1.277 s.
+        - long-run passed, and no-carla failed closed as designed.
+    - **New failure: two runs, freeze-vcu (05:11:09) and the next nominal (05:14:54).** Both executed successfully
+      but ended `ML-SCHEDULE-EVIDENCE-INCOMPLETE`: the Maestro Argus writer was `failed` and audit P1 reported
+      `maestroRootClosedComplete`.
+      - In each, exactly one `lifecycle-coverage.json` row is `unverifiable`: the carla-adapter's normal-record
+        obligation `g1.health.5`. The diagnostic is "Applicability is not established by original retained facts."
+        A health event for the obligation exists.
+      - Over the 71 recorded runs that got past start-up, only these two have such a row.
+      - The failure is fail-closed (cleanup complete, reap codes 0, no persistence failure). It points to a platform
+        coverage-assessment boundary, not the harness, and is suspected to be exposed by the new timing of the window
+        and the observe tick.
+      - Recorded as platform finding 30 on the successor branch `candidate/lite-stabilization-s1a6-20261024` (from
+        main `ee91697a4`), where it is being diagnosed before any repair.
+      - S1c-2 acceptance and the S1d soak wait for that repair.
