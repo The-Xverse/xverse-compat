@@ -59,3 +59,124 @@ Findings are recorded before repairs. This is offline engineering tooling, never
        `connect`, `openat`). Any `AF_INET` or `AF_INET6` attempt, or any host-fingerprint read, is a finding to
        mitigate, as in WP-08. A static scan of the wheels for telemetry endpoints and controls follows the WP-08
        method.
+2. **Implementation of finding 1 and results (2026-10-24 15:38:55).**
+   - **Versions.**
+     - `torch==2.14.1+cpu`: the newest cp313 CPU wheel on the CPU index (2.12.1, 2.13.0, 2.14.0 and 2.14.1 were listed).
+       Its declared runtime dependencies are `filelock`, `typing-extensions>=4.10.0`, `setuptools>=77.0.3`,
+       `sympy>=1.13.3`, `networkx>=2.5.1`, `jinja2` and `fsspec>=0.8.5`.
+     - `onnx==1.23.2`: the newest on PyPI, a `cp312-abi3` wheel (valid for CPython 3.13). It declares `numpy`,
+       `protobuf>=6.31.1`, `typing_extensions` and `ml_dtypes`.
+     - `numpy==2.5.4`: the wheel is byte-identical to the U4 one.
+   - **Download.** At 15:28, the pyenv 3.13.13 pip 26.1.1 under `env -i` installed nothing:
+     1. `torch` alone: `--no-deps --index-url https://download.pytorch.org/whl/cpu "torch==2.14.1+cpu"`;
+     2. the rest: `--index-url https://pypi.org/simple --find-links <wheelhouse>`, with binary wheels, CPython 3.13 and the
+        ABIs `cp313`, `abi3` and `none`, on the manylinux 2.28, 2.27, 2.17, 2014 and `any` platforms. `torch` resolved
+        from the wheelhouse only, because the `+cpu` version exists nowhere on PyPI.
+     There are 14 wheels, 233 048 639 bytes in total. **Every SHA-256 equals its index** (the CPU index `#sha256`
+     fragment; the PyPI JSON digest and size). Free space was 32 GB before and 31 GB after the build.
+
+     | Wheel | Bytes | SHA-256 | Index |
+     | --- | --- | --- | --- |
+     | `filelock-4.2.4-py3-none-any.whl` | 162475 | `301241438c57936ef93f4243a94f2559022268bfcf9b375a9a72eb0f8db8358e` | pypi.org/simple |
+     | `fsspec-2026.9.0-py3-none-any.whl` | 221738 | `8dd6e646e99ea382bd85f97a45e6b526a442d79423a7dc673f1e2756d05fcb5f` | pypi.org/simple |
+     | `jinja2-3.1.6-py3-none-any.whl` | 134899 | `85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67` | pypi.org/simple |
+     | `markupsafe-3.0.4-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl` | 23017 | `434139499bb20b502ed3baa1f169e618f924a97e7a777fea1a49446d80106cf6` | pypi.org/simple |
+     | `ml_dtypes-0.6.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl` | 410169 | `26b1f1fa4f0435a2946859823f6e2bf06796f1e9f10f5a05b08a5e3c8f46ff69` | pypi.org/simple |
+     | `mpmath-1.3.0-py3-none-any.whl` | 536198 | `a0b2b9fe80bbcd81a6647ff13108738cfb482d481d826cc0e02f5b35e5c88d2c` | pypi.org/simple |
+     | `networkx-3.7-py3-none-any.whl` | 2142205 | `e3fd2c13a7814cee3746340d8d7f8598a67f16a58bf47fb7f8793fab6efca1b0` | pypi.org/simple |
+     | `numpy-2.5.4-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl` | 16718044 | `6ffa07666f8da0eef81d149934a626d0d95fbd6838432a33e66245423a9062c0` | pypi.org/simple |
+     | `onnx-1.23.2-cp312-abi3-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl` | 8881633 | `7abf381d278f31ac62487fddedc9dd42da842dce94d5d43536836ee3efdf4a2b` | pypi.org/simple |
+     | `protobuf-7.36.2-cp310-abi3-manylinux2014_x86_64.whl` | 343223 | `89f23aa53c24553a2416fd4fd1ec06f74fa42b14b546d8883128813f775bbfd2` | pypi.org/simple |
+     | `setuptools-84.2.1-py3-none-any.whl` | 876263 | `ca140b45d5325a9478f880e351484f62fef15f336462e449ca0c03c873d589c2` | pypi.org/simple |
+     | `sympy-1.14.0-py3-none-any.whl` | 6299353 | `e091cc3e99d2141a0ba2847328f5479b05d94a6635cb96148ccb3f34671bd8f5` | pypi.org/simple |
+     | `torch-2.14.1+cpu-cp313-cp313-manylinux_2_28_x86_64.whl` | 196253851 | `331fa474e26e428e2e6af1143b2fdab19cee492d7d21897b8899ce1c14755662` | download.pytorch.org/whl/cpu |
+     | `typing_extensions-4.16.0-py3-none-any.whl` | 45571 | `481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8` | pypi.org/simple |
+
+     Licences from the index or wheel metadata:
+     - `torch`: `Apache-2.0 AND Apache-2.0 WITH LLVM-exception AND BSD-2-Clause AND BSD-3-Clause AND BSL-1.0 AND MIT`;
+     - `onnx`, `ml_dtypes`: Apache-2.0;
+     - `numpy`: as in WP-08;
+     - `fsspec`, `markupsafe`, `networkx`: BSD-3-Clause; `mpmath`, `sympy`: BSD; `protobuf`: 3-Clause BSD;
+     - `filelock`, `setuptools`: MIT; `typing_extensions`: PSF-2.0;
+     - `jinja2`: the PyPI license field is empty (`TODO: engineering verification` from its wheel metadata).
+   - **Lock.** `tools/training/training.lock`, SHA-256 `95109db70c7e20931330423e15c68cd24af93629c812523cca3612d91dc78b6b`: 14
+     pins with hashes and a source-index comment per line.
+   - **Build.** `tools/training/make-training-env.sh`, run inside `unshare -rn`, so no step had a network.
+     - Venv `.x-verse-build/cache/xverse-aeb-training-20261024/`: 868 300 KiB, 17 363 site-packages files, no pip and no
+       bytecode, installed set = the 14 locked distributions.
+     - `sitePackagesTree` `426014798b5fa2279a5ec05114af39b4dc6985d6a53c45ed4c4ca38100a0d727`; `venvTree`
+       `0ec2814cb2227dc8e1df8b70a3f7657b49d19eec84c2a3f14c41ecd586e6b52b`.
+     - The interpreter, `libpython` and stdlib digests are those of the U4 record.
+     - Two builds at the same path gave the same tree digests.
+   - **Defect found during the first build, repaired before commit.**
+     - setuptools installs `distutils-precedence.pth`. When the venv's own interpreter runs, which the script's `pip
+       freeze` (through `--python`) does, it imports `_distutils_hack` and writes `__pycache__/__init__.cpython-313.pyc`.
+     - That happened **after** the script's bytecode check, so the first identity record digested one `.pyc`.
+     - Repair: `PYTHONDONTWRITEBYTECODE=1` for every step, and the bytecode check moved after `freeze`, immediately
+       before the record. The venv was removed at its exact path (created by this task) and rebuilt: no bytecode.
+     - The WP-08 inference script has the same ordering. It is unaffected only because its lock has no package with a
+       `.pth` (R-9).
+   - **Finding: the base interpreter's site-packages is not isolated by `-s`** (cross-cutting).
+     - The pyenv 3.13.13 base `lib/python3.13/site-packages` holds unpinned packages (`jinja2`, `attrs`, `coverage`,
+       `lxml`, `eclipse_zenoh` 1.9.0, …), `.pth` hooks that run at start-up (`a1_coverage.pth`), and **editable
+       installs** that put `/home/jefferson/xverse-t007-t020-queue/src` on `sys.path` (`_editable_impl_xverse_xdl.pth`,
+       `__editable__.xverse_hwsim-0.1.0.pth`). Seen in the strace of the network probe.
+     - With `-s` (no user site) and `PYTHONPATH`, they still follow the venv on `sys.path`, so any module missing from
+       a venv silently comes from there.
+     - With `-S` they are gone. The training and U4 venvs both import with `-S -s -B`. The training script's import
+       check and every probe here use `-S`.
+     - **Consequence found:** under `-S`, `import xverse_compat.inference.loader` fails in the U4 venv with
+       `ModuleNotFoundError: xverse_xdl`. The package `__init__` imports `provider`, which needs `xverse_xdl`, which
+       only the editable base install provided. The WP-08 U4-pattern tests (`-s` without `-S`) therefore imported
+       `xverse_xdl` from an unrelated checkout. Here the comparison probe loads `loader.py` (standard library only) by
+       file path. See R-1 and R-2.
+   - **Checks.** Each runs in `unshare -rn`, with `-S -s -B` and a test `TMPDIR`.
+     - **CPU only:** `{"version": "2.14.1+cpu", "cuda": null, "cudaAvailable": false, "threads": 1, "deterministic": true}`.
+     - **Deterministic training:** `Conv(3→4, 3×3) → ReLU → AdaptiveAvgPool(1) → Flatten → Linear(4→2)`, 20 SGD steps
+       with batches of 8 on seeded synthetic data (seed 1234; test-only). Two fresh processes give the same weights digest,
+       `7b76c81ebe3476851d4292969fad1078320e1ffffa8e2f3a4db6d4096502134a`.
+     - **Export:** `torch.onnx.export(..., opset_version=13, dynamo=False)` gives the operators `{Conv, Flatten, Gemm,
+       GlobalAveragePool, Relu}` (all V-1), opset 13, **IR version 7**, and passes `onnx.checker`.
+     - **ONNX Runtime equivalence:** through the WP-08 `load_model` in the U4 venv (read-only), against PyTorch on four
+       fixed inputs. **Observed maximum absolute difference: 2.9802322387695312e-08**, the same in two runs. This is an
+       observation, not a protocol value; the test bound is 1e-6 (test-only).
+     - **Network and telemetry:** strace of import, a training step and an export:
+       - no `AF_INET` or `AF_INET6` socket and no IP `connect`;
+       - two `AF_UNIX` connects to `/var/run/nscd/socket` (absent, `ENOENT`) and a read of `/etc/passwd`: a local
+         user lookup;
+       - one temporary file in `TMPDIR`;
+       - no host-fingerprint reads of the WP-08 kind.
+       A static scan of `torch/lib` and `onnx` for telemetry endpoints found none (two hits were the symbol
+       `…11dstack…`). No mitigation is needed beyond a run-scoped `TMPDIR`.
+   - **Tests.** `tests/training/test_training_env.py`: 7 tests.
+     - 2 run everywhere: the lock (CPU `torch` from the CPU index, PyPI for the rest, numpy equal to U4, every hash
+       64 hex), and the script flags with the freeze-before-check order.
+     - 5 need the venvs and skip cleanly without them:
+       - the identity record against the lock and the disk (tree digests recomputed, no bytecode, no pip);
+       - CPU only;
+       - reproducible training;
+       - V-1 export;
+       - ONNX Runtime equivalence, which also checks that the U4 venv stays bytecode-free.
+     - Probes (restored): removing the seed fails the reproducibility test; adding a `Sigmoid` fails the operator test.
+   - **Suite.** With the venvs: 477 passed, 39 subtests (base `b2ff3e7`: 470). Without them
+     (`XVERSE_COMPAT_TRAINING_ENV` and `XVERSE_COMPAT_INFERENCE_ENV` set to `/nonexistent`): 467 passed, 10 skipped.
+   - **Residuals.**
+     - R-1 (cross-cutting, for the coordinator). The K-11 unit pattern (`-s` plus `PYTHONPATH`) includes the unpinned base
+       pyenv site-packages and its `.pth` hooks: U4 (WP-08), the Phase 8 units, and the Phase 7 and S1
+       `lite-driver`/`driver-stimulus` units. The recommendation is `-S` in every K-11 unit command, or the base
+       site-packages digested in the identity records. That is a decision for the unit owners (WP-12, WP-13, #5, the Phase 7
+       harness); nothing outside this increment is changed.
+     - R-2. Under `-S`, the U4 unit cannot import `xverse_compat.inference` because of the package `__init__`. Either
+       make `xverse_compat/__init__.py` lightweight (lazy exports), a compat change, or lock `xverse_xdl` into the U4 venv.
+       The recommendation is the former. It is a decision for WP-13.
+     - R-3. Export uses the legacy TorchScript exporter (`dynamo=False`), deprecated since PyTorch 2.9. The default
+       exporter would need `onnxscript`, which is not locked. The pin to 2.14.1 keeps it available for the campaign.
+     - R-4. The export is at IR 7, while V-1 was shown at IR 8. ONNX Runtime 1.31 runs it, and the real model repeats V-1.
+     - R-5. Determinism and equivalence are shown for the test network, single-threaded, on this host. The real model's
+       tolerance is `TODO: author decision` (WP-09 #4).
+     - R-6. Training runs need a run-scoped `TMPDIR`. The local user lookup (`/etc/passwd`, nscd) is benign.
+     - R-7. The venv is reproducible at its build path, not relocatable (console scripts), as in WP-08.
+     - R-8. The build script is a modified copy of the inference script; a shared builder could be extracted later.
+     - R-9. The inference script's bytecode check precedes its `freeze`. That is harmless today (no `.pth` in the U4
+       lock), but it should get the same order and `PYTHONDONTWRITEBYTECODE=1` (a WP-08 follow-up).
+   - **Status.** Candidate for independent review. Not accepted, not merged, not pushed.
