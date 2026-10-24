@@ -122,3 +122,19 @@ offline.
      - R-3. Lazy exports defer an `xverse_xdl` failure from package import to first use of a provider name. That is
        intended: a deployment without `xverse_xdl` fails exactly where it is needed.
    - **Status.** Candidate for independent review. Not accepted, not merged, not pushed.
+
+3. **Independent read-only review by Codex (2026-10-24; candidate `840091a2c28866fa3fa5c8e4d5f2b276708d6dce`). PASS.**
+   - Reviewed the complete change from `34b514d`: lazy public exports, the U4 command/environment template,
+     both inference harnesses, the build-script ordering and the six isolation controls. No product repair was made.
+   - Existing public names and lazy submodule imports are preserved. U4 imports no provider or `xverse_xdl`;
+     `-S -s -B` and the explicit venv-first path remove base/user-site discovery. This is interpreter dependency
+     isolation, not a sandbox or hardware-independence claim.
+   - Re-ran the full candidate suite with network disabled and the host UID preserved:
+     `unshare -cn env -u PYTHONPATH PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src
+     /dev/shm/compat-p6-venv/bin/python -B -m pytest tests -q -p no:cacheprovider --tb=short`.
+     Result: **541 passed, 39 subtests passed**, 30.60 s; no skipped test. `bash -n` and `git diff --check` pass.
+   - An earlier whole-suite `unshare -rn` invocation changed the effective UID to 0 and failed socket-path checks
+     under `/run/user/0`; 66 failed, 475 passed. This was a review invocation error, retained here, not a product
+     defect or a waived regression. `unshare -cn` preserves UID 1000 and the complete suite passes.
+   - Suite-log SHA-256: `7d9b6a59b7dd7f444cf656c00a10df0c27f04bc7ad4655a6b882b61e299937d2`.
+   - Finding 2 residuals R-1 to R-3 remain carried. Phase 7/S1 commands and rc.1 soak inputs are untouched.
