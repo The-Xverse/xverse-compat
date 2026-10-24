@@ -432,3 +432,21 @@ unverified (E8-3a).
        1 and 5 together as the v2 schema.
    - **Recommendation.** Ready for the author's acceptance. Carry LOW-B into the R-2 blueprint increment as
      an input constraint. LOW-A, LOW-C and LOW-D are optional.
+
+## 7. Acceptance (written at 10:44:33 2026-10-24)
+
+- **Accepted** under the author's delegation of 2026-10-24. The record is in thesis
+  `specs/029-lite-stabilization/review/author-decisions-20261023.md`, "Author delegation of decisions", and
+  thesis `specs/002-assured-aeb/decisions.md` §G and §H. It is flagged for the author's review.
+- **Basis:** findings 3 and 6 are independent reviews, both PASS WITH NOTES with no blocker. The compat suite gives
+  274 passed and 39 subtests. Verification is offline only; the live check belongs to E8-3a.
+- **The v2 schema** of `xverse-compat.evaluation-observer/2` is the design of finding 1 together with the
+  resolution line and `resolvePeriodFrames` of finding 5 (finding 6, LOW-D).
+- **Declared:**
+  - LOW-A: the launch scan recognises launchers by name only. Aliased launchers, a rebound `subprocess` module,
+    `asyncio` and `multiprocessing` fall under R-3; the V14 audit remains the backstop.
+  - LOW-C: the header member `boundingBox` describes the resolution-line object and is kept as named.
+- **Carried to the blueprint wiring (R-2) as an input constraint (LOW-B):** v2 gets its own output path and its own
+  reader, which selects frame records by `roles`. It never replaces `observer.jsonl`, which the v1 consumers
+  `report.py` and `soak/audit.py` read.
+- **Merged** into compat main and pushed (see the merge commit).
