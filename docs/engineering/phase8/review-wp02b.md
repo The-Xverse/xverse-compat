@@ -165,3 +165,80 @@ not M1, not AEB evidence, live behaviour unverified (E8-3a).
        the blueprints' job (harness, manifest), not enforced in compat.
      - R-5. WP-02 residuals R-1 to R-8 still apply, and R-3 of WP-02 (blueprint selection of a target
        scenario, the audit's owned set and target stillness) is unchanged.
+2. **Implementation of finding 1 (2026-10-24 15:23:21; code commit `1a7f3ec`).**
+   - **Change.**
+     - `src/xverse_compat_carla/scenario.py`:
+       - `TARGET_OPTIONAL = {"adjacentLane"}`, `ADJACENT_MEMBERS`, `ADJACENT_SIDES` and `ADJACENT_DIRECTIONS`;
+       - `target_of` admits the four required target members, optionally with `adjacentLane`, and validates
+         `adjacentLane` (an object with exactly `side` and `direction`, each one of its declared values; no
+         default), before any spawn or waypoint query;
+       - `adjacent_lane(waypoint, adjacent, carla)` takes the neighbour on the declared side and refuses no
+         neighbour, a non-`Driving` lane type, another road, a zero or non-int lane id on either lane, a
+         direction that disagrees with the lane-id signs, and a neighbour in a junction;
+       - `target_transform(..., adjacent=None)` runs the WP-02 walk unchanged and, only with `adjacent`, replaces
+         the walk's last waypoint by `adjacent_lane`'s result before the existing lift and finiteness checks;
+       - `spawn` passes `target.get("adjacentLane")`.
+     - `sources.py`, `restore.py`, `observe.py`, `main.py`, `protocol.py` and the shipped
+       `xdl/descriptors/aeb-sim/live-scenario.json` (schema 1, no target) are unchanged
+       (`git diff 95e9e7a` over them is empty).
+     - `scenario.py` still imports only `math` (and `__future__`); `carla.LaneType.Driving` is read from the
+       passed-in module and only on the `adjacentLane` path.
+   - **Tests.** `tests/live/test_phase8_target.py`: 94 tests (53 before; 41 new, parametrized cases included).
+     The WP-02 lane fake gains declared neighbour lanes (lane id, road id, lane type, junction flag, centre and
+     heading), the ego lane gets a lane id and road id, and a second fake module `CARLA_LANES` adds
+     `LaneType.Driving`. Every lane value is a labelled test value (ego lane -1 of road 7 at y 5.0; neighbours
+     at y 1.5 and 8.5).
+     - Schema 2 without `adjacentLane`: the transform is WP-02's (x 50.0, y 5.0, yaw 0, the 0.6 m fake lift),
+       with no neighbour query, under the original fake `CARLA`, which has no `LaneType`. All 53 WP-02 tests
+       pass unchanged; the registry restore test is now parametrized over the in-lane and adjacent-lane cases.
+     - 13 invalid `adjacentLane` values (null, a string, a list, `{}`, a missing `side` or `direction`, an
+       extra `laneId`, `side` "Left", "up" or null, `direction` "reverse", true or null) are refused, with
+       nothing spawned and no waypoint or neighbour queried. A `lateralOffsetM` member is refused with or without
+       `adjacentLane`, and an adjacent-lane target under schema 1 is refused.
+     - Placement: left and right, same and opposite direction, at the neighbour's centre beside the walk's end
+       (x 50.0), with that lane's heading (yaw 180 for the opposite-direction test lanes) and the map's lift;
+       the walk is 40 steps of 1 m followed by one lateral query.
+     - 14 refusals, nothing spawned: no lane on the left or on the right; a Shoulder, Sidewalk or Parking
+       neighbour; another road; a direction mismatch in each sense; a neighbour lane id of 0, -2.0 or true; an
+       ego lane id of 0; a neighbour in a junction; a non-finite neighbour coordinate.
+     - The WP-02 walk refusals (lane end at step 21, branch at step 15, junction at steps 10 and 38, spawn
+       waypoint in a junction) still fire with `adjacentLane` present, before the lateral query.
+     - Spawn and ownership: `[ego, camera, radar, target]` with the target at the adjacent placement and its one
+       hold control; the registry lists it; a runtime command reaches the ego only, with steer 0.0; close
+       destroys it without writing it.
+     - Restore guard: the listing path and the registry path both hold and destroy an adjacent-lane target,
+       with `remaining == []` and `restored: true`.
+     - Observer: the target's role is `TARGET_ROLE`, matched by the WP-01 `TRACK_ROLE`.
+   - **Mutation checks (not committed; `scenario.py` restored and compared byte for byte).** Dropping the
+     lane-type check fails 3 tests; the direction check 2; the road check 1; the neighbour-junction check 1; a
+     default `direction` of `"same"` 1; ignoring `adjacentLane` in `spawn` 15; querying the neighbour at the
+     spawn waypoint before the walk 8.
+   - **CPython 3.10.12.** `scenario`, `sources` and `main` import under `env -i ... /usr/bin/python3.10 -s -B`
+     with `forbidden_modules_loaded() == []`, without loading `carla`; `target_of` of the shipped descriptor is
+     `None`.
+   - **Suite.** 460 passed, 39 subtests (base `95e9e7a`: 419 passed, 39 subtests).
+   - **Residuals.**
+     - R-1. Live behaviour is unverified. On the installed maps: which P-2 training segments have a driving
+       neighbour, its lane ids and types, the meaning of `get_left_lane`/`get_right_lane` there, the heading of
+       an opposite-direction waypoint, and the hold and settling of a target on a cambered neighbour lane with
+       the ego-lane spawn lift reused (with WP-02 R-1 and its hold-still criteria (a)–(g), whose lateral item (d)
+       now also covers the adjacent case). The CARLA API facts in finding 1 come from offline introspection of
+       the pinned client and the API reference, not from a map. No CARLA was run.
+     - R-2. Only whole-lane offsets are produced; near-corridor-boundary examples are not. If WP-09 needs them, a
+       metric offset (finding 1 option A) is a separate successor with its own design entry and the corridor
+       half-width decision (`TODO: author decision`).
+     - R-3. One lane over only; the neighbour lane is checked at the target position only, not beside the whole
+       walk, and lane-change permissions are not consulted.
+     - R-4. Adjacent-lane targets are outside the AD-04/FR-029 evaluation family ("a stationary target vehicle
+       in the ego lane"). Keeping them to D-3 training, calibration and characterisation data is the job of the
+       blueprints' D-3 harness and the WP-09 manifest check; compat does not know the run kind and does not
+       enforce it. Any use in evaluation needs the author's decision on AD-04.
+     - R-5. The out-of-corridor label is not asserted by the placement: it is computed by the WP-09 label code
+       from observer v2 records against the corridor half-width (`TODO: author decision`).
+     - R-6. Readings flagged for the author's review: the decision row's "lateral-offset target placement" is
+       read as a placement one lane over, and the WP-09 record's "schema-3 target placement" is met by an
+       optional member of schema 2 (finding 1, "Schema").
+     - R-7. WP-02 residuals R-1 to R-8 still apply, including its R-3 (blueprint selection of a target scenario,
+       the audit's owned set and target stillness).
+   - **Status.** Candidate for independent review and the author's acceptance. Not accepted, not merged, not
+     pushed.
