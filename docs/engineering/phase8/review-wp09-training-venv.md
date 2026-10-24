@@ -356,3 +356,9 @@ Findings are recorded before repairs. This is offline engineering tooling, never
    - **Residuals:** R-3 to R-10 stay carried as recorded. The real model and its tolerance remain later WP-09 #4 work,
      with no new numeric protocol value. This finding is a source re-review verdict, **not acceptance, a merge, a
      push, a real-model validation or a live-execution authorization**.
+
+## Delegated engineering acceptance for isolated main assembly (Codex, 2026-10-24)
+
+Independent re-review findings above and the now-completed source-bound owning suite support acceptance under the author's recorded engineering delegation, flagged for author review. Reviewed revision `11ff91e1569f68d977c8949bfd982483d2216d72`; actual full-suite result: **601 passed, 1 skipped, 39 subtests passed in 72.49s (0:01:12)**. Evidence is the thesis-owned `specs/002-assured-aeb/review/codex-serial-verification-20261024/training-environment/receipt.json` and companion `pytest.log` (SHA-256 `9dea483a5290bfdc325443a8418acc0dabaa1fa764a04c3fb001f17a5003cff2`). No failed, missing or skipped required behavior is treated as a pass.
+
+Scope: Pinned offline training environment mechanism only; no real training/model validation. The only full-suite skip is host-network refusal, separately independently exercised on host with exit6/no record (finding6). All previously carried review limits remain. Assemble only accepted increments in an isolated main worktree and run its complete owning suite before delivery. This finding is acceptance of this engineering increment; it is not an assembled-main test or live/scientific acceptance.
