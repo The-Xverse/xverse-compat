@@ -309,3 +309,21 @@ evidence, and no model of the thesis (GA-35).
        if the author authorizes it.
      - Record LOW-1 to LOW-3.
      - Then a focused re-review, followed by acceptance.
+4. **Disposition of finding 3 (2026-10-24 11:29:32; decided by the coordinator under the author's delegation of
+   2026-10-24, flagged for the author's review). Recorded before repair.**
+   - **MEDIUM-1, repair.** `load_model` refuses with `ModelRefused` when `onnxruntime` is already in
+     `sys.modules`. A subprocess test covers the earlier-import bypass, and any probe that runs with
+     default telemetry runs only inside `unshare -rn`. R-5 records that the U4 entry point (WP-13) checks
+     `ORT_DISABLE_TELEMETRY` before any other import.
+   - **MEDIUM-2, repair.** Install with `pip --no-compile`, assert that no `__pycache__` directory or
+     `.pyc` file exists after the build, and digest every file. Rebuilding the venv from the existing
+     local wheelhouse is authorized, with no new download; the old venv is removed only at its exact path.
+     The import-time cost is recorded as an input to V-3.
+   - **LOW-1.** `identity.json` gains a standard-library tree digest (the pyenv 3.13.13 `lib/python3.13`,
+     excluding `site-packages` and `__pycache__`), the `libpython` hash if one exists, and the venv pip's
+     version and hash.
+   - **LOW-2.** The docstring is corrected: the session, provider and schema refusals come after the import
+     and before readiness. An import failure maps to `ModelRefused`. WP-13 makes the input and output
+     schema checks mandatory (recorded).
+   - **LOW-3.** `identity.json` binds the lock by its hash and its repository-relative path.
+   - The thesis correction section is amended by the coordinator, not here.
