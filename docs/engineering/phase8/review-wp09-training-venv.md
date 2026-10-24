@@ -180,3 +180,86 @@ Findings are recorded before repairs. This is offline engineering tooling, never
      - R-9. The inference script's bytecode check precedes its `freeze`. That is harmless today (no `.pth` in the U4
        lock), but it should get the same order and `PYTHONDONTWRITEBYTECODE=1` (a WP-08 follow-up).
    - **Status.** Candidate for independent review. Not accepted, not merged, not pushed.
+3. **Independent review of findings 1 and 2 (2026-10-24 15:43:00).**
+   - **Reviewer and method.** An independent reviewer who did not write this increment.
+     - Read `5ab0dc6` and `4d62ba2` against base `b2ff3e7`, and checked them against thesis
+       `design/wp09-training-pipeline.md` §4–§5 and the `decisions.md` rows "WP-09 training pipeline" (288) and
+       "WP-09 #3 unit isolation (R-1, R-2, R-9)" (293).
+     - The thesis Git freshness check was run read-only: branch `agent/synchronize-thesis-obsidian-notes`, the fetch
+       succeeded, and no upstream commit touches the note. The relevant sections of `notes/dynamic_thesis_notes.md` were
+       read (DYN-002; evaluation-only ground truth).
+     - The wheelhouse and both venvs were only read. Every torch or ORT execution ran inside `unshare -rn` with
+       `-S -s -B` and `PYTHONDONTWRITEBYTECODE=1`.
+     - No download, no install, no CARLA. The worktree was not changed except for this entry.
+   - **Verdict: PASS WITH NOTES. Nothing blocks the merge.** The merge still awaits the author's acceptance.
+   - **Evidence.**
+     - **Hashes.** `sha256sum` of the 14 wheelhouse files equals the 14 lock hashes exactly.
+       - The hash-against-index cross-check of finding 2 could not be repeated offline (no downloads). It is accepted as
+         recorded.
+       - Dependency confusion is closed structurally: `torch==2.14.1+cpu` is a local version that exists only on the CPU
+         index. Installation is `--no-index --require-hashes --no-deps` from the local wheelhouse.
+     - **Closure.** From each wheel's `METADATA`, every `Requires-Dist` without an extra marker names a locked
+       distribution: no missing hard dependency, and no `nvidia-*` dependency on the CPU `torch`.
+     - **Build flags** (make-training-env.sh 38–60).
+       - `venv --without-pip`; the base pip with `--python` and `--no-index --find-links --require-hashes --no-deps
+         --no-compile`; `PYTHONDONTWRITEBYTECODE=1` on every step.
+       - The import check runs with `-S -s -B`, and the bytecode check comes after `freeze`, the last step that runs the
+         venv's interpreter, which is where the `distutils-precedence.pth` defect wrote its `.pyc`.
+       - After the full suite, the training venv and the U4 venv each hold 0 `__pycache__` directories and 0 `.pyc`
+         files.
+     - **The `-S` finding, reproduced.**
+       - The base pyenv site-packages holds `a1_coverage.pth`, `_editable_impl_xverse_xdl.pth` (which adds
+         `/home/jefferson/xverse-t007-t020-queue/src`) and `__editable__.xverse_hwsim-0.1.0.pth`.
+       - With `-s -B`, `sys.path` contains the base site-packages **and** `/home/jefferson/xverse-t007-t020-queue/src`.
+         With `-S -s -B`, it contains neither.
+       - This matches finding 2, and it is now decided in row 293.
+     - **Determinism, export and ORT, re-run in scratch under `unshare -rn`.**
+       - The `export` probe gives the same weights digest as finding 2 (`7b76c81e…134a`), the operators `{Conv, Flatten,
+         Gemm, GlobalAveragePool, Relu}`, opset `[13]` and IR 7.
+       - `ort_compare` in the U4 venv gives providers `["CPUExecutionProvider"]` and `maxAbsDiff` `2.98e-08`, which equals
+         finding 2.
+       - The compat suite with the venvs: 477 passed, 39 subtests (torch and ORT inside `unshare -rn`).
+     - **No protocol value is invented.** The 1e-6 bound is labelled test-only in the test (line 109) and the record, and
+       the observed 2.98e-08 is recorded as an observation. The seed 1234, 20 steps and batch 8 are labelled test-only in
+       the probe. The real model's tolerance stays `TODO: author decision` (R-5).
+     - **jinja2 licence, from its wheel.** `METADATA` has no `License` field, but has `Classifier: License :: OSI Approved
+       :: BSD License` and `License-File: LICENSE.txt`.
+       - The bundled `jinja2-3.1.6.dist-info/licenses/LICENSE.txt` is the 3-clause BSD text: "Copyright 2007 Pallets",
+         clauses 1–3, including "Neither the name…".
+       - So jinja2 is **BSD-3-Clause**. This closes the `TODO: engineering verification` of finding 2.
+   - **Issues (none blocks the merge).**
+     - **LOW-1: IR 7 departs from design §5 ("IR 8"), and no test pins the IR.**
+       - Where: tests/training/test_training_env.py 98–101.
+       - R-4 records the IR honestly, and ORT 1.31 runs it.
+       - Either amend design §5 to "the IR emitted for opset 13 (7)", a thesis-side edit, or set `ir_version` explicitly at
+         export.
+       - In both cases, assert `irVersion` in `test_wp09_export_uses_only_v1_operators_at_opset_13`, so that a change of
+         exporter or `onnx` version is detected.
+     - **LOW-2: the tests run torch and ORT *without* a network namespace when `unshare -rn` is unavailable.**
+       - Where: tests/training/test_training_env.py 28 and 42.
+       - The WP-08 earlier-import test skips in that case. These tests fall back to a plain subprocess, which conflicts
+         with the rule that every torch or ORT run is network-isolated.
+       - Repair: skip, as WP-08 does, when `NETNS` is false.
+     - **LOW-3: the build script does not enforce its own network isolation.** Finding 2's build was run inside
+       `unshare -rn` by the operator, but `make-training-env.sh` imports torch (line 56) on whatever network it is given.
+       Optional: refuse unless run inside a network namespace, or wrap the import check in `unshare -rn`.
+     - **LOW-4: the installer process sees the base `.pth` hooks.**
+       - The base pip must run with its own site-packages, so `-S` is impossible for it. Its process therefore runs
+         `a1_coverage.pth` and puts the editable `xverse_xdl` path on `sys.path`.
+       - The lock hashes protect what is installed. The identity record digests the installer's `pip` tree, but not those
+         hooks.
+       - Record the base site-packages `.pth` files, with their digests, in the identity record, or state the limit
+         beside R-1.
+   - **Residuals R-1 to R-9.**
+     - R-3 to R-8 are accurate.
+     - R-1 is now **decided** (`decisions.md` 293):
+       - `-S -s -B` with `PYTHONDONTWRITEBYTECODE=1` in every Phase 8 unit command;
+       - the Phase 7 and S1 units are left unchanged before the soak, as a declared 1.0 limit.
+
+       R-1 should cite that row.
+     - R-2 and R-9 are **decided** as increment WP-08b, before WP-13. They should cite it.
+     - Add the jinja2 licence (BSD-3-Clause, from the wheel) to finding 2's licence list when the record is next amended.
+   - **Recommendation.**
+     - Ready for the author's acceptance.
+     - Before increment #4 trains anything, repair LOW-2 (skip without a network namespace) and pin the IR (LOW-1).
+     - LOW-3 and LOW-4 are optional or a residual. Cite rows 293 and WP-08b in the residuals.
