@@ -641,3 +641,923 @@ engineering stabilization candidate: not M1, not AEB evidence.
       identity is checked before the push.
     - **Next.** VS-09 is repeated on the merged revisions. It can still fail through the platform race (platform
       findings 18–19).
+28. **S1c-2 planning (written at 19:37:43 2026-10-23, before any S1c-2 code).**
+    - **Branches.** `candidate/lite-stabilization-s1c2-20261023` in `xverse-blueprints`, from main `6ac7703`, and
+      in `xverse-compat`, from main `bb07492`. Part 1 covers what does not depend on S1b (ES-3). Part 2 adopts
+      the S1b graceful stop, stderr capture and marker probe after S1b is merged.
+    - **Part 1, S1-T15a: the soak tooling**, in `automotive/thesis-lite-carla-closed-loop/soak/`:
+      - **`health_check.py`.** A read-only, independent CARLA check: a fresh client, `get_world()` within 15 s,
+        then a passive `wait_for_tick(5 s)` on the asynchronous world. It never ticks. Its output is JSON.
+      - **`audit.py`.** The per-run criteria P1 and P3–P8 from `plan.md` §Soak, with DR-2 and DR-6 applied, read
+        from the recorded run evidence only. P2 is reported as dispersion.
+      - **`run_soak.py`.** The predeclared runner (FR-019, FR-020):
+        - interleaved rounds; a round starts only at a 1-minute load ≤ 5;
+        - per-run load samples every 5 s;
+        - a CARLA server block every 10 rounds, restarted with the author's recipe;
+        - the health check before the preflight and after the cleanup;
+        - the INVALID and observation rules;
+        - stop at the first failure;
+        - pinned, clean, detached revisions, refused on any change;
+        - a soak manifest and a report.
+    - **Part 1, the FR-018 horizon part not tied to S1b.**
+      - A `long-run` case at the S-D1 horizon (600 ticks, 4 units), with the driver episode and the stimulus
+        profile extended to cover it.
+      - A 5 s start-up scope margin (S1b finding 2, GA-10).
+      - `maestro-run.json` also records the broker's cancel result (confirmed or revoked) for every cancel run
+        (S1a-2 finding 24).
+    - **Order.** Each part is reviewed independently before any soak run. The soak itself (S1-T16) waits for
+      the accepted mains of S1a-2, S1b and S1c-2.
+29. **The platform content lock drifted after the S1a merge (written at 19:43:16 2026-10-23, before the re-pin).**
+    - `platform-api.lock.json` pins platform `8b3d8c8e8` (surface `2696645d…`, 26 files). Its roots are
+      `pyproject.toml`, `src/xverse_xdl`, `xdl/profiles` and `xdl/schemas`.
+    - S1a changed `src/xverse_xdl/lifecycle.py` (`FileEvidenceJournal._reload`, the verified-prefix cache). So
+      `test_provider_conformance.py::test_platform_dependency_source_matches_content_lock` fails against platform
+      main `b28a2aacf`. That is true for compat main `bb07492` too, since the S1a merge.
+    - The S1c-1 and S1c-2a suites passed because they ran before platform main moved.
+    - Log a: `verification-20261023-s1c2-a.log` (1 failed, 208 passed) is the state before the re-pin. It also
+      includes the new long-run stimulus test.
+    - **Repair, as in Phase 6 (`c2557ed`).** Re-pin the lock to `b28a2aacf` and rebuild the admission record
+      with `scripts/admit_phase4.py`, against a suite log taken after the re-pin. The review fields stay pending
+      until S1c-2's own review and acceptance.
+30. **Re-pin to platform main `b28a2aacf` (written at 19:44:51 2026-10-23).**
+    - **Erratum to finding 29.** Log a shows 1 failed and 207 passed, not 208 passed.
+    - **The test venv** `/dev/shm/compat-p6-venv` now has the `b28a2aacf` platform wheel
+      (`.x-verse-build/cache/xverse-lite-live-20261022/wheels`). Its installed `xverse_xdl/lifecycle.py` equals the
+      platform main source.
+    - **The lock** `platform-api.lock.json` was re-pinned with `scripts/admit_phase4.py`: platform `b28a2aacf`,
+      surface `4586c2ed…`, 26 files.
+    - **The admission record** `xdl/selection/aeb-sim-admission.json` was rebuilt against log b
+      (`verification-20261023-s1c2-b.log`: 208 passed, 39 subtests). Its review and acceptance fields are empty
+      until S1c-2's review and acceptance.
+    - **A rerun on the final record** gave 208 passed.
+31. **S1c-2 part 1 development runs, and an audit metric defect (runs 20:27–20:33, CARLA instance 15; written at
+    20:33:32 2026-10-23, before the repair).**
+    - **Revisions.** Blueprints `5c7bfad`, compat `02474ba`, platform main `b28a2aacf`.
+
+      | Case | Result | Ticks (mean cycle) | Persistence round trip (p99 / max / last-decile increase, s) | Load |
+      | --- | --- | --- | --- | --- |
+      | long-run | succeeded | 601 (0.056 s) | 0.046 / 0.105 / 0.005 (1401 calls) | 6.3 |
+      | nominal | succeeded | 401 | 0.073 / 0.132 / 0.019 | 8.5 |
+      | cancel-paused | `ML-SCHEDULE-CANCELLED` | — | — | 8.0 |
+
+    - **Long-run.** Its start-up scope was 4.75 s. The persistence round trips meet the FR-002 metric.
+    - **Broker cancel result.** `native_epoch_confirmed: true` in all three runs. In nominal and long-run this is the
+      terminal fence's cancel.
+    - **Audit.** nominal and cancel-paused PASS. long-run FAILs only `P6.closureWithin2s`.
+    - **Defect.** `audit.py` measures "closure" as the start-return time minus the last tick: 2.05 s for long-run,
+      2.59 s for nominal and 1.56 s for cancel. That span includes the reverse teardown of all four units, the
+      collection and the terminal reports. The P6 criterion (plan.md; FR-002 "closure and abort must fit the
+      terminal budget (≤ 2 s; `run_closure.py:126`)") means the terminal persistence calls. The longest of those
+      was `terminal-report` at 0.80 s in long-run. The criterion was applied to the wrong span.
+    - **Repair.**
+      - The harness records every terminal persistence call (kind, duration).
+      - P6 requires each `terminal-report`, `closure` and `abort` call to be ≤ 2 s.
+      - The span after the last tick stays reported as an observation.
+32. **The long-run terminal report exceeds its 2 s budget under load (run dev-s1c2p1-20261023T203658-long-run; written at 20:38:41
+    2026-10-23, before any repair or decision).**
+    - **Revisions.** Blueprints `b1c43b0`; load 8.4 at the start.
+    - **Result.**
+      - 601 ticks, and the units succeeded with every marker.
+      - `persistenceFailure: ML-PERSIST-TIMEOUT`, kind `terminal-report`, stage `receive`: the call ran 1.981 s
+        against its 2 s deadline.
+      - `dispatchDiagnostic: ML-SCHEDULE-EVIDENCE-INCOMPLETE`, closure `ML-CLOSURE-REPORT-INCOMPLETE`.
+      - The Maestro root stayed `open` with CORRUPT and MUTATED reasons. The harness failed visibly.
+    - **The first long-run at load 6.3** took 0.80 s for the same call.
+    - **Cause, from the code.** The terminal publish (`persistence_worker` → `terminal_runtime.WorkerTerminal.publish`)
+      builds the lifecycle coverage report and the `retained-inputs.json` snapshot over every event. At long-run
+      size that snapshot is about 2 MB, about 2.2 KB per event. So its cost grows with the run, unlike the
+      incremental per-event path that S1a repaired.
+    - **Measurements.** The S1a bench measured 0.71–0.99 s at 800 ticks, at low load. Live, at load 8.4, it is 1.98 s.
+    - **Effect.** P6 ("closure ≤ 2 s at the S-D1 long-run size") and P1 for long-run fail at loads around 8 or
+      above. The soak admits loads up to 10.
+    - **FR-002 sets the rule.** "If closure or abort does not fit, abort must use the verified-prefix path, or an
+      author decision is raised."
+    - **Options.** Recorded for the thesis decision record, not chosen here:
+      - (a) a platform repair that makes the terminal snapshot and coverage incremental, a verified-prefix path
+        (platform successor work);
+      - (b) a shorter S-D1 long-run horizon (an author decision);
+      - (c) a larger terminal budget (a frozen 2 s bound; an author decision).
+33. **S1c-2 part 1 verification on blueprints `b1c43b0` (runs 20:51–21:00, CARLA instance 15 stopped before
+    no-carla; written at 20:44:19 2026-10-23).**
+    - **Revisions.** Compat `c4b747f`, platform main `b28a2aacf`.
+    - **freeze-vcu.** Audit PASS. The freeze lay inside the throttle; the persistence p99 was 0.048 s and the maximum
+      0.235 s; load 8.3.
+    - **no-carla** (server stopped). Audit PASS: `ML-RUN-CHILD-EXIT`, writer `failed` with WRITER-STATE only.
+    - **Long-run.** It passed at load 6.3 (finding 31). At load 8.4 it failed through the terminal budget
+      (finding 32), which goes to the author as S-D9. Long-run P6 is therefore open.
+    - **Start-up scope.** It is 4.75 s in every run, and the broker cancel was confirmed in every run.
+    - **Evidence.** `runs/lite-stabilization-s1/s1c2-part1-dev-20261023` (`SHA256SUMS`).
+    - **Next.** An independent review of S1c-2 part 1 (findings 28–33).
+34. **Independent review of S1c-2 part 1 (blueprints `b1c43b0`, compat `d7d5afa`; written at 20:55:05 2026-10-23):
+    FAIL, 2 HIGH, 4 MEDIUM, several LOW. Recorded before any repair. The harness changes and the compat re-pin
+    are correct.**
+    - **H1. P8 guard path.**
+      - `audit.py` windows the observer samples by the time each was received. The guard destroys the ego about
+        18 µs after its standstill reading, so the last ego frame arrives just after the destroy time.
+      - Example: `dev-s1c2a-…173336-cancel-paused` is a false reject. Frame 138252 shows 0.016 m/s and arrived
+        3.3 µs after the destroy.
+      - Repair: window by frame, up to the last frame that still shows the ego.
+    - **H2. P6 is blind to a timeout.**
+      - `noPersistTimeout` ignores `persistenceFailure.diagnostic` and `closureDiagnostics`.
+      - A terminal call is cut off at its own deadline (≤ 2 s), so `closureCallsWithin2s` cannot fail. The
+        finding-32 run passes P6 today.
+      - Repair: check `persistenceFailure` and `closureDiagnostics`, and fail a terminal call that reached its
+        deadline (at least 0.98 of 2 s, or any terminal persistence failure).
+    - **M1.** Repeats do not count server failures, do not restart the server, and do not queue a repeat that
+      passes at load above 10.
+    - **M2.** The result of a restart after an INVALID run is ignored and not recorded.
+    - **M3.** A health-check failure with the world left synchronous or paused is a P1 restore failure. It must
+      count as FAIL, not INVALID.
+    - **M4.** `scriptExit` is unused. The harness's own assertions are therefore not part of the verdict (for
+      example the freeze-in-throttle check, and cleanup).
+    - **LOW items.**
+      - P8 path counts, the flow roots and P2 are missing from the report.
+      - `--dispersion` includes failing runs. The long-run "throttle duration" is the first-to-last span.
+      - The no-carla gap realization and the "server failed to start twice" stop exist only in code. That stop
+        also lacks a `stop_server`.
+      - The pins are weak: the platform is identified only by an `.export-revision` file, and `audit` is loaded
+        from the runner's directory.
+      - The health check's subprocess timeout is not caught.
+      - A comment says "~1.8 MB".
+    - **Errata.**
+      - Finding 31: the runs were 20:21:46–20:33.
+      - Finding 32: the snapshot is 1,295,710 bytes (about 1.6 KB per event over 797 events), not "about 2 MB, 2.2
+        KB per event". The call's deadline was 1.980 s after it started.
+      - Finding 33: the runs were 20:42:41–20:44:07. "Passed at load 6.3" is not supported by the audit: no
+        long-run has an audit PASS under the final tooling.
+      - The thesis S-D9 record: the bench measured 445 and 507 ms at 600 ticks.
+35. **The finding-34 repairs (blueprints commit after `b1c43b0`; written at 20:57:17 2026-10-23).**
+    - **H1.** The P8 guard window is taken by frame: from the first frame after the un-pause to the last frame that
+      still shows the ego. Replay: `173336` now passes.
+    - **H2.** P6 adds `noPersistenceFailure` and reads `persistenceFailure` and `closureDiagnostics`. A terminal
+      call at 0.98 × 2 s or more fails. Replay: the finding-32 run `203658` now fails P6 on the timeout.
+    - **M1 and M2.** `Soak._restart` and `_carla_run` handle every INVALID run, including those in repeats.
+      - Each one counts as a server failure and restarts the server.
+      - A failed restart counts again and is retried. More than 3 server failures stop the soak.
+      - Every server event is recorded in the manifest.
+      - A repeat at the end of a block that passes at a load above 10 is queued as an observation.
+    - **M3.** A failed after-cleanup health check with `synchronousMode: true` is a restore failure: FAIL, not
+      INVALID.
+    - **M4.** A run passes only if the audit passes and the harness also exited 0.
+    - **LOW items.**
+      - The report gives the P8 path counts per case, the flow-root states (DR-6 c) and the server events.
+      - `--dispersion` uses passing runs only, with the throttle time summed from the driver ticks.
+      - The realizations are written in the runner's docstring and proposed as thesis DR-11 and DR-12.
+      - `audit.py` runs from the pinned blueprints checkout. The runner must equal the pinned copy, and the
+        driver-venv wheels are hashed into the pins.
+      - `XVERSE_PLATFORM_SRC` is removed from the child environment.
+      - The health check's timeout is caught.
+      - The comment now reads 1.3 MB.
+    - **New `soak/test_run_soak_logic.py`** (offline fakes, no CARLA): 5 passed. It covers the predeclared counts,
+      a stop on the first failure, an INVALID repeat at the end of its block, a stop after more than 3 server
+      failures, and a failed restart counted as a server failure.
+    - **Replay of `audit.py`** over the 31 recorded runs: the only rejections are the known failures and the runs
+      without `argus-verify.txt`.
+    - **Errata of finding 34** apply to findings 31–33 as listed there.
+36. **Independent re-review of the finding-34 repairs at blueprints `ca0ea5a` (written at 21:12:22 2026-10-23): FAIL, 2
+    MEDIUM and several LOW. H1, H2, M3 and M4 are resolved. Recorded before any repair.**
+    - **MEDIUM-1.** The DR-11 rule "a server that fails to start twice in a row stops the soak" is not implemented.
+      `_restart` retries until there are more than 3 failures; the condition at `run_soak.py:279` is always true.
+    - **MEDIUM-2.** The end-of-soak phase crashes (`FileNotFoundError` in `stop_server`) when every queued repeat
+      is a no-carla run. No report is written, and the manifest stays `running`.
+    - **LOW items.**
+      - `audit.py:138`: a `TypeError` when there are no ego frames after the un-pause but an ego sample's frame
+        is at or after the first post-un-pause frame.
+      - The P8 guard window is no longer bounded by the destroy time.
+      - The P6 threshold of 0.98 × 2 s tightens "within 2 s". A timed-out call is caught by
+        `persistenceFailure` anyway.
+      - The pins are only partly hashed: the platform source, the venv's `xverse` package and `health_check.py`
+        are not.
+      - A pin mismatch at start-up gives code 2, not a code-4 refusal.
+      - An `_audit` timeout, and the `_check_pins` `SystemExit`, leave the server running.
+      - The end-phase server start is not recorded as a server event.
+      - P2 is absent from `soak-report.json`.
+      - `--dispersion` ignores the harness exit.
+      - `p8Paths` counts non-PASS runs without saying so.
+      - Untested: the status classification (M3, M4), two failed starts in a row, a FAIL or INVALID in a repeat,
+        the end-of-soak repeats with no-carla only, and the stop codes.
+37. **The finding-36 repairs (blueprints `44fca14`; written at 21:15:21 2026-10-23).**
+    - **MEDIUM-1.** `_restart(reason, failed_starts)` stops the soak after two failed starts in a row (DR-11), or after
+      more than 3 server failures. A block start that fails enters with `failed_starts=1`.
+    - **MEDIUM-2.** `stop_server` creates the slot directory. The end phase starts and records a server only when a
+      CARLA repeat is queued.
+    - **LOW items.**
+      - `audit.py` has no `TypeError` when there are no ego frames.
+      - The P8 guard window also requires the last ego frame to be received within 0.1 s of the destroy.
+      - The P6 duration check is back to the plan's ≤ 2 s. Timeouts are caught through `persistenceFailure`.
+      - The pins add tree digests of the platform source export and of the driver venv's `xverse` package. The
+        runner, `health_check.py` and `audit.py` must equal the pinned blueprints copies, and the soak refuses
+        with code 4 at start-up otherwise.
+      - Any exit, including a pin change or a crash, stops a running server.
+      - The `_audit` timeout is caught.
+      - The report gives P2 (passing runs) and `p8PathsOfPassingRuns`. The standalone `--dispersion` is
+        documented as audit-only.
+    - **Classification.** The status logic is the pure `classify()` (DR-12).
+    - **`test_run_soak_logic.py`: 15 passed.** New cases cover two failed starts in a row, a FAIL in an INVALID
+      repeat, end-of-soak repeats with no-carla only (using the real `stop_server`), and seven `classify`
+      cases.
+    - **Audit replay over 31 recorded runs:** the verdicts are unchanged apart from the intended P6 change.
+      `203658` still fails through the timeout.
+38. **Independent re-review 2 of S1c-2 part 1 at blueprints `44fca14` (written at 21:19:54 2026-10-23): PASS, LOW only.
+    Recorded before the repairs.**
+    - **Resolved.** Both finding-36 MEDIUM items and the LOW items are resolved; 15 passed. The audit replay over 36
+      runs matches finding 37. The P8 destroy margin is −0.17 to +0.38 ms against the 100 ms bound.
+    - **LOW-1.** The stop reason is wrong after an INVALID run followed by two failed restarts: it reads "more than 3
+      server failures" instead of DR-11's two failed starts.
+    - **LOW-2.** The end phase stops the last block's slot again and overwrites its `stopped-at.txt`.
+    - **LOW-3.** P2 in the report is unguarded when a passing guard-path run lacks `driver/driver-ticks.jsonl`.
+    - **LOW-4.** `platformSourceTree` hashes `platform-src/src`, but the harness also imports `platform-src/tests`
+      (`conftest.py`).
+    - **LOW-5.** Untested: an INVALID run followed by two failed restarts, the code-4 refusals, the `finally`
+      cleanup, and a restart in the end phase.
+    - **Repairs follow** in the next blueprints commit.
+39. **The finding-38 LOW repairs (blueprints `6651971`; written at 21:21:15 2026-10-23).**
+    - LOW-1: `_restart` records the exact stop cause, either "server failed to start twice in a row (DR-11)" or
+      "more than 3 server failures", and every stop uses it.
+    - LOW-2: the end phase stops a server only if one is running (`_stop_running`).
+    - LOW-3: P2 tolerates missing driver ticks, recording the throttle time as null.
+    - LOW-4: the pins add `platformTestsTree`, a tree digest of `platform-src/tests`.
+    - LOW-5: three new tests: an INVALID run followed by two failed restarts names DR-11; a runner that differs from
+      the pinned copy is refused with code 4 before any run; a crash with a server up stops it.
+      `test_run_soak_logic.py`: 18 passed.
+    - **Status.** S1c-2 part 1 tooling is ready. Part 2 (adopting S1b, re-pinning the authority digest, scheduled
+      `stop` steps per DR-7, asserting `stop_mode`) waits for the S1b acceptance. The soak waits for S-D9.
+40. **S1c-2 part 2 plan (S1-T15: adopt S1b; written at 23:06:22 2026-10-23, before any part 2 code).**
+    - **Stacking.** Part 2 is developed against the unaccepted platform stack S1a-2 → S1b → S1a-3 (head
+      `d747f1e0c`), using a separate development driver venv. It is not accepted before ES-3.
+    - **compat.**
+      - A helper `xverse_compat/live/readiness.py`. If `.xverse-ready/challenge` exists in the unit's cwd, it writes
+        exactly that nonce to `.xverse-ready/ready` atomically (a temporary file in the same directory, then
+        `rename`). Without a challenge it does nothing.
+      - Each owned unit calls it once it is ready: the driver when it has connected to the adapter; the adapter
+        (py3.10) when CARLA and the owned scenario are set up; the stimulus when its zenoh session is open.
+      - SIGTERM handling is kept as it is.
+      - Tests for the helper.
+    - **blueprints.**
+      - Each owned unit gets its own cwd, `work/<unit>/`, inside the collection source root; the adapter gains
+        `PYTHONPATH=src`.
+      - Owned units declare the `nonce-marker` observe condition. The legacy VCU stays `running`.
+      - Every unit declares `process.stop.graceSeconds` 0.6 (inside `ML-SCHEDULE-STOP-GRACE` at
+        `per_unit_seconds` 2) and `process.stderr` (private, at most 256 KiB), with private directories
+        `<run>/stderr-private/<unit>/` outside the work root. The legacy VCU's TERM behaviour is measured and
+        recorded, not assumed.
+      - The owned units' own `--stderr` files are dropped in favour of the platform capture.
+      - The harness asserts `nativeUnits[].stop_mode == exited-on-term` for the owned units in nominal, freeze-vcu
+        and long-run, records the VCU's `stop_mode`, and asserts the probe identity in the evidence.
+      - `lib-live.sh` accepts `XVERSE_LIVE_DRIVER_VENV`; the default is unchanged.
+    - **Re-pins after the merges.** The compat platform lock (S1b changed the v0.2 schema and `catalog.py`).
+    - **Verification.** Development live runs on the stack. Then reviews, and the S1c-2 acceptance after ES-3.
+41. **S1c-2 part 2 implemented (compat `b0f9796`, blueprints `c53dbc9`; written at 23:23:38 2026-10-23). Nothing was run
+    live: no CARLA, no zenohd, no `run-live.sh`. The development live runs on the stack are the owner's.**
+    - **compat.**
+      - `xverse_compat/live/readiness.py`, `announce_ready(cwd=None)`. It opens `.xverse-ready` and `challenge` without
+        following links. The challenge must be a regular file of exactly 64 lowercase hex bytes. The helper writes
+        those bytes to `.xverse-ready/ready`: a temporary file in the same directory, `fsync`, `os.replace`, then an
+        `fsync` of the directory. Without a challenge it returns False. A malformed or linked challenge or directory
+        raises `ReadinessError`.
+      - `xverse_compat_carla/readiness.py` is the same code for the 3.10 adapter, which must not import
+        `xverse_compat` (`protocol.FORBIDDEN`; the driver fails a run whose adapter loaded it). A test checks that
+        both files are identical after their docstrings.
+      - Call sites:
+        - the driver, once its listener, zenoh session and evidence run are up, before it accepts the adapter;
+        - the adapter, once CARLA, the owned scenario and the link are set up; a readiness error closes the source
+          (the owned actors are destroyed) and exits 3;
+        - the stimulus, once its zenoh session, publishers and subscribers are open.
+      - SIGTERM handling is unchanged.
+    - **blueprints.**
+      - `units.py`: each owned unit runs in `work/<unit>/`, inside the collection source root. The adapter has
+        `PYTHONPATH` set to compat `src`. The owned units' `--stderr` arguments are dropped. The legacy VCU is unchanged.
+      - `build_documents`:
+        - every unit declares `process.stop {graceSeconds: 0.6}` and `process.stderr {capture: run-scoped-private,
+          maximumBytes: 262144}`;
+        - the owned units declare the observe condition `nonce-marker`, and the VCU keeps `running`.
+      - Each `UnitAdmission` gets `stderr_directory` `<run>/stderr-private/<unit>/`: mode 0700, empty, distinct,
+        outside the work root, with the path resolved.
+      - `maestro-run.json` adds:
+        - `declaredControls`;
+        - `stopModes` from `nativeUnits`;
+        - `stderrPrivateBytes`, with file names and sizes only;
+        - `readinessProbes`, the unit-scope probe, ready and health identities from the Maestro Argus stream.
+      - Assertions:
+        - every native unit has the field `stop_mode`;
+        - in nominal, freeze-vcu and long-run the owned units are `exited-on-term`; the VCU is recorded only;
+        - in those three cases and in cancel-paused, the owned units' probe and ready events carry `nonce-marker` and
+          the VCU's carry `running`, and health stays `running`.
+      - `lib-live.sh`: `VENV=${XVERSE_LIVE_DRIVER_VENV:-<unchanged default>}`. `run-live.sh` exports it and records it
+        in `identities.txt`. `run_soak.py` pops it, as it pops `XVERSE_PLATFORM_SRC`.
+      - `audit.py`: P1 reports the stop modes as an observation.
+    - **Deviations from finding 40 and additions.**
+      - **D1. The driver's readiness point.** Finding 40 says "when it has connected to the adapter". Maestro starts
+        the adapter only after the driver is ready (`start-carla-adapter` depends on `start-lite-driver`), so that
+        point would deadlock until `ML-PROBE-NOT-READY`. The driver therefore announces when it is ready to accept
+        the adapter.
+      - **D2. Profile v0.2.** `process.stop` and `process.stderr` exist only in `runtime-compatibility-v0.2`, and the
+        fixture documents are v0.1. The offline check caught this: `XDL-SEMANTIC-EXTENSION-SCHEMA`, "Additional
+        properties are not allowed ('stderr', 'stop' were unexpected)". `build_documents` now moves the profile
+        document (`metadata.version`, `schemaRef`) and every payload (`schemaVersion`) to v0.2, as the platform's
+        own S1b `declare()` helper does. The only other v0.2 difference is the optional `planningBlockers`.
+      - **D3. Owned readiness timeout 2 s.**
+        - The readiness window is `W = min(policy timeout, observe timeout)`. With the harness's 1 s policy
+          timeout, the last marker attempt comes 0.75 s after release.
+        - In the part 1 runs (load 6.3–8.5), the adapter's owned-actor registry was written 0.24–1.26 s after its
+          ready event. That is earlier than the point at which the adapter becomes ready.
+        - The owned units' policy timeout is therefore 2 s, the declared observe budget, with attempts at 0, 0.875
+          and 1.75 s. The VCU keeps 1 s.
+      - **D4. Other additions.**
+        - The probe identities are also asserted in cancel-paused.
+        - The presence of `stop_mode` is asserted, so that a platform without S1b fails visibly.
+        - `units.py` builds the owned units' `PYTHONPATH` from `XVERSE_LIVE_DRIVER_VENV`, so that the units and the
+          harness use one venv.
+    - **SIGTERM per unit.** These figures were measured offline at load 4.8, with a test-only zenoh stand-in and the
+      fake adapter source, in 3 runs.
+      - The driver, the stimulus and the adapter linger in 0.2 s sleeps and exit 0 on TERM: driver 0.214–0.215 s,
+        stimulus 0.114–0.164 s, adapter 0.032–0.214 s.
+      - The real zenoh `session.close()` is not measured offline.
+      - The adapter installs its TERM handler only in the linger, after the protocol has ended and its source has
+        been closed. That close destroys the owned actors and restores the settings. A TERM while it serves would
+        end it by the default action (`SIG_DFL` per S1b `child_exec`), with no destroy; the restore guard then
+        destroys the registered actors. In the scheduled cases the driver episode ends before the adapter's stop at
+        tick `horizon − 1`, so the TERM reaches a lingering adapter.
+      - The legacy VCU installs no TERM handler (code read), so TERM ends it by the default action. Its `stop_mode`
+        is recorded, not assumed.
+    - **Verified offline** with the S1a-3 stack venv (`lite-stabilization-s1a3/venv`, whose `xverse` and
+      `xverse_xdl` sources equal `d747f1e0c`) and the platform tests from the S1a-3 worktree, for nominal, long-run
+      and freeze-vcu:
+      - schema validation and plan compilation;
+      - `prepare_lifecycle`: each unit's `process_controls` is (0.6, 262144), and the observe conditions are
+        `nonce-marker` ×3 and `running`;
+      - `admit_schedule` passes with grace 0.6 and `per_unit_seconds` 2, and gives `ML-SCHEDULE-STOP-GRACE` at
+        1.8 s;
+      - the coverage rows: `readinessProbe` is `nonce-marker` for the owned units only;
+      - the broker's `_controls` for each unit on the harness's real directories gives (600, 262144, probe 1 or 0,
+        stderr fd), and `_admit_distinct` passes, which covers the shared, cwd, probe-cwd and budget checks.
+    - **Tests.**
+      - The compat suite: 244 passed, 39 subtests. The 36 new tests are in `tests/live/test_readiness.py`.
+      - `soak/test_run_soak_logic.py`: 19 passed, one of them new (the child environment drops both overrides).
+      - An `audit.py` replay over 37 recorded runs gives verdicts identical to `HEAD~1`.
+    - **Open issues.**
+      - **O1. no-carla (P4).**
+        - Without CARLA, the adapter waits 5 s for the simulator (`set_timeout(5.0)`; it exited about 5.1 s after its
+          ready event in `dev-s1c2p1-20261023T204355-no-carla`). With the marker probe it can no longer be ready
+          within its 2 s window.
+        - The run is therefore expected to fail at the adapter's start with `ML-PROBE-NOT-READY`, not through
+          `ML-RUN-CHILD-EXIT`. The exact diagnostic is not known offline.
+        - The harness assertion and audit P4 keep `ML-RUN-CHILD-EXIT`, the thesis plan text. The first no-carla
+          development run decides, and P4 then needs an author decision.
+      - **O2. The readiness window under load.** A unit's start deadline is also clipped by the next health scan
+        (`dispatcher._end`). The 2 s window is a measured choice, not a proof.
+      - **O3.** The re-pins (the compat platform lock and the authority digest) wait for the merges, as finding 40 says.
+42. **S1c-2 part 2 development runs on the platform stack `d747f1e0c` (runs 23:25–23:33, CARLA instance 16, dev driver
+    venv `.x-verse-build/cache/xverse-lite-live-s1stack`; written at 23:33:52 2026-10-23, before any repair).**
+    - **Revisions.** Blueprints `c53dbc9`, compat `b8403a3`. Evidence: `runs/lite-stabilization-s1/s1c2-part2-dev-20261023`
+      (`SHA256SUMS`).
+
+      | Run | Audit | Result | Load |
+      | --- | --- | --- | --- |
+      | nominal `232543` | see below | succeeded | 4.5 |
+      | freeze-vcu | PASS | succeeded | 6.1 |
+      | cancel-paused | PASS | `ML-SCHEDULE-CANCELLED` | 5.8 |
+      | long-run (two runs) | PASS | succeeded | 5.8–6.1 |
+      | no-carla `233239` | FAIL | `ML-PROBE-NOT-READY` | 6.0 |
+
+    - **Graceful stop.** All four units, including the legacy VCU, stopped `exited-on-term` in nominal, freeze-vcu and
+      both long runs. Every unit was `forced` in cancel-paused, as designed: CANCEL freezes first (DR-7).
+    - **Readiness.** The owned units became ready through `nonce-marker`. The adapter needed its 2nd or 3rd and last
+      attempt, so the margin is thin (finding 41, O2).
+    - **stderr.** The VCU's stderr was captured privately (37,892 bytes).
+    - **Long-run terminal report on S1a-3:** publish 0.415 s and close 0.81 s. Before S1a-3 it was 0.80 s, and 1.98 s
+      with a timeout (S-D9).
+    - **nominal `232543`.** The audit flagged P1 residue: five sockets in `/run/user/1000/xverse-lite/`
+      (`test-ready-*`, `measure-*`) created at 23:15–23:16, before the run.
+      - The `test-ready-*` socket comes from `tests/live/test_readiness.py:193`, which does not remove its socket.
+        That is a defect. The `measure-*` sockets came from the implementing agent's ad-hoc timing script.
+      - The five named files were removed. All later runs had no residue.
+    - **no-carla `233239`: a new failure mode.** This is the open issue O1, but the outcome is worse than expected.
+      - The adapter never became ready, after 3 failed marker attempts (no simulator), giving
+        `ML-PROBE-NOT-READY`.
+      - The closure is `ML-CLOSURE-WORKLOAD-WAIT-UNKNOWN`, `cleanupComplete` false and `persistenceFailure`
+        `ML-PERSIST-CHILD`.
+      - The broker cancel result is `issuer_dead: true` with no native confirmation: a revoke.
+      - The Maestro root stays `open`, with CORRUPT and MUTATED reasons.
+      - The units were stopped and there was no unit residue. The host is clean (no processes, no sockets).
+      - Before S1b (findings 21, 23, 35) no-carla ended in `ML-RUN-CHILD-EXIT` with a clean closure.
+      - **The cause is not established.** The failure path calls `owner.cancel("dispatcher-failed")` with no caller
+        deadline, so an expired deadline does not explain the revoke. It is handed to a platform diagnosis, recorded
+        in the platform log on `candidate/lite-stabilization-s1a3-20261023`.
+    - **Consequences.**
+      - P4 (no-carla) cannot pass on the stack until the platform diagnosis is done.
+      - P4's expected diagnostic changes from `ML-RUN-CHILD-EXIT` to `ML-PROBE-NOT-READY` once owned units declare
+        readiness. That is an author decision, to be raised with the diagnosis.
+      - The readiness test leaks sockets; it is repaired after this record.
+43. **no-carla on the repaired platform stack `b049585bf` (platform S1b findings 15–16, ADR S1a-5), with dev driver venv
+    `xverse-lite-live-s1stack-b`; two runs, load 4.1–4.2. Written at 23:50:34 2026-10-23, before any change to the P4 check.**
+    - **The repair holds live, in both runs:**
+      - `ML-PROBE-NOT-READY`;
+      - the broker cancel confirmed natively (`native_epoch_confirmed: true`, `issuer_dead: false`);
+      - no persistence failure;
+      - `cleanupComplete` true;
+      - the Maestro writer `failed`, with WRITER-STATE only;
+      - no residue.
+    - **The only remaining check failure** is `P4.childExit`: the harness and `audit.py` expect `ML-RUN-CHILD-EXIT`.
+      Now that the owned adapter declares `nonce-marker`, a missing simulator is detected as a readiness failure
+      within its 2 s window, before the adapter's own 5 s connection timeout ends it. `ML-PROBE-NOT-READY` is
+      therefore the correct and earlier diagnostic.
+    - **Proposed (thesis DR-14, flagged for the author).** P4 accepts `ML-PROBE-NOT-READY` or `ML-RUN-CHILD-EXIT` as
+      the start-failure diagnostic. Everything else in P4 is unchanged: cleanup complete, the writer `failed` with
+      WRITER-STATE only, and no residue. The harness assertion and `audit.py` follow.
+44. **Independent review of S1c-2 part 2 (compat `b6ffa93`..`1354d4c`, blueprints `c53dbc9` and `eb64781`; written at
+    23:58:59 2026-10-23): PASS, 3 MEDIUM and 5 LOW. Recorded before the repairs.**
+    - **M1.** `run-live.sh` hashes the pinned wheels even when `XVERSE_LIVE_DRIVER_VENV` names a dev venv. The
+      finding 42 and 43 `identities.txt` therefore name the right venv path but the wrong wheel hashes: `6ff39689`
+      was recorded, while `d0fed3d1` (s1stack) and `2efbd893` (s1stack-b) ran. The soak is unaffected.
+    - **M2.** The evidence seal of `s1c2-part2-dev-20261023` is broken. `runs.txt` was appended (runs `234951` and
+      `234959`) after `SHA256SUMS` was written, and finding 43 names no evidence manifest.
+    - **M3 (O2).** The 2 s owned readiness window is thin, and the variance is not explained by load. The adapter
+      needed its last attempt only in the lowest-load run.
+    - **LOW items, accepted with notes.**
+      - **L1.** `exited-on-term` also counts a default-action death after TERM, so a clean handler exit is shown only
+        offline. Accepted: the markers catch a protocol-time death.
+      - **L2.** The driver ignores TERM during `accept` (up to 12 s). No scheduled path reaches this, since failure
+        stops are forced (DR-7). Accepted.
+      - **L3.** The adapter has no TERM handler before its protocol ends. The guard cleans up, and FR-021 holds.
+        Accepted.
+      - **L4.** Nothing is asserted on the private stderr records. Repaired.
+      - **L5.** The DR-13 and DR-14 headings carry impossible times. Corrected.
+    - **Repair plan.**
+      - M1: hash the wheels next to the venv in use.
+      - M2: `runs.txt` grew only by appending, so its sealed prefix is checked. A second manifest,
+        `SHA256SUMS-finding43`, covers the two later runs and the current `runs.txt`, and is referenced here.
+      - M3: owned readiness window 3.5 s (attempts at 0, 1.625 and 3.25 s), within the 5 s cap. Record each owned
+        unit's ready latency (ready-file mtime minus challenge mtime) in `maestro-run.json`. Re-measure before the
+        soak.
+      - L4: assert that each started unit has `stderr-g1` of at most its declared maximum.
+45. **Part 2 re-verification on blueprints `66e745b`, platform stack `b049585bf` (dev venv s1stack-b; runs 00:41–00:52,
+    CARLA instance 17; written at 00:53:35 2026-10-24, before any repair).**
+    - **Evidence.** `runs/lite-stabilization-s1/s1c2-part2-dev2-20261024` (`SHA256SUMS`). The identities now record
+      the dev venv's wheel, `2efbd893` (M1 repaired).
+
+      | Run | Result | Load |
+      | --- | --- | --- |
+      | nominal | PASS; ready latency 0.29–1.31 s (adapter 1.311 s); all units `exited-on-term` | 6.5 |
+      | long-run | PASS; latency 0.35–0.42 s | 7.9 |
+      | freeze-vcu | **FAIL** | 8.4 |
+      | cancel-paused | **FAIL** | 8.7 |
+
+    - **freeze-vcu: lite-driver readiness failed at start-up.**
+      - Probe attempts came at 3.41 s and 5.04 s. The third attempt (planned at about 6.66 s) was dropped because the
+        outer start deadline cut the window. No ready file was written, giving `ML-PROBE-NOT-READY`.
+      - Then `persistenceFailure: ML-PERSIST-CHILD` (validation, at 5.92 s), with the broker cancel revoked
+        (`issuer_dead`) and the closure `ML-CLOSURE-WORKLOAD-WAIT-UNKNOWN`.
+      - The 3.5 s window of finding 44 appears to push the start step past the authority's lease. That is the
+        expired-lease residual declared in S1a-5 (platform S1b finding 18, LOW-2), which is now reachable.
+      - The driver's readiness at load 8.4 took more than 1.6 s, against 0.3–0.5 s at load 6.
+    - **cancel-paused: closure lost at the cancel.**
+      - `persistenceFailure: ML-PERSIST-CLOSED`, kind `schedule`, stage `validation` (before any send), at the exact
+        cancel time (15.484 s).
+      - The broker cancel was confirmed natively, but no terminal events follow tick 116.
+      - `cleanupComplete` false, native facts unattested, closure `ML-CLOSURE-WORKLOAD-WAIT-UNKNOWN`.
+      - Earlier cancel runs (load 5.8–7.3) closed cleanly. A plain `PersistenceError` refusal at validation means
+        the client was already `_failed`, so a before-send cancel race (S1a-1 territory) may still fail storage under
+        load.
+    - **Host clean.** No residue, no vehicles, the world restored.
+    - **Both failures go to a platform diagnosis before any repair:** (A) readiness against the start deadline and
+      the lease under load; (B) the persistence state at a cancel.
+46. **Harness repairs from the platform diagnosis (platform S1b-stack finding 22; thesis DR-15; written at 01:10:16
+    2026-10-24, before any change).**
+    - **Diagnosis taken over.** (B), the cancel-paused failure, is a platform race in `PersistenceClient._live`;
+      it is repaired by RB1 on the platform branch, and the harness needs no change. (A), the freeze-vcu failure,
+      came in part from the harness: the 3.5 s owned window of finding 44, M3, plus a start-up scope at lease − 0.05 s,
+      lets the start step run to the bootstrap lease, so the cancel then has no native close time left. RA1 now
+      caps a declared window at run time and rejects at admission a window that cannot fit a fresh lease.
+    - **H1.** The owned readiness window goes back to the largest value that the RA1 admission bound accepts. The
+      value is set from the bound that the platform records, not guessed. A slow adapter is still covered by the
+      three attempts, and readyLatencyS keeps measuring it.
+    - **H3.** `maestro-run.json` records the lease facts: the bootstrap lease relative to the run start, and the
+      start-up scope end. It also records the reap facts of the bootstrap drain (supervisor reaped, returncode,
+      diagnostic, unacknowledged births) and of the storage drain (worker returncode, diagnostic). Each fact is
+      read through `_fact`, so a missing fact never loses the record.
+    - **H2** (run directory on tmpfs) is deferred to the S1d soak environment decision; it is not applied here.
+    - **Re-run plan.** Rebuild the dev venv from the repaired platform head, then run part 2 live: nominal,
+      long-run, freeze-vcu, cancel-paused and no-carla, recording the load. Independent review follows.
+    - **Revision (02:03:50).** Platform finding 25 (DR-16) adds RA2 (renewal before a marker start step) and
+      RA5. RA5 is a reserve that also covers the failure-statement RPC. The final live admission bound is W ≤ 2.75 − 2 × 0.38 = 1.99 s. H1 is therefore
+      1.95 s (attempts at 0, 0.85 and 1.70 s), above the slowest measured adapter latency of 1.31 s. A cut window ends
+      as `ML-PROBE-WINDOW-CUT`, and the harness records `readinessWindows` (W, W′, L, t0) from the dispatch result.
+      Blueprints commits `4aa6d55` (H1 at 2.25 s, H3) and its successor (H1 at 1.95 s, readinessWindows).
+    - **Revision 2 (02:16:40).** Platform finding 26 (LOW-4) and thesis DR-17: H1 is 1.7 s (attempts at 0,
+      0.725 and 1.45 s), with 0.29 s headroom below the 1.99 s bound for the RA2 renewal and pre-release work. No harness
+      file imports the removed `CANCEL_CLOSE_RESERVE_SECONDS` (checked by grep over both S1c-2 worktrees).
+47. **Part 2 re-verification on the repaired platform stack (platform `a16fd1b78`, wheel `a54844d3`; blueprints
+    `24dae38`, H1 = 1.7 s; dev venv `xverse-lite-live-s1stack-e`; CARLA instances 18 and 19; runs 03:56–04:5x;
+    written at 04:08:12 2026-10-24, before any change).**
+    - **Evidence.** `runs/lite-stabilization-s1/s1c2-part2-dev3-20261024`.
+    - **Repaired failures.** freeze-vcu and cancel-paused PASS (load 5.4 and 5.9). The cancel was confirmed
+      natively, cleanup was complete, and there was no persistence failure. The bootstrap and storage reap facts
+      are clean (returncode 0), and the readiness windows were uncut (W′ = W = 1.7 s).
+    - **Other cases.** long-run PASS (601 ticks, load 5.7). Warm nominal PASS twice (adapter 0.293 and 0.329 s).
+      no-carla fails closed as designed (`ML-PROBE-NOT-READY`, cleanup complete, audit PASS under DR-14).
+    - **New observation: readiness after a cold CARLA start.**
+      - The first nominal run after CARLA instance 18 started failed `ML-PROBE-NOT-READY`: the carla-adapter
+        failed all three attempts (last at 1.45 s). The failure was fail-closed and clean (`cleanupComplete`
+        true, reap codes 0, window not cut).
+      - The first nominal run after instance 19 passed, with the adapter ready at 1.36 s on its third attempt.
+        Finding 45's first run had 1.311 s.
+      - Warm adapter latency is 0.29–0.36 s. The cold-start effect is CARLA's first owned-scenario setup after a
+        server start, not the stack.
+    - **Disposition (thesis DR-18).** H1 = 1.95 s, inside the 1.99 s bound. The S1d soak declares one warm-up run
+      per CARLA start, recorded and excluded from the statistics. Re-verification from a fresh cold start follows.
+48. **Cold-start confirmation on the final harness and the freeze placement (blueprints `c60fe14`, H1 = 1.95 s;
+    platform `a16fd1b78`, now merged as platform main `ee91697a4`; CARLA instance 20; runs 04:12–04:31; written
+    at 04:33:08 2026-10-24, before any change).**
+    - **Evidence.** `runs/lite-stabilization-s1/s1c2-part2-dev4-20261024`.
+    - **Results.**
+      - Cold nominal PASS: the adapter was ready at 1.74 s, on its third attempt (1.70 s). This is the slowest
+        cold value yet, and it confirms the DR-18 warm-up.
+      - cancel-paused PASS (load 8.9) and long-run PASS. Warm nominal PASS, with the adapter at 0.349 s.
+      - no-carla fails closed as designed.
+      - Every run shows cleanup complete, no persistence failure, an uncut window (W′ = 1.95 s) and clean reap facts.
+    - **freeze-vcu: the harness exited 1 at load 9.2,** although Maestro succeeded and the audit passed. The finding
+      24 LOW-1 assertion failed: the freeze ended 0.185 s after the stimulus throttle segment (`endMarginS`
+      −0.185).
+      - The freeze is tick-placed (tick 61, after the observe at 60). The throttle segment (3.5 s) is host-timed
+        from the stimulus start.
+      - Across the ten 3.5 s-window runs since the S1b adoption, tick 61 lies 2.79–3.84 s into the segment. The
+        end margins were 0.064, 0.133 and −0.185 s.
+      - This is a harness margin defect of finding 24's placement, made visible by load. It is not the stack.
+    - **Proposed repair (computed from the recorded Argus tick clocks and stimulus samples).**
+      - Freeze at tick 25 and observe at tick 24 (one tick before, as finding 24 MEDIUM-1 requires).
+      - Ticks 1 and later begin about 4.4 s after tick 0, after start-up, so every unit is running. The observe
+        step's own cost (0.17–0.39 s) is added before the freeze.
+      - Over the ten runs, the worst-case margins become 0.94 s at the start and 0.96 s at the end, instead of
+        −0.84 s.
+      - The VCU health-thaw bound (finding 18) does not depend on the placement.
+      - Cancel-paused's observe now comes earlier, about 5.6 s after start, which only widens its margin before
+        the cancel (finding 19).
+    - **Re-pin to platform main `ee91697a4` (04:35:36).** The platform stack S1a-2, S1b and S1a-3 was
+      accepted by the author and merged, and platform main `ee91697a4` was pushed (its tree equals the decisive
+      run's `a16fd1b78`).
+      - The test venv `/dev/shm/compat-p6-venv` now has the wheel `a54844d3…`, and its installed
+        `xverse_xdl/lifecycle.py` equals the platform main source.
+      - Log c (`verification-20261024-s1c2-c.log`): 1 failed, the content lock, as expected before the re-pin,
+        and 243 passed.
+      - `scripts/admit_phase4.py` re-pinned `platform-api.lock.json` to `ee91697a4` (surface `ce779e57…`,
+        26 files). Log d: 244 passed. The admission record was rebuilt against log d, and a rerun gave 244 passed.
+      - The soak's pinned environment `xverse-lite-live-20261022` was rebuilt from `ee91697a4` (wheel
+        `a54844d3…`). The `b28a2aacf` copies are kept as `*-b28a2aacf`; nothing was deleted.
+49. **Freeze placement confirmed; a unit stalled in an fsync on loop10 (blueprints `5f3e3ba`, the pinned environment
+    rebuilt from platform main `ee91697a4`, no overrides; CARLA instance 21; runs 04:33–05:0x; written at
+    04:51:11 2026-10-24, before any change).**
+    - **Evidence.** `runs/lite-stabilization-s1/s1c2-part2-dev5-20261024`.
+    - **Results.**
+      - freeze-vcu PASS three times. The freeze lies inside the throttle segment, with start margins of 0.95–1.22 s
+        and end margins of 1.78–2.05 s (finding 48's prediction: at least 0.94 and 0.96 s).
+      - Cold nominal PASS, with the adapter ready at 1.681 s on its third attempt. Warm nominal PASS, and long-run
+        PASS.
+    - **cancel-paused FAIL at start-up: `ML-PROBE-NOT-READY` for lite-driver,** the first unit, over an uncut
+      1.95 s window. The failure was fail-closed and clean: `cleanupComplete` true and reap codes 0.
+      - The broker cancel reported `ML-RUN-FREEZE-UNRESOLVED` (14 of 15 frozen). The driver was forced to stop.
+      - **Cause.** The driver's challenge was created at 04:42:53.699 and its Argus run at
+        `<run>/driver/argus-flows` at 04:42:54.119. There it left `manifest.json.tmp-1` and never renamed it.
+        The driver was stalled in the manifest write and `fsync` on the loop10 disk (97% full, a loop-mounted
+        image), before `announce_ready`.
+      - A task in an uninterruptible fsync cannot be frozen, so the platform correctly reported the freeze as
+        unresolved and then forced the cleanup.
+      - This is the H2 stall named in platform finding 22. Maestro's own tree is already on tmpfs
+        (`--basetemp`), but the units' run directory (`XVERSE_LIVE_RUN_DIR`) is on loop10. The rate is 1 in 7
+        runs here, and a 140-run soak would stop on it.
+    - **Proposed repair (H2).** `run-live.sh` stages the units' run directory on tmpfs
+      (`/dev/shm/xverse-lite-run-<run>`). `cleanup()` copies it into the loop10 evidence directory (`cp -a`, the
+      stage removed only after a successful copy). The copy comes after the residue listing and before the restore
+      guard, which reads the copied owned-actor registry. The evidence still ends on loop10.
+50. **Independent review of the S1c-2 candidate since finding 44 (blueprints `66e745b..7677078`, compat
+    `2627f2c..7221ab5`, DR-15 to DR-18; evidence `s1c2-part2-dev3`, `-dev4`, `-dev5`; `-dev6` was being written and
+    is not reviewed; written at 05:02:49 2026-10-24): FAIL, 1 HIGH, 3 MEDIUM and 9 LOW. The code changes are
+    otherwise correct. The single blocking defect is a parameter margin, and its repair is one constant.**
+    - **Checks performed.** Read-only. Offline: `soak/test_run_soak_logic.py` 22 passed; compat `tests` 244 passed,
+      39 subtests passed. I recomputed from the recorded `maestro-run.json`, `argus-maestro/events.jsonl` and
+      `stimulus.jsonl` of the dev2–dev5 runs: readiness-window slack, tick clocks against the throttle segment,
+      VCU health against the thaw, and observe-before-freeze order. Platform `ee91697a4` `providers.py`,
+      `schedule_plan.py:136-143` and `dispatcher.py:1373-1390` were read. `sha256sum` of log d was taken.
+    - **H1, admission.** The harness admits `operation_seconds=0.38` (`test_live_closed_loop.py:458`). The bound is
+      `readiness_window_bound` = 5 − (2 + 0.38 + 0.25) − 0.38 = 1.99 s (`providers.py:42-58`), and W = min(policy
+      1.95, observe action 4) = 1.95 s, so admission passes. The need is 0.38 + 1.95 + 2.63 = 4.96 s ≤ 5 s, and
+      the attempt offsets are 0, 0.85 and 1.70 s. This is consistent with the bound.
+    - **HIGH-1 (H1 at run time; `test_live_closed_loop.py:114`).** The run-time cap is W′ = min(W, L − 2.63 − t0,
+      deadline − t0) (`providers.py:61-64`, `:480-485`). From the recorded `readinessWindows`, the slack
+      L − t0 − 2.63 − W is as follows:
+      - at W = 1.95 s (dev4, dev5; 38 marker steps): 0.017–0.295 s. It was 0.017, 0.043, 0.044, 0.062 and 0.063 s
+        at loads 6–9; the 0.017 s case is dev4 long-run, lite-driver.
+      - at W = 1.7 s (dev3): 0.348–0.507 s.
+
+      The recorded windows are uncut, but the 1.95 s window was within 17 ms of `ML-PROBE-WINDOW-CUT`. A cut is a
+      fail-closed start failure: a P1/P3 criterion failure that stops the soak (FR-020). The S1d soak has
+      130 Maestro runs × 3 marker steps ≈ 390 steps. The DR-18 (1) basis, "uncut in all nine runs at 1.7 s", does
+      not carry over to 1.95 s, which removes 0.25 s of exactly this slack. The 1.95 s value also has no remaining
+      purpose once DR-18 (2) is in force. The cold first run after a server start is the warm-up, which is
+      excluded. A failed warm-up still warms the server: the dev3 run after the failed `035633` had the adapter
+      at 0.361 s. Warm adapter latencies are 0.29–0.45 s, and all owned units are ≤ 0.54 s.
+      **Repair:** return H1 to 1.7 s (DR-17) by a delegated revision that supersedes DR-18 (1), and re-verify.
+      **Blocking** S1c-2 acceptance (the soak pins this harness) and S1d.
+    - **H3 (`:132-134`, `:503-504`, `:562`, `:583-584`).**
+      - `readinessWindows` and `reapFacts` are read through `_fact`. They are public-safe: monotonic floats, the
+        unit URN, booleans, return codes and ML diagnostic codes. Their field use is correct: `declared_seconds` = W,
+        `window_seconds` = W′, `lease_end` = L and `began` = t0.
+      - `leaseFacts` is not guarded. It is computed from local floats and cannot realistically fail. See LOW-6.
+    - **DR-18 warm-up in `run_soak.py`.**
+      - Exclusion is correct. `summarize` drops `warmUp` entries before the case statistics and the validity share
+        (`:465`). P2 filters them (`:444`).
+      - A FAIL or OBSERVATION warm-up returns True, so the soak does not stop. An INVALID warm-up makes `_start`
+        return unhealthy, and the callers then count one server failure through `_restart`.
+      - The recursion `_restart` → `_start` → warm-up → `_restart` is bounded by `failed_starts >= 2` and by the
+        server-failure limit of 3. Each failed start is counted once, and the tests confirm this.
+      - The exclusion is positional (every start, whatever the outcome) and predeclared, so it carries no
+        selection on outcome. It is defensible, with the scope note of LOW-2.
+      - The docstring is accurate, except for the gap in MEDIUM-1.
+    - **MEDIUM-1 (`run_soak.py:324-332` with `classify` `:84-86`).** The exemption covers every failure mode of a
+      warm-up, not only the cold-start readiness failure that DR-18 is based on. The failure modes covered include:
+      - a DR-12 restore failure, where the world is left synchronous. `classify` returns FAIL, `_warm_up` returns
+        True, and the next run's health check then fails, so the restore failure is turned into an INVALID and a
+        server failure;
+      - residue (FR-021), a P7 single-owner violation, and an Argus evidence failure.
+
+      **Repair:** exempt only a start-up readiness failure that is otherwise clean: cleanup complete, guard
+      restored, no residue, and evidence consistent. Treat any other failed check of a warm-up as a criterion
+      failure (FR-020), and add an offline test. **Blocking S1d**, not S1c-2 acceptance.
+    - **Finding 48 freeze placement.**
+      - The tick clocks reproduce the placement. Tick 1 begins 3.6–6.7 s after tick 0. The observe step at
+        tick 24 costs 0.34 s (dev5). Tick 24 lies 5.1–5.7 s after tick 0, well before the cancel-paused cancel
+        (≥ 13.2 s).
+      - In all three dev5 freeze-vcu runs, the VCU's tick 24 probe precedes the freeze apply, so finding 24
+        MEDIUM-1 holds. The thaw comes 0.575–0.603 s after the VCU's last health success, against a bound of
+        ≤ 3.48 s (finding 18).
+      - The dev5 margins match the record: 0.95–1.22 s at the start and 1.78–2.05 s at the end.
+      - Re-derived over the dev2–dev4 3.5 s-segment runs, with an observe cost of 0.17–0.39 s, the margins are
+        ≥ 0.93 s at the start and ≥ 0.88 s at the end. The end figure is the dev2 timing. The stated 0.94 and
+        0.96 s are close but not reproduced (LOW-4).
+      - An analytic worst case, with the stimulus ready only on its last attempt, still leaves about 0.4 s at the
+        end.
+    - **Finding 49 H2 staging (`run-live.sh:17-35`).**
+      - The order is correct: residue listing (`:30`), stage copy (`:32-35`), the guard reading
+        `$RUN/owned-actors.json` (`:36-41`), then the Maestro copy and the Argus verify of `$RUN/driver/argus-flows`
+        (`:45-48`). The stage is removed only after a successful `cp -a`.
+      - `audit.py`, `_ready_latency_of` and `run_one` read only `$RUN` paths (`maestro-run.json`,
+        `driver/driver-ticks.jsonl`, `argus-verify.txt` and the rest).
+      - The dev5 manifests and `maestro-run.json` hold no absolute run paths, so a copied tree verifies by
+        relative layout.
+    - **MEDIUM-2 (H2 unverified and untraced).**
+      - No reviewed run used `7677078`: dev5 ran `5f3e3ba`, and dev6 is not in scope.
+      - DR-15 only "considers" H2, and finding 46 deferred it to the S1d environment decision. No delegated
+        decision applies it, and tmpfs for the units' evidence is not declared as a soak environment condition.
+      - **Repair:** a run set on `7677078` showing the copy line, audit PASS, the guard destroying via the copied
+        registry (cancel-paused), and no `/dev/shm/xverse-lite-run-*` left. Also a DR recording H2 and the tmpfs
+        condition. **Blocking** S1c-2 acceptance and S1d.
+    - **MEDIUM-3 (evidence seals).** `s1c2-part2-dev3`, `-dev4` and `-dev5` have no `SHA256SUMS` (dev2 has one).
+      Findings 47–49 rest on unsealed evidence, the finding 44 M2 class. **Repair:** seal them now, noting that the
+      seals postdate the runs. **Blocking** S1c-2 acceptance; the repair is cheap.
+    - **Compat re-pin.** The lock moves `4586c2ed…`/`b28a2aacf` to `ce779e57…`/`ee91697a4`. The admission
+      record's previous and current pins chain correctly. Log d's sha256 `8ced7d2d…` equals `logSha256`. Log c's
+      single failure is the content lock before the re-pin, as stated. The lock test passes against the sibling
+      `xverse-platform` at `ee91697a4`. The record is consistent, except for LOW-9.
+    - **LOW items (none blocking; LOW-2 is required before S1d).**
+      - **LOW-1.** `run_one` appends and saves the warm-up as a plain `nominal` entry (`:300`) before `_warm_up`
+        tags it (`:328-330`), and its directory is `lite-<stamp>-nominal`. Tag it inside `run_one`, or name it
+        `…-warm-up`.
+      - **LOW-2.** Amend thesis `plan.md` (Soak protocol, Interpretation) for DR-18, and the report `note`
+        (`:492`). The bounds cover runs after a warm-up; the first run after a server start is outside the sample.
+      - **LOW-3.** DR-18 says "nine runs at 1.7 s", but dev3 holds eight. Finding 47's "runs 03:56–04:5x"
+        (written 04:08) and finding 49's "runs 04:33–05:0x" (written 04:51; the last run was 04:48) are
+        impossible times.
+      - **LOW-4.** Finding 48 names neither the "ten runs" nor the method behind 0.94 and 0.96 s. Record them, or
+        use ≥ 0.93 and ≥ 0.88 s.
+      - **LOW-5.** Two attributions should be worded as such:
+        - The cold-start attribution is well supported as a first run after a server start: 5 of 5 instances
+          were slow or failed, including instance 19 after warm page-cache runs. The adapter's internal phases
+          were not timed, however, so write "attributed to the server's first-run state" in place of "CARLA's
+          first owned-scenario setup … not the stack".
+        - Finding 49's "stalled in the manifest write and fsync" is an inference. The temporary file was fully
+          written with the directory's mtime and never renamed, and the freeze stayed unresolved, but no wchan or
+          stack was sampled. Write "consistent with an uninterruptible fsync stall".
+      - **LOW-6.** `leaseFacts` uses the harness's initial +4.8 s lease (`:481`), not the native lease after RA2
+        renewals. It cannot attribute a start step reaching the lease (`readinessWindows.lease_end` can). Rename
+        it or document it.
+      - **LOW-7.** Two limits of `_drain_facts`:
+        - It uses `vars()`, which omits the class-default fields set with `init=False` (`cleanup_complete`,
+          `ready_for_execution`).
+        - `reapFacts` is read before `entry.dispose()`, so it is `None` where the drain happens in dispose.
+
+        Document both.
+      - **LOW-8.** Three gaps in the `run-live.sh` staging:
+        - `mkdir -p` reuses a stale stage, for example one left by a failed copy.
+        - On a failed copy, the guard reads a missing `$RUN/owned-actors.json`, not the staged one.
+        - A residue unit's writes after the copy are discarded by `rm -rf`.
+
+        Refuse an existing stage, fall back to `$STAGE/owned-actors.json`, and keep the stage when residue is
+        non-empty.
+      - **LOW-9.** `aeb-sim-admission.json:122` records the `admit_phase4.py` default command. The `b` record
+        named the full `env -u PYTHONPATH PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 …` command. Pass `--command` with the
+        command actually run.
+      - **Further notes, also LOW.**
+        - The stale comment at `test_live_closed_loop.py:85` ("starts at tick 61") reads as current.
+        - No cancel-paused run at observe tick 24 has passed start-up yet, so confirm one in the MEDIUM-2 set.
+        - Finding 49 omits the closure `ML-CLOSURE-REPORT-INCOMPLETE` and the broker `cleanup_complete` false,
+          and does not say that the harness exit came from the L4 stderr assertion.
+51. **Dispositions of finding 50 (thesis DR-19; written at 05:04:46 2026-10-24, before any change).**
+    - **HIGH-1:** the owned readiness window goes back to 1.7 s, which supersedes DR-18 (1).
+    - **MEDIUM-1:** `run_soak.py` excuses a warm-up only for a clean start-up readiness failure: `ML-PROBE-NOT-READY`,
+      cleanup complete, healthy after the run, no residue, and audit failures within {P1.flowRootClosedComplete,
+      P1.maestroRootClosedComplete, P1.succeededWithMarkers, P8.pathHolds}. Any other warm-up failure stops the soak.
+      This gets tests.
+    - **MEDIUM-2:** H2 becomes a declared soak condition under DR-19 (3). It is verified live on the final commit: the
+      copy line, an audit PASS, the guard in cancel-paused using the copied registry, and no stage left behind. The
+      dev6 set already ran on `7677078` (H1 = 1.95 s). It shows the copy and no stage left for all 8 runs, and
+      cancel-paused passing 3 times.
+    - **MEDIUM-3:** dev3, dev4, dev5 and dev6 get `SHA256SUMS`, with `SEALED-AFTER-RUN.txt` giving the sealing time.
+    - **LOW repairs:**
+      - LOW-1: warm-ups are tagged before they are saved, and their directories are named `warmup-<stamp>-nominal`.
+      - LOW-2: the thesis plan.md soak protocol gets a DR-18/DR-19 amendment. It is approved under the author's
+        acceptance of 2026-10-24.
+      - LOW-7: `_drain_facts` reads every dataclass field.
+      - LOW-8:
+        - `run-live.sh` refuses a stage left over from an earlier run.
+        - If the copy fails, the guard reads the registry left in the stage.
+        - Writes by a residue unit after the copy are a declared loss; such a residue is already a failure.
+      - LOW-9: the admission record is rebuilt with the command actually run.
+      - The stale comment is corrected.
+    - **LOW errata (no code change):**
+      - LOW-3: DR-18 counted nine runs at 1.7 s; the record holds eight. Findings 47 and 49 give run end times
+        later than they were written; the evidence files hold the true times.
+      - LOW-4: finding 48's 0.94 s and 0.96 s margins come from the ten 3.5 s-window nominal and freeze-vcu runs in
+        dev2 to dev4. For each run, the method takes the first Argus host time at ticks k and k + 10, adds the
+        observe step's extra cost (tick 61 − 60, less a plain tick) and 0.1 s of clear latency, and compares with the
+        stimulus pedal window. The reviewer's independent figures are 0.93 s and 0.88 s.
+      - LOW-5: "CARLA's first owned-scenario setup" and "stalled in fsync" are inferences from timing and
+        files-left evidence, not observed causes.
+    - **LOW declared:**
+      - LOW-6: `leaseFacts` is the harness's initial lease. The renewed lease is in `readinessWindows`.
+      - The other part of LOW-7: `reapFacts` is None when the drain happens in `dispose()`.
+      - The remainder of LOW-9: no change beyond the rebuilt admission record.
+52. **Re-verification on the repaired harness (blueprints `46a3497`, H1 = 1.7 s, observe at tick 24, H2; pinned
+    environment from platform main `ee91697a4`; CARLA instance 23; runs 05:08–05:19; written at 05:20:43
+    2026-10-24).**
+    - **Evidence.** `runs/lite-stabilization-s1/s1c2-part2-dev7-20261024` (`SHA256SUMS`).
+    - **The repairs hold.**
+      - **H2:** every run's `run-live.log` shows "staged run directory copied", and no stage was left behind. The
+        restore guard read the copied registry in both cancel-paused runs (`destroyFailed` empty) and the world was
+        restored. The driver's Argus root verifies in the copied run directories.
+      - **H1:** the readiness slack at 1.7 s was 0.371–0.539 s over 23 start steps. That is the platform's
+        L − (2.0 + op + 0.25) − t0 − W.
+      - **Results:**
+        - cancel-paused passed twice and freeze-vcu once (margins 1.029 and 1.974 s).
+        - The first nominal after the server start passed, with the adapter at 1.277 s.
+        - long-run passed, and no-carla failed closed as designed.
+    - **New failure: two runs, freeze-vcu (05:11:09) and the next nominal (05:14:54).** Both executed successfully
+      but ended `ML-SCHEDULE-EVIDENCE-INCOMPLETE`: the Maestro Argus writer was `failed` and audit P1 reported
+      `maestroRootClosedComplete`.
+      - In each, exactly one `lifecycle-coverage.json` row is `unverifiable`: the carla-adapter's normal-record
+        obligation `g1.health.5`. The diagnostic is "Applicability is not established by original retained facts."
+        A health event for the obligation exists.
+      - Over the 71 recorded runs that got past start-up, only these two have such a row.
+      - The failure is fail-closed (cleanup complete, reap codes 0, no persistence failure). It points to a platform
+        coverage-assessment boundary, not the harness, and is suspected to be exposed by the new timing of the window
+        and the observe tick.
+      - Recorded as platform finding 30 on the successor branch `candidate/lite-stabilization-s1a6-20261024` (from
+        main `ee91697a4`), where it is being diagnosed before any repair.
+      - S1c-2 acceptance and the S1d soak wait for that repair.
+53. **Independent re-review of the finding 50 repairs (blueprints `46a3497`, compat `517c2b8`, findings 51–52,
+    thesis DR-19 and the plan.md soak amendment; evidence `s1c2-part2-dev6` and `-dev7`; written at 05:45:49
+    2026-10-24): PASS WITH NOTES, 0 HIGH, 0 MEDIUM and 7 LOW. Every finding 50 item is closed or validly
+    declared. No new item blocks S1c-2 acceptance or the S1d soak.** S1c-2 acceptance still waits for platform
+    finding 30 / DR-20, as finding 52 records; this review does not assess DR-20.
+    - **Checks performed.** Read-only.
+      - The blueprints worktree is clean at `46a3497`. `soak/test_run_soak_logic.py`: 29 passed. Compat `tests`: 244
+        passed, 39 subtests passed.
+      - `sha256sum -c` passes for dev3–dev7, and every file in those sets is listed in its `SHA256SUMS`.
+      - The dev6 and dev7 `maestro-run.json`, `run-live.log`, `restore-guard.json`, `argus-verify.txt`,
+        `identities.txt` and every `lifecycle-coverage.json` under `runs/` were read.
+      - `soak/audit.py`, which only reads its inputs, was run on the recorded cold `ML-PROBE-NOT-READY` runs
+        dev6 `045227` and dev3 `035633`.
+    - **Finding 50 items.**
+      - **HIGH-1: closed.**
+        - H1 = 1.7 s (`test_live_closed_loop.py:114`).
+        - dev7 ran blueprints `46a3497` and platform-src `ee91697a4`. Over its 23 marker start steps,
+          L − t0 − 2.63 − W = 0.371–0.539 s, with none cut. This matches finding 52.
+      - **MEDIUM-1: closed.**
+        - `clean_readiness_failure` (`run_soak.py:76-85`) requires `ML-PROBE-NOT-READY`, `cleanupComplete`, a
+          healthy server after the run and an empty residue list. Audit failures must stay within
+          `WARM_UP_EXCUSED_CHECKS` (`:68`), and the check names match `audit.py:176-233`.
+        - A missing file returns False, so the check fails closed. A restore failure (unhealthy after) is not
+          excused, nor are `P1.noResidue`, `P1.worldRestoredNoVehicles`, P7 or `P8.observerFooterSigterm`.
+        - `CriterionStop` (`:367`) is caught in `execute` (`:415`), which calls `_stop`; the `finally` stops the
+          server.
+        - The audit of the two real cold runs gives exactly {P1.flowRootClosedComplete,
+          P1.maestroRootClosedComplete, P1.succeededWithMarkers, P8.pathHolds}, on the adapter-close path. A
+          real cold warm-up is therefore excused, as intended.
+      - **MEDIUM-2: closed.** On `46a3497`, dev7 shows all of the following:
+        - every one of the 8 `run-live.log` files has "staged run directory copied", before the guard;
+        - no `/dev/shm/xverse-lite-run-*` is left;
+        - in both cancel-paused runs, the guard destroyed ego, camera and radar through the copied registry,
+          with `destroyFailed` and `remaining` empty and the world restored;
+        - the copied driver flow roots verify as expected: closed and complete, or open where DR-6 (c) applies.
+
+        DR-19 (3) and the plan.md amendment declare the tmpfs condition.
+      - **MEDIUM-3: closed.** The seals are valid and complete. `SEALED-AFTER-RUN.txt` states the sealing time for
+        dev3–dev6.
+      - **LOW-1 to LOW-9: closed or declared.** The errata in LOW-3/4/5 are recorded in finding 51. The code repairs
+        for LOW-1, LOW-7 and LOW-8 are correct. In LOW-9, the command is now the one actually run, and the log hash
+        is unchanged. The stale comment is corrected. Cancel-paused at observe tick 24 has now passed start-up (dev6
+        ×3, dev7 ×2). The residuals are listed below.
+    - **Finding 52 accuracy.**
+      - These items are accurate as written: the results, margins (1.029 and 1.974 s), the cold adapter at
+        1.277 s, the times 05:08–05:19 and the two `ML-SCHEDULE-EVIDENCE-INCOMPLETE` runs.
+      - The two failed runs match the record. Each has one `unverifiable` row, `…g1.health.5` of the
+        carla-adapter, with a health event id. The Maestro writer is `failed`. Cleanup is complete, the reap
+        codes are 0 and there is no persistence failure.
+      - The failure is fail-closed. Attributing it to the platform coverage assessment, and not to the harness,
+        is reasonable, and it is stated as suspected.
+      - See LOW-4 below for the run count.
+    - **LOW (none blocking).**
+      - **LOW-1 (`run_soak.py:68`).** `P8.pathHolds` is excused on any path, but a cold failure fails it only
+        because no control tick exists: adapter-close with `lastControlFrame` None. A guard-path violation (the
+        ego driven before the destroy) in a warm-up would also be excused. No control is sent before tick 1, so
+        the risk is small. Narrow the excuse to adapter-close with no control tick.
+      - **LOW-2.** The `warmup-` naming and tag-before-save in `run_one` (`:296`) are untested, because
+        `Fake.run_one` (`test_run_soak_logic.py:22`) bypasses the real `run_one`. Add a test with `subprocess.run`
+        and the audit stubbed.
+      - **LOW-3 (`run_soak.py:532`).** The report `note` still does not say that the results describe a warmed-up
+        server. plan.md does say so.
+      - **LOW-4.** Finding 52's "71 recorded runs that got past start-up" does not name its population. I count 66
+        under `lite-stabilization-s1` including dev6, and 70 over `runs/*/*/*`.
+        - Phase 7 `xverse-lite-live-20261022/lite-20261023T002318-nominal` (`ML-SCHEDULE-TEARDOWN-INCOMPLETE`)
+          has all 20 owned health rows `unverifiable`, with the same diagnostic text.
+        - That is a different signature, but "only these two" holds only for a single in-bracket row. Name the
+          population and the signature.
+      - **LOW-5.** The dev6 results are not recorded. Its first nominal after the server start failed
+        `ML-PROBE-NOT-READY` at W = 1.95 s, with the adapter not ready by 1.70 s, fail-closed and clean.
+        - Cold adapter latencies are now 1.311, 1.36, > 1.45, 1.74, 1.681, > 1.70 and 1.277 s.
+        - At 1.7 s (last attempt at 1.45 s), about half of the S1d warm-ups are therefore expected to fail. They
+          will be excused under DR-19 (2). Declare this expectation so that frequent warm-up failures are not
+          read as a regression.
+      - **LOW-6 (`run-live.sh:20`).** The stale-stage refusal exits before the log and the cleanup trap, so its
+        message is only in the soak's `.console`. In the soak, a missing run directory is classified as FAIL and
+        stops the soak, which is fail-closed. Note only.
+      - **LOW-7 (`run-live.sh:37-38`).** A partially failed `cp -a` can leave a truncated `$RUN/owned-actors.json`.
+        The fallback to the stage then does not apply, because the file exists. Use the stage registry whenever
+        the copy failed.
+54. **Dispositions of finding 53 (written at 05:48:56 2026-10-24; blueprints `1650473`).**
+    - **Repaired.**
+      - **LOW-1.** `clean_readiness_failure` excuses `P8.pathHolds` only on the `adapter-close` path with no
+        control frame ever sent. It reads the run's `soak-audit.json`, and two new parametrized cases cover it.
+        This is the observed pattern in both recorded cold failures (dev3 `035633` and dev6 `045227`).
+      - **LOW-3.** The soak report's note now says the results describe a warmed-up server.
+      - **LOW-7.** After a failed or partial copy, `run-live.sh` gives the guard the stage's own registry, even
+        where a truncated copy exists.
+      - Soak logic tests: 31 passed.
+    - **Declared.**
+      - **LOW-2.** The `warmup-` naming in `run_one` is tested only through the soak itself. The fake bypasses
+        `run_one`, and the naming is checked again in the first soak manifest.
+      - **LOW-6.** The stale-stage refusal is visible in the soak console and gives a FAIL that stops the soak.
+    - **Errata.**
+      - **LOW-4.** The population of finding 52 was every `maestro-run.json` with a coverage file under
+        `runs/lite-stabilization-s1/*/`, excluding those that ended at start-up with `ML-PROBE-NOT-READY`.
+        Finding 53 counts 66 and 70 by different globs.
+        - The Phase 7 run `lite-20261023T002318-nominal` (20 health rows unverifiable) falls outside that
+          population.
+        - It predates S1a, under a different pattern, and is not part of this record.
+      - **LOW-5.** dev6 was the H2 live set on `7677078` (H1 = 1.95 s). Its first run after the server start failed
+        readiness (adapter not ready by 1.70 s). The other seven runs passed, including cancel-paused three times.
+        - The cold-start adapter latencies recorded so far are 1.31, 1.36, >1.45, 1.74, 1.68, >1.70 and 1.28 s.
+        - At 1.7 s (last attempt at 1.45 s), about half of the S1d warm-ups are therefore expected to fail cleanly
+          and be excused. This is not a regression.
+55. **Re-pin to platform main `a9db0ac39` (S1a-6, DR-20 merged and pushed; written at 06:53:44 2026-10-24).**
+    - **Platform.** S1a-6 was reviewed in platform finding 32 (PASS WITH NOTES), with its LOW items applied in
+      finding 33.
+      - Decisive run `platform-regression-20261024g-1`: 2945 passed and 1 skipped (the usual lane-admission skip),
+        maximum load 6.69. DV12 accepted (code `69118482`). CAPA step 15 is `6be1a184` (56 records and 749
+        bindings, with step 14 preserved).
+      - Merged as platform main `a9db0ac39`, whose tree is identical to the candidate, and pushed.
+    - **The pinned environment** `xverse-lite-live-20261022` was rebuilt from `a9db0ac39` (wheel `cea5ced4…`).
+      The `ee91697a4` copies are kept as `*-ee91697a4`. The test venv `/dev/shm/compat-p6-venv` has the same
+      wheel.
+    - **The lock is unchanged in content.** The pinned platform-API surface (`pyproject.toml`, `src/xverse_xdl`,
+      `xdl/profiles`, `xdl/schemas`) is the same `ce779e57…`, because S1a-6 changed only
+      `src/xverse/maestro/coverage.py`. Only `platformRevision` moved, to `a9db0ac39`.
+    - **Logs e and f** both gave 244 passed. My first admission call passed log e with the counts of a pre-re-pin
+      run (243 and 1), in error. The record was rebuilt at once against log f (244 passed, 0 failed, with the
+      command actually run), and that is the committed record. A rerun gave 244 passed.
+56. **Final S1c-2 live verification on the merged platform (blueprints `1650473`, the pinned environment from
+    platform main `a9db0ac39`; CARLA instance 24; runs 06:54–07:14; written at 07:13:54 2026-10-24).**
+    - **Evidence.** `runs/lite-stabilization-s1/s1c2-part2-dev8-20261024` (`SHA256SUMS`, 666 files). Every run's
+      identities show blueprints `1650473` with `dirty=0` and platform-src `a9db0ac39`.
+    - **Results: 10 of 10 as designed.**
+      - The first nominal after the server start passed, with the adapter at 1.267 s. In the soak this would be the
+        warm-up.
+      - Nominal ×2, freeze-vcu ×2 (freeze start margins 1.024 and 0.869 s, end margins 1.978 and 2.132 s),
+        cancel-paused ×2 and long-run ×2 all PASS. Loads were 5.3–7.3.
+      - no-carla fails closed (`ML-PROBE-NOT-READY`, audit PASS).
+    - **Facts across the set.**
+      - Readiness slack 0.333–0.531 s, with no cut. No persistence failure.
+      - No `unverifiable` coverage row, except no-carla's expected `ready` row (platform finding 33).
+      - The H2 copy appears in every run, and no stage is left behind.
+    - **S1c-2 acceptance.** S1c-2 (findings 28–56) is accepted under the author's acceptance of 2026-10-24
+      (thesis `author-decisions-20261023.md`, "Author acceptance"), which names S1c-2 acceptance. It is merged into
+      compat and blueprints main and pushed.

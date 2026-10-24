@@ -27,6 +27,7 @@ import time
 
 from xverse_compat.carla_client import SocketAdapterLink
 from xverse_compat.live.loop import DOMAIN, LiteVehicleLoop
+from xverse_compat.live.readiness import announce_ready
 from xverse_compat.live.zenoh_io import Latest, open_session, redirect_stderr
 
 VCU = {"throttle": "vcu/control/throttle_cmd", "brake": "vcu/control/brake_cmd"}
@@ -112,6 +113,10 @@ def main(argv=None) -> int:
             speed_pub.put(str(motion["value"]["speedMps"] * 3.6))
             clock_pub.put(str(motion["originNs"] / 1e9))
 
+        # S1b nonce marker (a no-op without a challenge): the listener, the zenoh session and the evidence run are up.
+        # The adapter unit is started only after this unit is ready, so readiness cannot wait for its connection.
+        summary["readyAnnounced"] = announce_ready()
+        summary["readyMonotonicNs"] = time.monotonic_ns()
         summary["hello"] = link.start(accept_timeout_s=args.accept_timeout_s)
         if args.pause_after_s is not None:  # the simulation clock stops: no further tick is requested
             pause_at = time.monotonic() + args.pause_after_s

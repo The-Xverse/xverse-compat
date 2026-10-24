@@ -261,6 +261,18 @@ def test_stimulus_profile_segments():
     assert stimulus.pedals(7.5)[2] == len(stimulus.PROFILE)
 
 
+def test_long_run_stimulus_profile_repeats_the_standard_cycle():  # S1 FR-018
+    long = stimulus.PROFILES["long-run"]
+    assert stimulus.PROFILES["standard"] is stimulus.PROFILE and long[:3] == stimulus.PROFILE
+    assert len(long) == 9 and long[-1][0] == 21.0
+    for offset in (0.0, 7.0, 14.0):
+        assert stimulus.pedals(offset + 0.5, long)[:2] == (0.0, 0.0)
+        assert stimulus.pedals(offset + 3.0, long)[:2] == (0.6, 0.0)
+        assert stimulus.pedals(offset + 5.0, long)[:2] == (0.0, 0.8)
+    assert stimulus.pedals(21.0, long)[2] == len(long)
+    assert all(a[0] < b[0] for a, b in zip(long, long[1:]))
+
+
 def test_lite_loop_routes_items_through_flow_receivers_on_a_fake_adapter():
     path = _socket_path()
     link = SocketAdapterLink(path, DESCRIPTORS)
