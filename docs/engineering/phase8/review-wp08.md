@@ -200,3 +200,112 @@ evidence, and no model of the thesis (GA-35).
      - R-7. The loader reads the whole model into memory. That suits the small AD-02 network; a large model
        would need a streamed digest.
    - **Status.** Candidate for independent review. Not accepted, not merged, not pushed.
+3. **Independent review of findings 1 and 2 (2026-10-24 11:28:12).**
+   - **Reviewer and method.** An independent reviewer who did not write this increment.
+     - Read `28b400f` and `be20f79` against base `34cc046`, the thesis `decisions.md` row "WP-08 inference
+       stack" (280) and `design/wp08-inference-stack.md`, including its correction section of 11:25.
+     - The built artifacts in `/media/jefferson/11c42dee-73a3-4c2b-ab42-a0440011d9e0/.x-verse-build/cache/`
+       were only read.
+     - `xverse-lite-live-20261022` and `.x-verse-build/worktrees/*` were not touched. There was no
+       download or install, and no CARLA.
+     - Processes ran one at a time. The worktree was not changed except for this entry.
+   - **Verdict: PASS WITH NOTES. Nothing blocks the merge.** MEDIUM-1 should be repaired before a U4 unit
+     uses the loader, preferably on this branch, because the thesis correction section already calls the
+     mitigation "enforced". The merge still awaits the author's acceptance.
+   - **Evidence.**
+     - **Wheel hashes.** `sha256sum` of the two wheelhouse files equals the lock (`37fd78ce…5809`,
+       `6ffa0766…62c0`), and the sizes equal finding 2's (23760708 and 16718044).
+     - **Tree digest.** A read-only rehash of `venv/lib/python3.13/site-packages`, with the script's
+       algorithm (sorted relative paths and file SHA-256, `__pycache__` excluded), gives
+       `16c8546d…f5cd`, equal to `identity.json`. It covers 1726 files.
+       - `identity.json` `lockSha256` equals the worktree lock, and `interpreterSha256` equals a rehash of
+         `/home/jefferson/.pyenv/versions/3.13.13/bin/python3.13`.
+       - `pipFreeze` is numpy, onnxruntime and pip, and `importReturnCode` is 0.
+       - There is no symlink and no `.pth` file in `site-packages`.
+     - **Build script.** The lock pre-check loop (make-inference-env.sh 18–23) runs in a pipeline
+       subshell, but `set -euo pipefail` propagates its `exit 3`. The install line is `--no-index
+       --find-links <wheels> --require-hashes --no-deps -r <lock>`.
+     - **Loader** (loader.py 38–86).
+       - The file is read once (44–45), digested and compared. The session is built from those bytes
+         (74), and the path is never reopened, so there is no TOCTOU.
+       - The ill-formed-digest, unreadable, mismatched and telemetry-variable refusals all come before
+         `import onnxruntime` (61–64).
+     - **Telemetry probe, reproduced** under `unshare -rn` with `strace -f`, using a session and 10 runs.
+       - Defaults: 0 `AF_INET`/`AF_INET6` sockets and 0 `connect`, but 3 `/sys/class/dmi` reads, plus
+         `/.dockerenv` and `/proc/1/cgroup`.
+       - `ORT_DISABLE_TELEMETRY=1`: none of these.
+       - This agrees with finding 2.
+     - **Suite.** With the venv present: 375 passed, 39 subtests, so V-1, V-4 and the in-venv V-6 ran. With
+       `XVERSE_COMPAT_INFERENCE_ENV=/nonexistent-env`, `tests/inference` gives 12 passed and 4 skipped,
+       each with the reason "U4 inference venv absent".
+     - **V-1, V-4 and V-6.**
+       - The tests check the providers (`CPUExecutionProvider` only), the version, float32 output within
+         1e-5 of an independent NumPy reference, and no telemetry message (V-1).
+       - V-4: one output hash within each of 5 fresh processes (100 + 4 × 10 runs), and one across them.
+       - V-6: a tampered model and an unset telemetry variable are refused with `onnxruntime` not
+         imported, in the U4 pattern, and a schema mismatch is refused.
+       - The evidence is sound for this test model and host, as R-2 and R-3 state.
+   - **Issues (none blocks the merge).**
+     - **MEDIUM-1: the telemetry guard can be bypassed by an earlier import, and the record then reports
+       telemetry as disabled.**
+       - Where: loader.py 62–66 and 85.
+       - The guard reads `os.environ` when `load_model` is called. It does not check whether ONNX Runtime
+         was already imported, which is when 1DS initialises.
+       - Probe, run under `unshare -rn` in the U4 pattern: `import onnxruntime` with the variable unset,
+         then `os.environ['ORT_DISABLE_TELEMETRY'] = '1'`, then `load_model(fixture, digest)`. The 1DS
+         warning `telemetry_1ds.cc:600 … Failed to persist telemetry device ID` was logged at the first
+         import. **`load_model` succeeded anyway, with `record["telemetry"] == "disabled"`.**
+       - So any code path in U4 that imports `onnxruntime` before the loader runs initialises telemetry
+         and fingerprints the host. Examples: a module-level import in a perception module, a type
+         import, or a dependency. The record then states the opposite.
+       - Repair:
+         - refuse when `onnxruntime` or `onnxruntime.capi` is already in `sys.modules` at the guard;
+         - in WP-13, check the variable at U4 entry, before any application import, rather than only in
+           the loader;
+         - add the test above, run as a subprocess.
+       - The thesis correction section ("refuses unless that variable is set before import") then holds
+         as written.
+     - **MEDIUM-2: the tree digest excludes the bytecode the interpreter actually runs.**
+       - Where: make-inference-env.sh 25 and 38.
+       - `pip install` compiles 123 `__pycache__` directories into `site-packages`, and the digest
+         excludes them. `-B` only stops Python writing bytecode. It still reads a `__pycache__/*.pyc`
+         whose header matches the source's mtime and size.
+       - A modified `.pyc` with an intact header therefore runs while `sitePackagesTreeSha256` still
+         matches. The identity record does not bind the executed Python code.
+       - Repair options:
+         - install with `pip install --no-compile`, assert that no `__pycache__` exists, and digest
+           everything. Note the effect on the V-3 readiness budget: every import then compiles in memory;
+         - or include the `.pyc` files and record the build as host-reproducible only.
+       - R-5 or R-1 should say which was chosen.
+     - **LOW-1: the identity record binds the interpreter binary only.**
+       - The pyenv standard library, a `libpython` if built shared, and the `ensurepip`-bundled pip that
+         performed the install are not digested, and `pip 26.0.1` itself is unlocked content in the venv.
+       - This is acceptable for an engineering record, but the record supports "these site-packages on this
+         interpreter binary", not a full-environment claim.
+       - Optional: digest the interpreter's `lib/python3.13` tree too, or state the limit in R-5.
+     - **LOW-2: refusal boundaries.**
+       - The module docstring (loader.py 4) says every refusal comes before the import. Session creation,
+         provider and schema refusals (73–82) necessarily come after it. They still come before
+         readiness, as the design requires, but the docstring should say so.
+       - A failing `import onnxruntime` raises `ImportError`, not `ModelRefused`. That is fail-closed but
+         a different type; U4 should treat both as refusals.
+       - `expected_inputs` and `expected_outputs` are optional. WP-13 should make them mandatory for the
+         frozen model.
+     - **LOW-3: the identity record names a worktree path.** `identity.json` `lock` is
+       `/home/jefferson/xverse-compat-worktrees/phase8-wp08-20261024/tools/inference/u4-inference.lock`,
+       which disappears after the merge. Its `lockSha256` is the binding value; the path is informational.
+   - **Residuals R-1 to R-7.**
+     - R-2, R-3, R-4 and R-7 are accurate.
+     - R-1 is accurate on what was probed, and honest about the untested networked default. It should add
+       the earlier-import bypass of MEDIUM-1 until that is repaired.
+     - R-5 is accurate. It should state that the U4 entry point checks the variable first (MEDIUM-1) and
+       the bytecode choice (MEDIUM-2).
+     - R-6 has since been addressed on the thesis side: `design/wp08-inference-stack.md`, "Correction,
+       11:25". That correction should be amended for MEDIUM-1.
+     - Missing: MEDIUM-2 and LOW-1.
+   - **Recommendation.**
+     - Repair MEDIUM-1, with a subprocess test, on this branch.
+     - Decide MEDIUM-2 (`--no-compile` and digest everything, or include the `.pyc` files) and rebuild only
+       if the author authorizes it.
+     - Record LOW-1 to LOW-3.
+     - Then a focused re-review, followed by acceptance.
