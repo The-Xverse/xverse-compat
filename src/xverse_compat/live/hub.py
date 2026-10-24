@@ -11,6 +11,7 @@ required parameter with no default. No fault is applied here (increment #4).
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass, field
 import hashlib
 import json
@@ -30,6 +31,7 @@ from .hub_topology import validate as validate_topology
 PROTOCOL = "xverse-compat.hub-units/1"
 MAX_LINE = 65536
 F17 = "f17-brake-command"
+FRAME_TRACE_SCHEMA = "xverse-compat.hub-frame-trace/1"
 
 
 class HubInvalidRun(RuntimeError):
@@ -310,6 +312,64 @@ class HubResult:
     discarded: list = field(default_factory=list)
     boundary_gaps: list = field(default_factory=list)
     faults: list = field(default_factory=list)  # WP-10 #4: digest-only fault records, never on a runtime flow
+    episode_origin_frame: int | None = None
+    episode_origin_ticked_frame: int | None = None
+    episode_origin_frame_issues: list = field(default_factory=list)
+    step_frames: list = field(default_factory=list)  # WP-17f: observational, never used by runtime decisions
+    frame_trace_outcome: str = "not-started"
+    frame_trace_failure_type: str | None = None
+
+    def frame_trace(self) -> dict:
+        """Return private, JSON-safe join observations, not a runtime or scientific validity verdict."""
+
+        origin = None
+        if self.episode_origin_ns is not None:
+            origin = {"motionFrame": self.episode_origin_frame, "tickedFrame": self.episode_origin_ticked_frame,
+                      "simNs": self.episode_origin_ns, "frameIssues": self.episode_origin_frame_issues}
+        return copy.deepcopy({"schema": FRAME_TRACE_SCHEMA, "episodeOrigin": origin,
+                              "loopOutcome": self.frame_trace_outcome, "failureType": self.frame_trace_failure_type,
+                              "records": self.step_frames})
+
+
+def _new_step_frame(tick: int) -> dict:
+    return {"tick": tick, "step": None, "motionFrame": None, "tickedFrame": None, "simNs": None,
+            "episodeNs": None, "hostNs": None, "priorMotionFrame": None, "frameIssues": ["boundary-not-observed"],
+            "phase": "command-source", "status": "pending", "failureType": None}
+
+
+def _frame_number(value) -> int | None:
+    return value if type(value) is int and value >= 0 else None
+
+
+def _observe_step_frame(record: dict, tick_result, motion: dict | None, previous_frame: int | None) -> None:
+    """Copy actual frame identities and gaps only; never repair a boundary or influence the hub's control path."""
+
+    ticked_raw = getattr(tick_result, "frame", None)
+    record["tickedFrame"] = _frame_number(ticked_raw)
+    record["priorMotionFrame"] = previous_frame
+    issues = record["frameIssues"] = []
+    if record["tickedFrame"] is None:
+        issues.append("missing-ticked-frame" if ticked_raw is None else "invalid-ticked-frame")
+    if motion is None:
+        issues.append("no-motion-boundary")
+        return
+    raw_frame, raw_ns = motion.get("frame"), motion.get("originNs")
+    record["motionFrame"] = _frame_number(raw_frame)
+    record["simNs"] = raw_ns if type(raw_ns) is int and raw_ns >= 0 else None
+    if record["motionFrame"] is None:
+        issues.append("missing-motion-frame" if raw_frame is None else "invalid-motion-frame")
+    if record["simNs"] is None:
+        issues.append("missing-motion-time" if raw_ns is None else "invalid-motion-time")
+    if sum(isinstance(item, dict) and item.get("flowId") == "vehicle-motion" for item in tick_result.items) != 1:
+        issues.append("ambiguous-motion-items")
+    actual = record["motionFrame"]
+    if actual is not None and record["tickedFrame"] is not None and actual != record["tickedFrame"]:
+        issues.append("motion-ticked-mismatch")
+    if actual is not None and previous_frame is not None:
+        if actual <= previous_frame:
+            issues.append("non-increasing-motion-frame")
+        elif actual != previous_frame + 1:
+            issues.append("motion-frame-gap")
 
 
 class Hub:
@@ -586,6 +646,8 @@ class Hub:
         """Run at most ``max_steps`` adapter ticks; always close the frame receiver and the unit links."""
 
         sim_s, last_motion = 0.0, None
+        observed, previous_frame = None, None
+        self.result.frame_trace_outcome = "running"
         try:
             self.units.accept_all(self.connect_timeout_s)
             if self.relay is not None:
@@ -594,28 +656,51 @@ class Hub:
                 except RelayInvalid as error:
                     raise HubInvalidRun(f"fault arming refused: {error}") from error
             for tick in range(max_steps):
+                observed = _new_step_frame(tick)
+                self.result.step_frames.append(observed)
                 throttle, brake, _meta = self.command_source(sim_s, last_motion)
+                observed["phase"] = "command"
                 self.link.command(f"t{tick}", brake, 1, throttle)
+                observed["phase"] = "adapter-tick"
                 step_result = self.link.tick()
+                # WP-17f: one evidence-only sample at adapter return, before binding/holds/work on this boundary.
+                observed["hostNs"] = time.monotonic_ns()
+                observed["phase"] = "boundary"
                 if step_result.done is not None:
+                    observed["tickedFrame"] = _frame_number(getattr(step_result, "frame", None))
+                    observed["frameIssues"] = ["not-a-boundary"]
+                    observed["status"] = "adapter-done"
                     self.result.end_reason = "adapter-done"
                     break
                 items = step_result.items
                 motion = next((i for i in items if i["flowId"] == "vehicle-motion"), None)
+                _observe_step_frame(observed, step_result, motion, previous_frame)
+                if observed["motionFrame"] is not None:
+                    previous_frame = observed["motionFrame"]
                 if motion is None:  # finding 4, L5: the boundary is the vehicle-motion origin only; flagged, no step
                     self.result.boundary_gaps.append({"tick": tick, "items": sorted(i["flowId"] for i in items),
                                                       "reason": "no vehicle-motion item: no step boundary"})
+                    observed["status"] = "no-boundary"
                     continue
                 frame_ns = motion["originNs"]
                 step = self.schedule.boundary(frame_ns)
+                observed["step"] = step
                 if self._origin is None:  # late binding at the first frame, before any consumer runs
+                    self.result.episode_origin_frame = observed["motionFrame"]
+                    self.result.episode_origin_ticked_frame = observed["tickedFrame"]
+                    self.result.episode_origin_frame_issues = list(observed["frameIssues"])
+                    observed["phase"] = "origin-binding"
                     self._bind_origin(frame_ns, step)
+                if observed["simNs"] is not None:
+                    observed["episodeNs"] = observed["simNs"] - self._origin
                 if self.relay is not None:  # WP-10 #4: grid check, reports and the step hold, before the step runs
+                    observed["phase"] = "fault-relay"
                     try:
                         self.relay.at_step(self, step, frame_ns - self._origin)
                     except MaestroClosed:
                         self.relay.close_on_maestro_end(step)
                         self.relay = None  # no fault after Maestro's end; queued and frozen state stays as is
+                        observed["status"], observed["failureType"] = "aborted", "MaestroClosed"
                         self.result.end_reason = "maestro-closed"
                         break
                     except RelayInvalid as error:
@@ -623,10 +708,12 @@ class Hub:
                 sim_s = (frame_ns - self._origin) / 1e9
                 if motion is not None:
                     last_motion = motion
+                observed["phase"] = "frame-verification"
                 camera = next((i for i in items if i["flowId"] == "camera"), None)
                 frame = self.frames.take(camera, wait_s=self.frame_wait_s) if self.frames is not None and camera is not None else None
                 if frame is not None:
                     self.result.frames.append(frame.record())
+                observed["phase"] = "local-delivery"
                 for flow_id, item in (("f01-camera-raw", {"item": camera, "frame": frame} if camera else None),
                                       ("f02-radar-raw", next((i for i in items if i["flowId"] == "radar-adas"), None)),
                                       ("f03-motion-raw", motion)):
@@ -636,17 +723,35 @@ class Hub:
                 for producer in self.local_producers:
                     for message in producer(step, frame_ns, items) or ():
                         self.schedule.admit(step, self.hub_unit, message)
+                observed["phase"] = "delivery-rounds"
                 self._rounds(step)
+                observed["phase"] = "deadline-check"
                 self._check_deadlines(step, frame_ns)  # after the step's rounds: a delivery in this step counts
                 self.result.steps += 1
+                observed["phase"], observed["status"] = "completed", "completed"
             else:
                 self.result.end_reason = "max-steps"
             if self.relay is not None:  # ST-2: close the Maestro end only when settled, or after Maestro closes
                 self.relay.finish(self.result.steps - 1 if self.result.steps else None)
+            self.result.frame_trace_outcome = "returned"
+        except BaseException as error:
+            self.result.frame_trace_outcome = "raised"
+            self.result.frame_trace_failure_type = type(error).__name__
+            if observed is not None and observed["status"] == "pending":
+                if observed["simNs"] is not None and self._origin is not None:
+                    observed["episodeNs"] = observed["simNs"] - self._origin
+                observed["status"], observed["failureType"] = "aborted", type(error).__name__
+            raise
         finally:
             self.result.refused = self.result.refused + self.schedule.refused
             self.result.discarded = list(self.schedule.discarded)
             if self._relay_records is not None:
                 self.result.faults = self._relay_records.records
-            self.close()  # WP-06 N1: the frame receiver always; the unit links within their bound
+            try:
+                self.close()  # WP-06 N1: the frame receiver always; the unit links within their bound
+            except BaseException as error:
+                self.result.frame_trace_outcome = "raised"
+                if self.result.frame_trace_failure_type is None:
+                    self.result.frame_trace_failure_type = type(error).__name__
+                raise
         return self.result

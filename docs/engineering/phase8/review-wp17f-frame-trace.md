@@ -64,3 +64,35 @@ will assert actual item/status frames; no live CARLA is involved. The full ownin
 required. The platform regression owns the heavy-test slot: syntax and tiny stdlib probes only until released.
 SADS/P8-T06 disposition stays partial: this supplies join inputs, not observer coverage, the oracle, a completed join,
 D-4c measurements, runtime fitness or H1–H4 evidence.
+
+## Finding 2: implementation candidate and deferred validation (2026-10-24)
+
+Implemented after design checkpoint `6da575015dd26d92360ab6b2a8e55b38cb11d0ed`.
+`live/hub.py` adds the private-copy `HubResult.frame_trace()` export, origin identity, actual motion/ticked
+frame observations, host samples and attempted-step completion/failure records. The original schedule inputs,
+no-motion gap dictionaries, commands, delivery/hold order and cleanup calls are preserved. No adapter protocol,
+Phase 7 source or release input changes. `hub-frame-trace.md` documents all members/issues, exact sampling point,
+host-difference meaning, explicit offline gap treatment and the boundary between loop completion and run validity.
+
+`test_phase8_hub_frames.py` adds fake-link regressions for actual nonzero identities, private JSON export, actual
+gaps/regressions, missing/invalid/mismatched/ambiguous origins, no-motion ticks, pre-return and post-boundary
+exceptions, rejected simulator boundaries and sampling before a relay hold. Its real Unix-socket unit case checks
+unchanged commands and delivery membership. The existing end-to-end socket-adapter fake-source case additionally
+checks actual item/status frames 100..103, episode time and serialized observations; it does not start live CARLA.
+All fixture frames, timestamps and bounds are TEST-ONLY.
+
+Checks performed: AST parsing of the three changed Python files; `git diff --check`; a tiny stdlib probe using
+three real listener lifecycle traces (normal, missing motion and pre-return exception), private-copy/JSON exports
+and four diagnostic controls (frame mismatch/gap/regression and boolean identity). All passed. No pytest, pinned
+adapter process or real remote unit threads were run in this pass. The platform full run still owns that slot.
+
+Queued validation after slot release: focused `tests/live/test_phase8_hub_frames.py` and
+`tests/live/test_phase8_hub.py`, then the owning complete compat suite under the admitted test environment.
+Suggested focused command from this worktree (preserving the real UID for `/run/user/<uid>` sockets):
+
+```sh
+unshare -cn env -u PYTHONPATH PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src /dev/shm/compat-p6-venv/bin/python -B -m pytest tests/live/test_phase8_hub_frames.py tests/live/test_phase8_hub.py -q -p no:cacheprovider --tb=short
+```
+
+Status: implementation candidate pending independent review and queued suites; no acceptance, merge, live run or
+scientific measurement. Offline oracle join/extractor and observer-origin verification remain future WP-17f work.

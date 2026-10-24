@@ -444,6 +444,18 @@ def test_wp10_end_to_end_the_hub_ticks_the_adapter_and_verifies_every_frame(tmp_
     assert proc.wait(timeout=30) == 0 and result.end_reason == "adapter-done" and result.steps == 4
     assert [f["status"] for f in result.frames] == ["verified"] * 4 and camera.origins == [10_000_000_000]
     assert [m["frame"].status for m in camera.messages] == ["verified"] * 4
+    # WP-17f: actual item/status frames from the pinned fake-source adapter cross the real socket.
+    trace = result.frame_trace()
+    assert trace["episodeOrigin"] == {"motionFrame": 100, "tickedFrame": 100,
+                                       "simNs": 10_000_000_000, "frameIssues": []}
+    rows = [row for row in trace["records"] if row["status"] == "completed"]
+    assert [row["motionFrame"] for row in rows] == [100, 101, 102, 103]
+    assert [row["tickedFrame"] for row in rows] == [100, 101, 102, 103]
+    assert [row["episodeNs"] for row in rows] == [0, 50_000_000, 100_000_000, 150_000_000]
+    assert all(row["frameIssues"] == [] and type(row["hostNs"]) is int for row in rows)
+    assert all(left["hostNs"] <= right["hostNs"] for left, right in zip(rows, rows[1:]))
+    assert trace["records"][-1]["status"] == "adapter-done" and trace["records"][-1]["step"] is None
+    assert json.loads(json.dumps(trace, allow_nan=False)) == trace
     assert receiver.path.exists() is False  # FrameReceiver.close() ran (it unlinks its socket)
     link.kill()
 
