@@ -164,3 +164,9 @@ bit-exact tests (blueprints `docs/review-wp13-imageops-np.md`).
    - No issue requiring a source repair was found. This finding is **not acceptance, a merge, a push, approval to
      build the loop10 cache now, a unit-launch result or a scientific claim**. The next step is the coordinator's
      acceptance/assembly decision, followed by the deferred assembled-suite verification when the host is available.
+
+## Delegated engineering acceptance for isolated main assembly (Codex, 2026-10-24)
+
+Independent re-review findings above and the now-completed source-bound owning suite support acceptance under the author's recorded engineering delegation, flagged for author review. Reviewed revision `f09e5181c6b6e637ad80ea8e4d619eb1366aa381`; actual full-suite result: **598 passed, 1 skipped, 39 subtests passed in 34.59s**. Evidence is the thesis-owned `specs/002-assured-aeb/review/codex-serial-verification-20261024/sensor-environment/receipt.json` and companion `pytest.log` (SHA-256 `52c43da6800f8feef46ac83ca82b53ad8181d4461bf4eb579ad536f7bc572954`). No failed, missing or skipped required behavior is treated as a pass.
+
+Scope: Pinned sensor environment mechanism only. The only full-suite skip is host-network refusal, separately independently exercised on host with exit6/no record (finding3). Durable loop10 cache and unit-entry thread settings remain pending. All previously carried review limits remain. Assemble only accepted increments in an isolated main worktree and run its complete owning suite before delivery. This finding is acceptance of this engineering increment; it is not an assembled-main test or live/scientific acceptance.
