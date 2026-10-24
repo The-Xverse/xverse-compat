@@ -294,3 +294,62 @@ unverified (E8-3a).
      - R-9 (LOW-1): the cached control and the alive check come from the observer's latest view and are
        not frame-aligned.
      - LOW-5: R-7 is corrected to name `restore.py` 190 and `main.py` 88 as well.
+5. **Repair of finding 4 (2026-10-24 10:41:18).**
+   - **MEDIUM-2, actor extent.** When a role is resolved, v2 writes one resolution line before that
+     frame's record: `resolution: true`, `frame`, `role`, `id`, `typeId`, `boundingBox`
+     (`extentM`, the half-size, and `locationM`, the offset from the actor origin, both in the actor
+     frame) and `boundingBoxStatus` (`observed`, `unavailable` when the actor has no
+     `bounding_box`, or `non-finite` with no value written). It is read from the static
+     `actor.bounding_box` once per resolution, never per frame. The header declares it in
+     `boundingBox`. Consumers tell these lines apart from frame records by `resolution`; frame records
+     alone carry `roles`. Test: `test_wp01_v2_records_each_actor_extent_once_at_resolution_with_a_frame_stamp`.
+   - **LOW-4, bounded listing.** An actor that dies is dropped at once (`absent`). While a role is
+     unresolved, `get_actors()` runs at most once per `RESOLVE_PERIOD_FRAMES = 20` simulation frames
+     (1 s at the 0.05 s fixed step, K-10; an instrument parameter, not a protocol value). It runs again at
+     once when the frame number goes backwards, as in a new episode. Between listings an unresolved role
+     keeps the latest listing's status (`absent` or `ambiguous`). The header records
+     `resolvePeriodFrames`. Tests: `test_wp01_v2_unresolved_role_is_listed_once_per_declared_period`
+     (45 frames, 3 listings, and a backward frame lists again);
+     `test_wp01_v2_resolves_a_role_again_after_its_actor_dies_or_appears` updated (death inside the
+     period is `absent` until frame 41); the error-after-header test moved to frame 21.
+   - **LOW-3.** `MUTATORS` gains the twelve listed names and `start_recorder`. It drives both the
+     raising fakes and the AST check.
+   - **LOW-2.** `test_wp01_runtime_units_neither_import_dynamically_nor_launch_the_observer` scans the
+     runtime-entry import closure (it includes `xverse_compat.carla_client`, which launches the adapter).
+     It rejects `runpy`, `import_module`, `__import__`, `run_module`, `run_path`,
+     `spec_from_file_location` and `module_from_spec`, any string constant naming
+     `xverse_compat_carla.observe` or ending in `.observe` or `observe.py`, and any `subprocess.*` or
+     `os.exec*`/`spawn*`/`posix_spawn*`/`system`/`popen` call with a string containing
+     `observe`. Probes (restored afterwards):
+     - (a) the reviewer's `importlib.import_module("xverse_compat_carla" + ".observe")` appended to
+       `live/loop.py` fails this test;
+     - (b) `subprocess.Popen(["python3", "-m", "xverse_compat_carla" + "." + "observe"])` fails it;
+     - (c) listing on every frame fails the two LOW-4 tests.
+   - **LOW-6.** `test_wp01_v2_sigint_stops_with_a_complete_footer`;
+     `test_wp01_v2_failed_write_or_close_exits_3[write]` (writes after the header fail with ENOSPC,
+     footer included: exit 3 with the first error) and `[close]` (the footer is written and the close
+     fails: exit 3).
+   - **Other test changes.** Frame-record and resolution-line filters replace positional row indexing.
+     The intake test now refuses five lines, the resolution lines included.
+   - **Residuals, corrected and added.**
+     - R-3, addition: the LOW-2 scan is static. Code that hides the module name from string constants
+       (built at runtime, read from a file) is outside it; the V14 data-provenance audit (WP-17) remains
+       the backstop.
+     - R-5, addition: bounded listing can delay the resolution of a newly spawned or replaced actor by up
+       to 19 frames; those frames are `absent`.
+     - R-7, corrected (LOW-5): the package docstring of `xverse_compat_carla/__init__.py` (line 4) says
+       `carla` is imported only in `sources.LiveSource`. It is also imported lazily in `restore.py` 190,
+       `main.py` 88 and `observe.py`. The docstring is left unchanged (pre-existing, LOW).
+     - R-8 (MEDIUM-1): a v2 file is complete only as a record. Every `wait_for_tick` `RuntimeError`
+       counts as a tick timeout, so a server lost while every role is resolved ends at the bound or at a
+       signal with exit 0, `error: null` and a complete footer; trailing timeouts leave no `frame` gap.
+       Frame coverage over the evaluation window and `tickTimeouts` are a WP-17 oracle acceptance
+       criterion, to be declared there. A complete footer does not imply a complete run.
+     - R-9 (LOW-1): `cachedControl` and the `is_alive` check read the observer client's latest episode
+       state, not the snapshot being written. When the observer lags the tick owner they can belong to a
+       later frame than `frame`, so the oracle must never join control timing on `frame` from this stream.
+   - **CPython 3.10.12.** The module imports under `env -i ... /usr/bin/python3.10 -s -B` with
+     `forbidden_modules_loaded() == []` and without loading `carla`.
+   - **Suite.** 274 passed, 39 subtests (finding 2: 268). `tests/carla/test_observe_v2.py` has 30 tests.
+   - **Status.** Candidate for re-review of the repair and for the author's acceptance. Not accepted,
+     not merged, not pushed.

@@ -37,6 +37,11 @@ TRACK_ROLE = re.compile(r"xverse-lite-[a-z0-9-]+\Z")  # owned roles only (scenar
 CLOCK = {"canonical": "simulation", "key": "frame", "simElapsedNs": "seconds_to_ns(snapshot.timestamp.elapsed_seconds)",
          "observerMonotonicNs": "observer receipt time; diagnosis only, never a join key"}
 PASSIVE = {"ticks": False, "appliesSettings": False, "appliesControl": False, "spawnsOrDestroys": False}
+#: While a role is unresolved, actors are listed at most once per this many simulation frames: 1 s at the 0.05 s
+#: fixed step (K-10). An instrument parameter, not a protocol value (review-wp01 finding 3 LOW-4).
+RESOLVE_PERIOD_FRAMES = 20
+BOUNDING_BOX = ("actor.bounding_box read once per resolution: extentM is the half-size and locationM the offset from the "
+                "actor origin, both in the actor frame [m]")
 
 
 def _vec(v) -> list:
@@ -147,6 +152,20 @@ def _entry(actor, snapshot) -> dict:
     return entry
 
 
+def _resolution(role, actor, frame) -> dict:
+    """Return the resolution line of ``role``: the actor and its static extent, read once (finding 3 MEDIUM-2)."""
+
+    record = {"resolution": True, "frame": frame, "role": role, "id": actor.id, "typeId": actor.type_id}
+    try:
+        extent, offset = actor.bounding_box.extent, actor.bounding_box.location
+        numbers = [extent.x, extent.y, extent.z, offset.x, offset.y, offset.z]
+    except AttributeError:
+        return {**record, "boundingBox": None, "boundingBoxStatus": "unavailable"}
+    if not all(type(n) in (int, float) and math.isfinite(n) for n in numbers):
+        return {**record, "boundingBox": None, "boundingBoxStatus": "non-finite"}
+    return {**record, "boundingBox": {"extentM": _vec(extent), "locationM": _vec(offset)}, "boundingBoxStatus": "observed"}
+
+
 def _observe_v2(args) -> int:
     """Evaluation-only ground truth for the declared roles (design record review-wp01 finding 1)."""
 
@@ -170,6 +189,8 @@ def _observe_v2(args) -> int:
         return 3
     roles = list(args.track)
     actors = dict.fromkeys(roles)
+    found = {}  # the latest listing's matches per unresolved role
+    listed_frame = None
     observed = dict.fromkeys(roles, 0)
     frames = timeouts = 0
     error = None
@@ -177,7 +198,8 @@ def _observe_v2(args) -> int:
     try:
         with out:
             _line(out, {"header": True, "schema": SCHEMA, "evaluationOnly": True, "groundTruth": True, "label": LABEL, "roles": roles,
-                        "clock": CLOCK, "map": map_name, "passive": PASSIVE, "startedWallNs": time.time_ns(),
+                        "clock": CLOCK, "map": map_name, "passive": PASSIVE, "resolvePeriodFrames": RESOLVE_PERIOD_FRAMES,
+                        "boundingBox": BOUNDING_BOX, "startedWallNs": time.time_ns(),
                         "startedMonotonicNs": time.monotonic_ns()})
             try:
                 while time.monotonic() < deadline and not stop:
@@ -187,13 +209,21 @@ def _observe_v2(args) -> int:
                         timeouts += 1  # no frame within 1 s (paused or stopped tick owner); keep waiting until the bound
                         continue
                     frames += 1
-                    found = {}
-                    unresolved = [role for role in roles if actors[role] is None or not actors[role].is_alive]
-                    if unresolved:
+                    for role in roles:
+                        if actors[role] is not None and not actors[role].is_alive:
+                            actors[role] = None
+                            found[role] = []
+                    unresolved = [role for role in roles if actors[role] is None]
+                    # bounded listing (LOW-4); a frame number that goes backwards (a new episode) lists again
+                    if unresolved and (listed_frame is None or not 0 <= snapshot.frame - listed_frame < RESOLVE_PERIOD_FRAMES):
+                        listed_frame = snapshot.frame
                         listed = list(world.get_actors())
                         for role in unresolved:
                             found[role] = [actor for actor in listed if _role_of(actor) == role]
                             actors[role] = found[role][0] if len(found[role]) == 1 else None  # never guess between several
+                            if actors[role] is not None:
+                                found[role] = []
+                                _line(out, _resolution(role, actors[role], snapshot.frame))
                     entries = {}
                     for role in roles:
                         if actors[role] is not None:
