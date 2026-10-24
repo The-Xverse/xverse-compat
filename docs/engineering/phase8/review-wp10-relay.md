@@ -630,3 +630,18 @@ end: not M1, no CARLA, no live run.
     - **Residuals.**
       - **R-1 and R-10** are closed. **R-2, R-4, R-11, L4 and L5** are assigned as recorded.
       - **R-3 and R-5 to R-9** are honest. **R-8** remains the interoperability gate with the real dispatcher.
+
+12. **Acceptance (written at 16:05:28 2026-10-24).**
+    - **Accepted** under the author's delegation of 2026-10-24 (thesis `specs/002-assured-aeb/decisions.md` §G and the
+      rows "WP-10 #4 relay alignment", "WP-10 #4 review dispositions", "WP-10 #3/#4 re-review notes" and "Lost-flow
+      rule, clarification"). It is flagged for the author's review.
+    - **Basis:** finding 11, PASS, after findings 5 and 8 (PASS WITH NOTES) and their repairs (findings 6-7, 9-10). The
+      suite gives 588 passed and 39 subtests. The reviewer's miniature wire probe against the installed platform ST-2
+      wheel (`00bd41ba2`) passed the nominal and refused-apply paths.
+    - **Declared and carried (gates before any live simulator-time fault run):**
+      - R-8: the wire test with the real `FiniteDispatcher` and harness (blueprints 5c);
+      - R-11: `backlog` support in the role-unit runtime (WP-10 #5b);
+      - the WP-10 #5 obligations (O-1 to O-13), and the D-4c values before any freeze;
+      - R-3 (proposal sets as an interface only), R-5 (all timing values required inputs, unmeasured), R-6, R-7, R-9.
+    - **The platform side** (WP-10 #3) is not merged yet; this merge adds no platform dependency to compat.
+    - **Merged** into compat main and pushed (see the merge commit).
