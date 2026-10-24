@@ -163,3 +163,114 @@ behaviour unverified (E8-3a).
      - R-7. Once hit, a physical target moves; that is the intended physics, and the oracle reads it from
        observer v2.
    - **Status.** Candidate for independent review. Not accepted, not merged, not pushed.
+3. **Independent review of findings 1 and 2 (2026-10-24 10:52:35).**
+   - **Reviewer and method.** An independent reviewer who did not write the code. I read `764f38d` and
+     `2e3dbb8` against base `d5d7be8` and checked them against thesis `specs/002-assured-aeb` (FR-029,
+     AD-04 option A, AD-28) and `decisions.md` §H. Blueprints were read only, at main `99df3a4`
+     (`units.py`, `run-live.sh`, `soak/audit.py`).
+     - Run: the offline suite, a CPython 3.10 import check, and three probes in a scratch copy.
+     - The worktree was not changed except for this entry. No CARLA, no live run.
+   - **Verdict: PASS WITH NOTES. Nothing blocks the merge.** The merge still awaits the author's
+     acceptance. The maturity in the preamble stands: owned fakes only, not M1, not AEB evidence, live
+     behaviour unverified (E8-3a).
+   - **Evidence.**
+     - Suite: 308 passed, 39 subtests. CPython 3.10.12 (`env -i`, `-s -B`): `scenario`, `sources`, `main`
+       import with `forbidden_modules_loaded() == []`, `carla` not loaded; `target_of(shipped) is None`.
+     - Fail-closed schema (scenario.py 36–72).
+       - `schema: null` or any other value is refused, as is a `target` under schema 1 or without a
+         schema. Unknown schema-2 members are refused.
+       - `target: null` and non-objects are refused, and the target members must match exactly, so a
+         missing distance is refused (there is no default).
+       - The distance must be a finite int or float that is not a bool and is > 0. The blueprint must be
+         a `vehicle.*` string, `roleName` exactly `xverse-lite-target`, and `hold` exactly
+         `brake-and-hand-brake`.
+       - Every refusal happens before any spawn or waypoint query (test_phase8_target.py 91–120). A JSON
+         `NaN` literal, which `main.py` 98 admits through `json.loads`, is refused by `_finite`.
+     - Placement (scenario.py 75–96, 114). The target transform is computed before the first spawn, with
+       exactly one continuation, a non-junction end point and finite values. The map's own lift is
+       reused. A spawn collision raises inside the rollback.
+     - Single writer.
+       - The target receives exactly one control, the hold at spawn (scenario.py 134), inside the
+         partial-spawn rollback.
+       - `LiveSource.apply` (sources.py 195–199) and the close hold write only `self._vehicle`, which is
+         the ego from `_spawned[:3]`. The tests pin `len(target.controls) == 1` through `apply` and
+         `close` (test_phase8_target.py 183–191).
+       - The guard's post-run hold is the existing owned-actor rule, as declared.
+     - Restore guard. `_owned` (restore.py 39–40) selects by prefix, and the registry holds every spawned
+       actor. Both paths hold, destroy and leave `remaining == []`, and the listing path awaits standstill
+       (test_phase8_target.py 208–245).
+     - Schema-1 compatibility and tonight's soak.
+       - `xdl/descriptors/aeb-sim/live-scenario.json` is unchanged (`git diff d5d7be8..HEAD -- xdl` is
+         empty), and it is the only scenario the blueprints use: `units.py` 60 hard-codes it, and
+         `egoBlueprint` occurs nowhere else in the blueprints at `99df3a4`.
+       - For schema 1, `spawn` makes the same CARLA calls as before, apart from one reused `get_map()`
+         result. `target_of` returns `None` and makes no CARLA call.
+       - The Phase 7 scenario dicts without `schema` (test_phase7_live.py 199, 213, 216) still pass.
+       - Observer v1 (`vehicle.*`, role `xverse-lite-ego`) and the P7 empty-world check (`run-live.sh`
+         91–92) are unaffected.
+   - **Issues (none blocks the merge).**
+     - **MEDIUM-1: the live check is not yet defined well enough to give a pass or fail.**
+       - Where: finding 1, "Live check needed", and finding 2, "Hold-still recommendation".
+       - Hold (A) itself is the right recommendation. It keeps a physical vehicle for the FR-037 collision
+         and gap criteria, needs no new call class, and matches the guard's hold. (B) is correctly
+         limited to a fallback with its own design entry.
+       - Missing, before E8-3a runs it:
+         - (a) a settling criterion: for example a speed below a threshold for N consecutive frames,
+           with the first such frame as the reference;
+         - (b) the horizon, in simulation frames or seconds;
+         - (c) the measured quantities, in the lane frame: along-lane and lateral displacement from the
+           settled reference, yaw change, and peak speed;
+         - (d) the lateral placement against the ego lane centre (FR-029 "in the ego lane"; see LOW-2);
+         - (e) that the target is resolved by observer v2, together with its `boundingBox`;
+         - (f) the D-2 radar return from the target;
+         - (g) the phases: the ego held, the ego approaching and braking, and the guard.
+       - The tolerances may stay `TODO: measurement`, but each needs a named owner, for example the D-2
+         design record, so that no value is invented later.
+       - This belongs to E8-3a and D-2, not to this increment, so it does not block the merge.
+     - **LOW-1: a junction between the ego and the target is not detected.**
+       - Where: scenario.py 85–90.
+       - Only the end waypoint is tested with `is_junction`. CARLA's `next(d)` follows the lane through a
+         junction, and a single connection gives one result.
+       - A scratch probe with a junction at x 20–30 and the target at x 50 was accepted.
+       - R-4 says "no junction only" and should state that only the target waypoint is checked.
+         Optional: also check intermediate waypoints, for example by stepping `next` along the lane.
+     - **LOW-2: "in the ego lane" is not established in code, and the off-lane refusal is fake-only.**
+       - Where: scenario.py 82–84.
+       - CARLA's `Map.get_waypoint(location)` projects onto the nearest driving lane by default and
+         returns `None` only with `project_to_road=False`. On a real map the "not on a driving lane"
+         branch, and its test (test_phase8_target.py 143), cannot fire.
+       - A spawn point near a lane boundary would be projected onto the nearest lane centre without a
+         refusal.
+       - Optional: refuse when the spawn point's lateral distance from `start` exceeds half
+         `start.lane_width`, or when its yaw disagrees with the lane heading.
+       - Otherwise, add to R-4 that the lane is the projected nearest driving lane.
+     - **LOW-3: the base members of schema 2 are neither required nor typed.**
+       - Where: scenario.py 53–56.
+       - A schema-2 scenario without `egoBlueprint` fails with a `KeyError`, with nothing spawned (probe),
+         not with a schema refusal.
+       - `map: 42` and `note: {...}` are accepted (probe).
+       - This is fail-closed in effect but not as a validation. Optional: require `egoBlueprint` (a
+         string) and `spawnPointIndex` (an int), and type `map` and `note`; otherwise, extend R-5 and R-6.
+     - **LOW-4: the gap conversion omits the bounding-box offset.**
+       - Where: finding 1, "distanceAheadM", and R-2.
+       - The AD-04 bumper-to-bumper gap is
+         `distanceAheadM − (ego.locationM.x + ego.extentM.x) − (target.extentM.x − target.locationM.x)`,
+         using the WP-01 `locationM` offset, not half-lengths alone.
+       - The ego is spawned at the spawn point, not at the projected `start` waypoint, so their
+         along-lane offset is also part of the conversion.
+       - R-2 should name both offsets, and the freeze (AD-27) owns the formula.
+     - **LOW-5: a failed target destroy at close now skips the sensors and the ego.**
+       - Where: sources.py 243–244.
+       - The pre-existing loop has no per-actor `try`, and the target is now destroyed first. If its
+         `destroy()` raises, the sensors and the ego are left to the restore guard, which covers them.
+       - Optional: a per-actor `try` that collects errors; otherwise, a sentence in R-3 or R-4.
+   - **Residuals R-1 to R-7.** R-1, R-3 and R-7 are accurate and complete, and R-3 correctly records the
+     two P8 audit gaps: misclassification by any held vehicle, and target stillness not judged. R-2, R-4
+     and R-5/R-6 are accurate but incomplete (LOW-4; LOW-1 and LOW-2; LOW-3). Missing: the
+     live-check criteria of MEDIUM-1 and the close-order exposure of LOW-5.
+   - **Recommendation.**
+     - Merge after the author's acceptance.
+     - Record MEDIUM-1 as an E8-3a and D-2 input: criteria (a) to (g), each tolerance a TODO with a named
+       owner.
+     - Amend R-2 and R-4 for LOW-1, LOW-2 and LOW-4.
+     - LOW-3 and LOW-5 are optional code repairs on this branch, or residual sentences.
