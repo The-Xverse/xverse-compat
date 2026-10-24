@@ -145,3 +145,11 @@ offline.
      the author's instruction to continue Claude's X-Verse work preserves that delegated engineering scope.
    - This accepts the offline isolation increment only. It grants no Phase 8 live execution, protocol freeze,
      principal-campaign admission, M1 or scientific claim. Integration and push are the next delivery steps.
+
+5. **Assembled-main verification (Codex, 2026-10-24).**
+   - Merged accepted candidate `d33a68a` with `--no-ff` onto compat main `797d271`, in the clean isolated worktree
+     `codex-integration-20261024`. Merge: `4df13d271d7701a8a034e4db8af2460298adf11b`.
+   - The same full-suite command as finding 3 on the merged revision gives **594 passed, 39 subtests passed**,
+     38.76 s; no skip. `git diff --check` passes. The author's main-checkout `AGENTS.md` remains untouched.
+   - This is offline regression evidence. The release-candidate worktrees, caches and overnight soak scheduler
+     remain unchanged. Main synchronization and push complete delivery; remote equality is recorded in the hand-off.
