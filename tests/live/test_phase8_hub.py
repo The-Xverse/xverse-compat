@@ -19,7 +19,7 @@ import pytest
 
 from xverse_compat.carla_client import SocketAdapterLink, TickResult
 from xverse_compat.live.frames import FrameReceiver
-from xverse_compat.live.hub import F17, PROTOCOL, Hub, HubInvalidRun, HubProtocolError, HubSchedule
+from xverse_compat.live.hub import F17, MAX_LINE, PROTOCOL, Hub, HubInvalidRun, HubProtocolError, HubSchedule, UnitLinks
 from xverse_compat.live.hub_topology import SCHEMA, TopologyError, from_system_document, validate
 
 from ..carla.support import DESCRIPTORS, FIXTURES, ROOT, require_env
@@ -66,8 +66,15 @@ class Reader:
 class FakeLink:
     """Adapter link stand-in: frame k at T0 + k·STEP; ``empty`` ticks carry no items; then done."""
 
-    def __init__(self, frames, empty=()):
-        self.frames, self.empty, self.tick_count, self.commands = frames, set(empty), 0, []
+    def __init__(self, frames, empty=(), no_motion=()):
+        self.frames, self.empty, self.no_motion, self.tick_count, self.commands = frames, set(empty), set(no_motion), 0, []
+        self.owner_calls = []
+
+    def stop(self):
+        self.owner_calls.append("stop")
+
+    def kill(self):
+        self.owner_calls.append("kill")
 
     def command(self, command_id, brake, deadline_frames, throttle=0.0):
         self.commands.append((command_id, throttle, brake))
@@ -80,6 +87,9 @@ class FakeLink:
         if n in self.empty:
             return TickResult(frame=None, items=[])
         origin = T0 + n * STEP
+        if n in self.no_motion:
+            return TickResult(frame=n, items=[{"flowId": "radar-adas", "sequence": n, "originNs": origin, "frame": n,
+                                                "value": {"count": 0}}])
         return TickResult(frame=n, items=[{"flowId": "vehicle-motion", "sequence": n, "originNs": origin, "frame": n,
                                             "value": {"speedMps": 1.0, "accelForwardMps2": 0.0}}])
 
@@ -433,3 +443,194 @@ def test_wp10_end_to_end_the_hub_ticks_the_adapter_and_verifies_every_frame(tmp_
     assert [m["frame"].status for m in camera.messages] == ["verified"] * 4
     assert receiver.path.exists() is False  # FrameReceiver.close() ran (it unlinks its socket)
     link.kill()
+
+
+# ---- finding 4 repairs -------------------------------------------------------------------------------
+
+
+def _raw_unit(path, unit, read=False):
+    """A unit that connects, says hello and then never reads (or reads and never answers)."""
+
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    deadline = time.monotonic() + 5
+    while True:
+        try:
+            sock.connect(path)
+            break
+        except OSError:
+            if time.monotonic() > deadline:
+                raise
+            time.sleep(0.01)
+    sock.sendall(json.dumps({"type": "hello", "protocol": PROTOCOL, "unit": unit}).encode() + b"\n")
+    return sock
+
+
+def test_wp10_m1_a_unit_that_never_reads_cannot_block_send_or_close_beyond_the_bound():
+    path = _socket_path()
+    links = UnitLinks(path, ["ux"], send_timeout_s=0.2)
+    holder = {}
+    threading.Thread(target=lambda: holder.setdefault("sock", _raw_unit(path, "ux")), daemon=True).start()
+    links.accept_all(5)
+    big = {"type": "round", "padding": "x" * 60_000}
+    results, worst = [], 0.0
+    for _ in range(200):  # the kernel buffer fills: the first send that cannot complete returns False within the bound
+        started = time.monotonic()
+        results.append(links.send("ux", big))
+        worst = max(worst, time.monotonic() - started)
+        if not results[-1]:
+            break
+    assert results[-1] is False and worst <= 0.4 and "send bound exceeded" in links.failed["ux"]
+    links2_path = _socket_path()
+    links2 = UnitLinks(links2_path, ["uy"], send_timeout_s=0.2)
+    threading.Thread(target=lambda: holder.setdefault("sock2", _raw_unit(links2_path, "uy")), daemon=True).start()
+    links2.accept_all(5)
+    conn = links2._conns["uy"]
+    conn.setblocking(False)
+    try:
+        while True:  # fill the peer's buffer without closing the unit
+            conn.send(b"x" * 65536)
+    except BlockingIOError:
+        pass
+    conn.setblocking(True)
+    started = time.monotonic()
+    links2.close(timeout_s=0.3)  # ``end`` cannot be written: the close still returns within its bound
+    assert time.monotonic() - started <= 0.6 and not Path(links2_path).exists()
+    links.close(timeout_s=0.3)
+
+
+def test_wp10_m1_a_hub_with_a_non_reading_unit_ends_within_its_bounds():
+    path = _socket_path()
+    topo = dict(SMALL, units={"u1": ["carla-client"], "u2": ["loop-gateway", "objective-source"], "ua": ["a"]},
+                flows=[_flow("f-hub-a", _e("objective-source", "u2"), [_e("a", "ua")])])
+    hub = Hub(topo, link=FakeLink(5), units_socket_path=path, command_source=lambda s, m: (0.0, 0.0, {}), wait_bound_s=0.3,
+              hold_bound_s=0.3, startup_deadlines_ns={}, connect_timeout_s=5, local_producers=(_hub_producer(["f-hub-a"]),))
+    holder = {}  # keep the socket open: a silent unit, not a disconnected one
+    threading.Thread(target=lambda: holder.setdefault("sock", _raw_unit(path, "ua")), daemon=True).start()
+    started = time.monotonic()
+    with pytest.raises(HubInvalidRun, match="missed the consumer wait bound"):
+        hub.run(max_steps=6)
+    assert time.monotonic() - started <= 2.0 and not Path(path).exists()
+
+
+def test_wp10_m2_a_lost_flow_is_a_barrier_for_a_message_queued_ahead():
+    path = _socket_path()
+    reader = Reader()
+
+    def uc_produce(unit, step, rnd, sim_ns, deliveries):
+        if step == 0 and rnd == 0:  # an F17 queued three steps ahead, then the producer disconnects
+            return [unit.message(F17, sim_ns, sim_ns + 3 * STEP)]
+        return []
+    spec = [("ua", _emit_round0({}), {}), ("ub", _emit_round0({}), {}), ("uc", uc_produce, {"disconnect_after": 0})]
+    hub, units = _hub(SMALL, path, FakeLink(6), spec, local_consumers={F17: [reader]})
+    result = hub.run(max_steps=7)
+    for u in units:
+        u.join(5)
+    assert reader.lost == 1 and reader.messages == []  # never delivered after the verdict (decisions.md "Lost-flow rule")
+    assert not any(d["flowId"] == F17 for d in result.deliveries)
+    assert [(d["flowId"], d["sequence"], d["reason"]) for d in result.discarded] == [(F17, 0, "pending at the lost verdict")]
+    assert result.discarded[0]["payloadSha256"] and result.lost[0]["flowId"] in {F17, "f-c-a"}
+
+
+def test_wp10_m2_after_a_startup_deadline_loss_a_late_f17_is_discarded():
+    path = _socket_path()
+    reader = Reader()
+
+    def uc_produce(unit, step, rnd, sim_ns, deliveries):
+        return [unit.message(F17, sim_ns, sim_ns)] if rnd == 0 and step >= 3 else []
+    spec = [("ua", _emit_round0({}), {}), ("ub", _emit_round0({}), {}), ("uc", uc_produce, {})]
+    hub, units = _hub(SMALL, path, FakeLink(6), spec, deadlines={F17: STEP}, local_consumers={F17: [reader]})
+    result = hub.run(max_steps=7)
+    for u in units:
+        u.join(5)
+    assert [(x["flowId"], x["step"]) for x in result.lost] == [(F17, 1)] and reader.messages == []
+    assert {d["reason"] for d in result.discarded} == {"admitted after the lost verdict"} and len(result.discarded) == 3
+
+
+def _forwarder(forward):
+    """Produce on ``forward[flow_in]`` for every delivery received on ``flow_in``, in any round (chaining)."""
+
+    def produce(unit, step, rnd, sim_ns, deliveries):
+        out = [unit.message(forward[d["flowId"]], sim_ns, sim_ns) for d in deliveries if d["flowId"] in forward]
+        return out
+    return produce
+
+
+def test_wp10_l1_zero_delay_chains_run_in_rounds_and_a_declared_delay_ends_them():
+    path = _socket_path()
+    spec = [("ua", _forwarder({"f-hub-a": "f-a-b"}), {}), ("ub", _forwarder({"f-a-b": "f-b-c"}), {}),
+            ("uc", _forwarder({"f-b-c": "f-c-a"}), {})]
+    hub, units = _hub(SMALL, path, FakeLink(3), spec, deadlines={F17: 100 * STEP}, local_consumers={F17: [Reader()]},
+                      producers=(_hub_producer(["f-hub-a"]),))
+    result = hub.run(max_steps=4)
+    for u in units:
+        u.join(5)
+    rounds = {(d["flowId"], d["step"]): d["round"] for d in result.deliveries}
+    assert rounds[("f-hub-a", 0)] == 0 and rounds[("f-a-b", 0)] == 1 and rounds[("f-b-c", 0)] == 2
+    assert rounds[("f-c-a", 1)] == 0 and result.max_rounds == 3  # the delay point ends the chain at the step
+
+
+def test_wp10_l1_an_undeclared_zero_delay_cycle_hits_the_round_cap():
+    cyclic = json.loads(json.dumps(SMALL))
+    next(f for f in cyclic["flows"] if f["id"] == "f-c-a")["hubDelaySteps"] = 0  # the cycle breaker removed
+    path = _socket_path()
+    spec = [("ua", _forwarder({"f-hub-a": "f-a-b", "f-c-a": "f-a-b"}), {}), ("ub", _forwarder({"f-a-b": "f-b-c"}), {}),
+            ("uc", _forwarder({"f-b-c": "f-c-a"}), {})]
+    hub, units = _hub(cyclic, path, FakeLink(3), spec, deadlines={F17: 100 * STEP}, local_consumers={F17: [Reader()]},
+                      producers=(_hub_producer(["f-hub-a"]),))
+    with pytest.raises(HubInvalidRun, match="more than 6 delivery rounds"):
+        hub.run(max_steps=4)
+
+
+def test_wp10_l2_the_adapter_link_belongs_to_the_caller():
+    result, units, reader = _run_small(frames=3)
+    path = _socket_path()
+    link = FakeLink(2)
+    hub, units = _hub(SMALL, path, link, _small_units(path), local_consumers={F17: [Reader()]})
+    hub.run(max_steps=3)
+    assert link.owner_calls == []  # the hub never stops or kills the link; the caller does
+
+
+def test_wp10_l3_a_malformed_outputs_field_is_a_protocol_error_of_that_unit():
+    path = _socket_path()
+    reader = Reader()
+
+    spec = [("ua", _emit_round0({}), {}), ("ub", _emit_round0({}), {}),
+            ("uc", lambda unit, step, rnd, sim_ns, d: 5 if step == 1 else [], {})]
+    hub, units = _hub(SMALL, path, FakeLink(4), spec, local_consumers={F17: [reader]})
+    result = hub.run(max_steps=5)
+    assert any(x["unit"] == "uc" and "not a list" in x["reason"] for x in result.invalid) and reader.lost == 1
+
+
+def test_wp10_l4_an_outbound_line_above_the_limit_is_refused_at_the_hub():
+    path = _socket_path()
+
+    def huge(step, sim_ns, items):
+        return [{"flowId": "f-hub-a", "sequence": step, "originNs": sim_ns, "deliverAtNs": sim_ns, "payload": "x" * (MAX_LINE + 1)}]
+    hub, units = _hub(SMALL, path, FakeLink(3), _small_units(path), local_consumers={F17: [Reader()]}, producers=(huge,))
+    with pytest.raises(HubProtocolError, match="above 65536"):
+        hub.run(max_steps=4)
+
+
+def test_wp10_l5_a_tick_without_vehicle_motion_is_flagged_and_gives_no_step():
+    path = _socket_path()
+    hub, units = _hub(SMALL, path, FakeLink(4, no_motion=(1,)), _small_units(path), local_consumers={F17: [Reader()]})
+    result = hub.run(max_steps=5)
+    assert result.boundary_gaps == [{"tick": 1, "items": ["radar-adas"], "reason": "no vehicle-motion item: no step boundary"}]
+    assert result.steps == 3 and T0 + STEP not in {d["deliveredAtNs"] for d in result.deliveries}
+
+
+def test_wp10_l7_a_refused_construction_closes_the_frame_receiver_and_close_without_run_releases_all():
+    frames = FakeFrames()
+    with pytest.raises(ValueError):
+        Hub(SMALL, link=FakeLink(1), units_socket_path=_socket_path(), command_source=lambda s, m: (0, 0, {}), wait_bound_s=None,
+            hold_bound_s=1, startup_deadlines_ns={F17: 1}, connect_timeout_s=1, frames=frames, frame_wait_s=1,
+            local_consumers={F17: [Reader()]})
+    assert frames.closed == 1
+    frames2, path = FakeFrames(), _socket_path()
+    hub = Hub(SMALL, link=FakeLink(1), units_socket_path=path, command_source=lambda s, m: (0, 0, {}), wait_bound_s=1,
+              hold_bound_s=1, startup_deadlines_ns={F17: 1}, connect_timeout_s=1, frames=frames2, frame_wait_s=1,
+              local_consumers={F17: [Reader()]})
+    assert Path(path).exists()
+    hub.close()
+    hub.close()  # idempotent
+    assert frames2.closed == 1 and not Path(path).exists()

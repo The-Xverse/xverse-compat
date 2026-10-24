@@ -18,6 +18,7 @@ import math
 import os
 from pathlib import Path
 import queue
+import select
 import socket
 import threading
 import time
@@ -74,6 +75,8 @@ class HubSchedule:
         self._pending: list[_Pending] = []
         self._last_sequence: dict[tuple[str, str], int] = {}
         self.refused: list[dict] = []
+        self.lost: set[str] = set()  # lost-flow barrier (decisions.md "Lost-flow rule"; finding 4, M2)
+        self.discarded: list[dict] = []
 
     def boundary(self, sim_ns: int) -> int:
         """Register the next step boundary ``T_k`` (strictly increasing); return ``k``."""
@@ -110,6 +113,9 @@ class HubSchedule:
             self.refused.append({"step": step, "unit": source_unit, "flowId": message.get("flowId") if isinstance(message, dict) else None,
                                  "reason": reason})
             return False
+        if flow["id"] in self.lost:  # a lost flow never delivers again: discarded, kept as evidence
+            self.discarded.append(_discard_record(step, flow["id"], source_unit, message, "admitted after the lost verdict"))
+            return False
         self._last_sequence[(flow["id"], source_unit)] = message["sequence"]
         item = _Pending(flow["id"], source_unit, message["sequence"], step, message["originNs"], message["deliverAtNs"], message)
         if self.boundaries[step] >= item.deliver_at_ns:
@@ -128,11 +134,48 @@ class HubSchedule:
     def pending(self) -> int:
         return len(self._pending)
 
+    def discard_flow(self, flow_id: str, step: int) -> list[dict]:
+        """Lost-flow barrier: drop every pending message of ``flow_id``, record each, and refuse later ones."""
+
+        self.lost.add(flow_id)
+        dropped = sorted(p for p in self._pending if p.flow == flow_id)
+        for p in dropped:
+            self._pending.remove(p)
+            self.discarded.append(_discard_record(step, p.flow, p.source_unit, p.message, "pending at the lost verdict"))
+        return dropped
+
+
+def _discard_record(step, flow_id, source_unit, message, reason) -> dict:
+    return {"step": step, "flowId": flow_id, "from": source_unit, "sequence": message.get("sequence"),
+            "deliverAtNs": message.get("deliverAtNs"), "payloadSha256": hashlib.sha256(_canonical(message.get("payload"))).hexdigest(),
+            "reason": reason}
+
+
+def _send_bounded(sock, data: bytes, deadline: float) -> None:
+    """Write ``data`` without blocking past ``deadline`` (finding 4, M1); raise ``TimeoutError`` at the bound.
+
+    The socket stays blocking for its reader thread; each write is ``MSG_DONTWAIT`` after ``select`` says writable.
+    """
+
+    view = memoryview(data)
+    while view:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("unit send bound exceeded")
+        _, writable, _ = select.select([], [sock], [], remaining)
+        if not writable:
+            continue
+        try:
+            view = view[sock.send(view, socket.MSG_DONTWAIT):]
+        except BlockingIOError:
+            continue
+
 
 class UnitLinks:
     """``xverse-compat.hub-units/1``: one listener; each remote unit connects and says ``hello``."""
 
-    def __init__(self, socket_path, expected_units) -> None:
+    def __init__(self, socket_path, expected_units, send_timeout_s: float) -> None:
+        self.send_timeout_s = _positive("send_timeout_s", send_timeout_s)
         self.path = Path(socket_path)
         self.expected = sorted(expected_units)
         if self.path.is_socket():
@@ -145,9 +188,11 @@ class UnitLinks:
             os.umask(previous)
         self._listener.listen(len(self.expected) or 1)
         self._conns: dict[str, socket.socket] = {}
-        self._writers: dict[str, Any] = {}
+        self._readers: dict[str, Any] = {}
         self.inbox: dict[str, queue.Queue] = {}
         self.closed: set[str] = set()
+        self.failed: dict[str, str] = {}
+        self._shut = False
 
     def accept_all(self, timeout_s: float) -> None:
         deadline = time.monotonic() + timeout_s
@@ -173,7 +218,7 @@ class UnitLinks:
                 raise HubProtocolError(f"unexpected hello {hello!r}")
             conn.settimeout(None)
             self._conns[unit] = conn
-            self._writers[unit] = conn.makefile("wb")
+            self._readers[unit] = reader
             self.inbox[unit] = queue.Queue()
             threading.Thread(target=self._pump, args=(unit, reader), daemon=True).start()
 
@@ -200,25 +245,44 @@ class UnitLinks:
                 return
             self.inbox[unit].put(("message", message))
 
-    def send(self, unit: str, message: dict) -> bool:
+    def send(self, unit: str, message: dict, deadline: float | None = None) -> bool:
+        """Send one line within the send bound (or ``deadline``); False, and the unit closed, on a timeout or error.
+
+        A line above ``MAX_LINE`` raises ``HubProtocolError`` at the hub (finding 4, L4).
+        """
+
+        line = _canonical(message) + b"\n"
+        if len(line) - 1 > MAX_LINE:
+            raise HubProtocolError(f"outbound {message.get('type')} line to {unit} is {len(line) - 1} bytes, above {MAX_LINE}")
         if unit in self.closed:
             return False
         try:
-            self._writers[unit].write(_canonical(message) + b"\n")
-            self._writers[unit].flush()
+            _send_bounded(self._conns[unit], line, deadline if deadline is not None else time.monotonic() + self.send_timeout_s)
             return True
-        except (OSError, ValueError):
+        except (OSError, TimeoutError) as error:  # a partial line may be on the wire: the unit's link is closed for good
             self.closed.add(unit)
+            self.failed[unit] = f"{type(error).__name__}: {error}"
+            self._shutdown(unit)
             return False
 
-    def close(self) -> None:
-        for unit in list(self._conns):
-            self.send(unit, {"type": "end"})
-            try:
-                self._conns[unit].shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass
-            for closer in (self._writers.get(unit), self._conns[unit]):
+    def _shutdown(self, unit: str) -> None:
+        try:
+            self._conns[unit].shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+
+    def close(self, timeout_s: float | None = None) -> None:
+        """Send ``end`` to every open unit within one shared bound, then shut down and close; idempotent (M1, L7)."""
+
+        if self._shut:
+            return
+        self._shut = True
+        deadline = time.monotonic() + (self.send_timeout_s if timeout_s is None else timeout_s)
+        for unit in sorted(self._conns):
+            if unit not in self.closed:
+                self.send(unit, {"type": "end"}, deadline=deadline)
+            self._shutdown(unit)
+            for closer in (self._readers.get(unit), self._conns[unit]):
                 try:
                     closer.close()
                 except (OSError, ValueError):
@@ -242,6 +306,8 @@ class HubResult:
     frames: list = field(default_factory=list)
     episode_origin_ns: int | None = None
     max_rounds: int = 0
+    discarded: list = field(default_factory=list)
+    boundary_gaps: list = field(default_factory=list)
 
 
 class Hub:
@@ -250,6 +316,18 @@ class Hub:
     def __init__(self, topology: dict, *, link, units_socket_path, command_source: Callable, wait_bound_s, hold_bound_s,
                  startup_deadlines_ns: dict, connect_timeout_s, frames=None, frame_wait_s=None,
                  local_consumers: dict | None = None, local_producers: tuple = ()) -> None:
+        self.frames, self.units, self._closed = frames, None, False
+        try:
+            self._init(topology, link=link, units_socket_path=units_socket_path, command_source=command_source,
+                       wait_bound_s=wait_bound_s, hold_bound_s=hold_bound_s, startup_deadlines_ns=startup_deadlines_ns,
+                       connect_timeout_s=connect_timeout_s, frames=frames, frame_wait_s=frame_wait_s,
+                       local_consumers=local_consumers, local_producers=local_producers)
+        except BaseException:
+            self.close()  # a refused construction still closes the caller's frame receiver (finding 4, L7)
+            raise
+
+    def _init(self, topology, *, link, units_socket_path, command_source, wait_bound_s, hold_bound_s, startup_deadlines_ns,
+              connect_timeout_s, frames, frame_wait_s, local_consumers, local_producers) -> None:
         self.schedule = HubSchedule(topology)
         topo = self.schedule.topology
         self.hub_unit, self.adapter_unit = topo["hubUnit"], topo["adapterUnit"]
@@ -275,7 +353,7 @@ class Hub:
         self.local_producers = tuple(local_producers)
         self.remote_units = sorted(u for u in topo["units"] if u not in (self.hub_unit, self.adapter_unit))
         self.link, self.command_source = link, command_source
-        self.units = UnitLinks(units_socket_path, self.remote_units)
+        self.units = UnitLinks(units_socket_path, self.remote_units, send_timeout_s=self.wait_bound_s)
         self.live = set(self.remote_units)
         self.result = HubResult()
         self._origin = None
@@ -284,6 +362,20 @@ class Hub:
         self._deadline_checked: set[str] = set()
 
     # ---- origin and verdicts ------------------------------------------------------------------------
+
+    def close(self) -> None:
+        """Close the frame receiver (WP-06 N1) and the unit links, bounded; idempotent. The adapter link belongs to the
+        caller, which started it and stops or kills it (finding 4, L2)."""
+
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            if self.frames is not None:
+                self.frames.close()
+        finally:
+            if self.units is not None:
+                self.units.close()
 
     def _bind_origin(self, origin_ns: int) -> None:
         if self._origin is not None:
@@ -303,6 +395,7 @@ class Hub:
             return
         self._lost_flows.add(flow_id)
         self.result.lost.append({"step": step, "flowId": flow_id, "reason": reason})
+        self.schedule.discard_flow(flow_id, step)  # barrier: nothing on this flow is delivered after the verdict
         flow = self.schedule.flows[flow_id]
         for dest in flow["destinations"]:
             if dest["unit"] == self.hub_unit:
@@ -313,6 +406,8 @@ class Hub:
                 self.units.send(dest["unit"], {"type": "lost", "flowId": flow_id})
 
     def _unit_gone(self, unit: str, reason: str, step: int) -> None:
+        if unit not in self.live:
+            return
         self.live.discard(unit)
         self.result.invalid.append({"step": step, "unit": unit, "reason": reason})
         for flow in sorted(self.schedule.flows.values(), key=lambda f: f["id"]):
@@ -353,7 +448,7 @@ class Hub:
         targets = sorted(u for u in recipients if u in self.live)
         for unit in targets:
             if not self.units.send(unit, {"type": "round", "step": step, "round": rnd, "simNs": sim_ns, "deliveries": per_unit.get(unit, [])}):
-                self._unit_gone(unit, "closed its link", step)
+                self._unit_gone(unit, f"send failed: {self.units.failed.get(unit, 'link closed')}", step)
         deadline = time.monotonic() + self.wait_bound_s
         for unit in targets:
             if unit not in self.live:
@@ -370,7 +465,11 @@ class Hub:
                 if message.get("type") != "outputs" or message.get("step") != step or message.get("round") != rnd:
                     self.result.refused.append({"step": step, "unit": unit, "reason": "unexpected or late message"})
                     continue
-                for out in message.get("messages") or []:
+                outputs = message.get("messages")
+                if type(outputs) is not list:  # finding 4, L3: a protocol error of this unit
+                    self._unit_gone(unit, "protocol error: outputs.messages is not a list", step)
+                    break
+                for out in outputs:
                     self.schedule.admit(step, unit, out)
                 break
 
@@ -418,9 +517,11 @@ class Hub:
                     break
                 items = step_result.items
                 motion = next((i for i in items if i["flowId"] == "vehicle-motion"), None)
-                frame_ns = motion["originNs"] if motion else max((i["originNs"] for i in items), default=None)
-                if frame_ns is None:  # no frame, no step boundary: nothing is delivered
+                if motion is None:  # finding 4, L5: the boundary is the vehicle-motion origin only; flagged, no step
+                    self.result.boundary_gaps.append({"tick": tick, "items": sorted(i["flowId"] for i in items),
+                                                      "reason": "no vehicle-motion item: no step boundary"})
                     continue
+                frame_ns = motion["originNs"]
                 step = self.schedule.boundary(frame_ns)
                 if self._origin is None:  # late binding at the first frame, before any consumer runs
                     self._bind_origin(frame_ns)
@@ -447,7 +548,6 @@ class Hub:
                 self.result.end_reason = "max-steps"
         finally:
             self.result.refused = self.result.refused + self.schedule.refused
-            if self.frames is not None:
-                self.frames.close()  # WP-06 N1: always
-            self.units.close()
+            self.result.discarded = list(self.schedule.discarded)
+            self.close()  # WP-06 N1: the frame receiver always; the unit links within their bound
         return self.result

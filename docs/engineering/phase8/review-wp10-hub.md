@@ -79,7 +79,7 @@ faults, live behaviour unverified (E8-3a, D-4c).
      (step hold, D-4c) are required. `hold(condition)` holds the step, ticking nothing, until the condition is
      true or the bound passes; the latter raises `HubInvalidRun`. Increment #4 uses it for the handshake.
    - **Frames.** The hub owns the WP-06 `FrameReceiver` and always calls `close()` in a `finally` (WP-06 N1),
-     together with the unit links and the adapter link.
+     together with the unit links. (Corrected by finding 5: the adapter link belongs to the caller.)
    - **Evidence.** A delivery log (`step`, `round`, `flowId`, `from`, `to`, `sequence`, `deliveredAtNs`,
      `deliverAtNs`) and counters (refused, lost, start-up misses, rounds). Payload digests only; no payload in
      the log.
@@ -161,7 +161,7 @@ faults, live behaviour unverified (E8-3a, D-4c).
      - no `origin` sent to units: 1.
    - **Suite.** 459 passed, 39 subtests (base `95e9e7a`: 419).
    - **Residuals.**
-     - R-1. The hub delay is **additive** to the rounded AD-30 delivery point. Its relation to the AD-30
+     - R-1 (resolved by the `decisions.md` row "Hub delay semantics", 12:19; see finding 5). The hub delay is **additive** to the rounded AD-30 delivery point. Its relation to the AD-30
        declaration is `TODO: author decision (AD-30)`.
      - R-2. Flow verification and evidence are not yet applied to hub flows. They have only producer-sequence
        monotonicity and the delivery log. The Phase 6 `FlowReceiver` and `FlowEvidence` (Argus) for hub flows,
@@ -310,3 +310,62 @@ faults, live behaviour unverified (E8-3a, D-4c).
      - L6: cite the "Hub delay semantics" row in R-1.
      - L7: close the frame receiver and the listener even if `run()` is never called.
    - **Residuals.** Add R-9 (M1) and R-10 (M2).
+5. **Repair of finding 4 (2026-10-24 15:20:39).**
+   - **M1, bounded sends and close.**
+     - Every hub-to-unit write goes through `_send_bounded`: `select` for writability, then `send(...,
+       MSG_DONTWAIT)`, until a deadline. The socket stays blocking for its reader thread.
+     - `UnitLinks` takes a required `send_timeout_s`; the hub passes its `wait_bound_s`.
+     - A send that times out or fails marks the unit closed for good, because a partial line may be on the wire.
+       It shuts the socket down and records `failed[unit]`. The hub then treats the unit as gone: lost verdicts,
+       and an `invalid` record.
+     - `UnitLinks.close(timeout_s)` sends `end` to every open unit within **one shared deadline**, then shuts
+       down and closes each connection and its reader. It is idempotent.
+     - Tests: `test_wp10_m1_a_unit_that_never_reads_cannot_block_send_or_close_beyond_the_bound` (with 60 kB
+       lines, the first send that cannot complete returns `False` within 0.4 s at a 0.2 s bound; with the peer's
+       buffer full, `close(0.3)` returns within 0.6 s and removes the socket), and
+       `..._a_hub_with_a_non_reading_unit_ends_within_its_bounds`.
+     - Probe: restoring a blocking `sendall` makes the first test hang until an external 60 s `timeout` kills
+       it, which is the original hazard. The suite has no per-test timeout plugin, so such a regression shows as a
+       hang.
+   - **M2, the lost-flow barrier** (`decisions.md` "Lost-flow rule", 15:15).
+     - `_mark_lost` calls `HubSchedule.discard_flow`: every pending message of the flow is removed and recorded
+       in `HubResult.discarded` (`step`, `flowId`, `from`, `sequence`, `deliverAtNs`, `payloadSha256`,
+       `reason`). Any later admission on the flow is discarded and recorded, never delivered. The flow stays lost
+       for the run.
+     - Tests:
+       - **queued ahead**: `uc` sends F17 at step 0 with `deliverAtNs = T0 + 3·STEP` and disconnects. The reader
+         gets `mark_lost` once and **no** delivery, and the F17 is discarded as "pending at the lost verdict";
+       - **after a start-up-deadline loss**: F17 is lost at step 1, and the three later F17 messages are discarded
+         as "admitted after the lost verdict".
+     - Probe: without the barrier, 2 tests fail.
+   - **L1.** `test_wp10_l1_zero_delay_chains_...`: `f-hub-a`, `f-a-b` and `f-b-c` in rounds 0, 1 and 2 of one
+     step, with the delay point ending the chain (`max_rounds` 3). `..._an_undeclared_zero_delay_cycle_hits_the_round_cap`:
+     with the cycle breaker removed, `HubInvalidRun` ("more than 6 delivery rounds").
+   - **L2.** The adapter link belongs to the caller, which starts it and stops or kills it (the increment #5 entry
+     point). `Hub.close` says so, finding 1's wording is corrected in place, and a test asserts that the hub calls
+     neither `stop` nor `kill` on the link.
+   - **L3.** `outputs.messages` must be a list. Otherwise the unit is gone with "protocol error", with lost
+     verdicts and an `invalid` record; there is no `TypeError`. Tested; probe: without the check, 1 test fails.
+   - **L4.** `UnitLinks.send` raises `HubProtocolError` for a line above `MAX_LINE` (65 536 bytes) before
+     writing anything. Tested with a 65 537-byte payload.
+   - **L5.** The step boundary is **only** the `vehicle-motion` item's `originNs`, with no fallback to another
+     stream. A tick without it is recorded in `HubResult.boundary_gaps`, and gives no step and no delivery.
+     Tested.
+   - **L6.** R-1 now cites the "Hub delay semantics" row (12:19, flagged for the author's review). The additive rule
+     is decided, and the latency declaration lists both values.
+   - **L7.** `Hub.close()`, idempotent, closes the frame receiver and the unit links. `run()` calls it in its
+     `finally`, and a refused construction calls it before re-raising, so the caller's `FrameReceiver` is closed
+     even then. Tested: a refused construction closes the frames; `close()` without `run()` closes the frames and
+     removes the listener socket.
+   - **Tests.** `tests/live/test_phase8_hub.py`: 51 tests (40 before; 11 new). The file was run 5 times with no
+     failure. Fixes to the new tests before commit: the raw silent unit needs its socket kept referenced, otherwise
+     it is garbage-collected and becomes a disconnect.
+   - **Suite.** 470 passed, 39 subtests (finding 2: 459).
+   - **Residuals, added.**
+     - R-9 (M1, repaired): unit writes and `end` are bounded by the send bound. A unit whose send times out is
+       treated as gone. Under increment #4 a frozen unit must be exempt from that rule while frozen: the hub sends
+       it nothing, or the send bound covers its declared freeze. This is a design item for #4.
+     - R-10 (M2, repaired to the rule): a lost flow is a barrier. The consumer's view after `mark_lost` is final
+       for the run. Increment #5 and WP-13 must not expect a recovery of a lost flow.
+   - **Status.** Candidate for a focused re-review and the author's acceptance. Not accepted, not merged, not
+     pushed.
