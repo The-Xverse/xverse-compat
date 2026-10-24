@@ -263,3 +263,14 @@ Findings are recorded before repairs. This is offline engineering tooling, never
      - Ready for the author's acceptance.
      - Before increment #4 trains anything, repair LOW-2 (skip without a network namespace) and pin the IR (LOW-1).
      - LOW-3 and LOW-4 are optional or a residual. Cite rows 293 and WP-08b in the residuals.
+4. **Disposition of finding 3 (2026-10-24 15:46:18; `decisions.md` row "WP-09 #3 review LOW items", 15:44, under the
+   author's delegation, flagged for review). Repair all four before the merge. Recorded before repair.**
+   - LOW-1: design §5 now names the IR that the pinned exporter emits for opset 13 (IR 7), a thesis-side amendment already
+     made. The export test asserts `irVersion == 7`. V-1 is re-run on the real model's IR (#4).
+   - LOW-2: the torch and ONNX Runtime tests skip when `unshare -rn` is unavailable, as the WP-08 test does.
+   - LOW-3: the build script refuses to run unless no non-loopback network interface is visible.
+   - LOW-4: the identity record lists the base interpreter's `.pth` hooks with their SHA-256. If that changes
+     `identity.json`, only `identity.json` is regenerated, read-only from the existing venv; there is no rebuild
+     unless one is needed.
+   - The residuals cite the rows "WP-09 #3 unit isolation" and WP-08b; `jinja2` BSD-3-Clause is added to the licence
+     list.
