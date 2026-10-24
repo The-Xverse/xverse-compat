@@ -83,3 +83,47 @@ bit-exact tests (blueprints `docs/review-wp13-imageops-np.md`).
        (WP-10 #5, WP-13 #6);
      - `libm` reproducibility of the noise tables is unchanged: those tables are computed by the standard-library
        code in both implementations.
+
+2. **Implementation and verification build (2026-10-24 15:59:35; code commit `b395644`).**
+   - **Files:**
+     - `tools/sensor/u2u3-sensor.lock`: the comment header plus the U4 numpy line, appended from
+       `tools/inference/u4-inference.lock` by `grep`;
+     - `tools/sensor/make-sensor-env.sh`: the WP-09 #3 script body, with only these changes (checked by `diff`):
+       - the home directory name;
+       - the import probe (numpy version, numpy file, and `site` not imported);
+       - the record schema `xverse-compat.sensor-env-record/1`;
+       - comments;
+     - `tests/sensor/test_sensor_env.py`: five tests.
+   - **Build** (15:57:36):
+     - command: `unshare -rn bash tools/sensor/make-sensor-env.sh /dev/shm/xverse-aeb-sensor-20261024
+       <U4 wheelhouse> tools/sensor/u2u3-sensor.lock <record>`;
+     - result: `import=0`, 57 384 KiB, about 3 s;
+     - `installed` is `["numpy==2.5.4"]`, and onnxruntime was not installed although its wheel is in the wheelhouse;
+     - there is no pip in the venv and no bytecode;
+     - the import output is `numpy 2.5.4`, with the file under the venv's site-packages and `noSite True`;
+     - `networkInterfaces` is `["lo"]`.
+   - **Identity record.** It was regenerated with `--record-only`, inside `unshare -rn`, after the code commit, so it
+     binds `repositoryRevision` `b395644`.
+     - Its `venvTree` (940 entries, `3bdb8172…5894`) and its `sitePackagesTree` (928 entries) equal the first build's
+       record.
+     - The record file is `/dev/shm/xverse-aeb-sensor-20261024/identity.json`, SHA-256 `4451e9cc…7a91`.
+   - **Refusal outside the namespace.** The script was run once outside `unshare -rn`, with a scratch `<envdir>`. It
+     refused with exit 6 and listed the host interfaces. Nothing was created. The test
+     `test_wp13_script_refuses_with_a_visible_network` covers this.
+   - **Commands:**
+     - `tests/sensor` with `XVERSE_COMPAT_SENSOR_ENV` set: 5 passed;
+     - `tests/sensor` without it: 3 passed, 2 skipped;
+     - the whole suite (`env PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src /dev/shm/compat-p6-venv/bin/python -B -m
+       pytest tests -q -p no:cacheprovider`, with `XVERSE_COMPAT_SENSOR_ENV` set): 540 passed, 39 subtests passed;
+     - `__pycache__` removed.
+   - **Loop10.** The only loop10 path touched was the U4 wheelhouse, read-only. Nothing on loop10 was written, and the
+     soak's paths were not touched.
+   - **Residuals:**
+     1. The build for unit use in `.x-verse-build/cache/xverse-aeb-sensor-20261024/` is the same command and is **not
+        run**. It needs a go-ahead, after the soak or with the run-command increment.
+     2. The `/dev/shm` build disappears at reboot. It exists for the blueprints bit-exact tests only.
+     3. The U2/U3 unit command templates (`-S -s -B`, `PYTHONPATH` to this site-packages first) belong to the
+        unit-entry increments.
+     4. The script duplicates the WP-09 #3 script body. A shared helper would remove the duplication, but would touch
+        two reviewed scripts, so it is not done here.
+   - **Status.** Candidate only. The independent review, acceptance and the merge are pending.
