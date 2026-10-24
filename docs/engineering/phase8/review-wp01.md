@@ -156,3 +156,120 @@ unverified (E8-3a).
        `sources.LiveSource`; `observe.py` already imported it in v1. The docstring is left unchanged
        (pre-existing, LOW).
    - **Status.** Candidate for independent review. Not accepted, not merged, not pushed.
+3. **Independent review of findings 1 and 2 (2026-10-24 10:36:21).**
+   - **Reviewer and method.** An independent reviewer who did not write the code. Read `37d3452` and
+     `ff67fbc` against base `9d1f3f3`, the thesis `specs/002-assured-aeb` WP-01, K-1 to K-15, FR-021,
+     FR-028, FR-029, FR-037, V14 and `decisions.md` §H, and the blueprint consumers at main `99df3a4`.
+     The offline suite was run, along with a CPython 3.10 import check and one mutation probe in a scratch
+     copy. The worktree was not changed except for this entry. No CARLA, no live run.
+   - **Verdict: PASS WITH NOTES.** No issue blocks the merge. The engineering-increment maturity stated
+     in the preamble (owned fakes only, not M1, live unverified under E8-3a) stands.
+   - **Evidence.**
+     - Suite: 268 passed, 39 subtests, matching finding 2.
+     - CPython 3.10.12 (`env -i PATH=/usr/bin /usr/bin/python3.10 -s -B`, cwd `src`): `observe` imports
+       with `protocol.forbidden_modules_loaded() == []`, and `carla` is not loaded.
+     - v1 is unchanged. The base `main` body from `stop = []` to `return 0` is byte-identical to
+       `_observe_v1` (observe.py 72–113), apart from the new `def` line and its docstring.
+       - `report.py` `observer_metrics` (59–76) reads `ego`, `elapsedS`, `deltaS`, `ego.speedMps`,
+         `ego.location`, `ego.accelForwardMps2` and `ego.cachedControl.{brake,throttle}`.
+       - `soak/audit.py` `actuator_safe_stop` (111–150) reads `frame`, `monotonicNs`, `ego` and the
+         footer's `stoppedBy`; its `cleanStatus` (167) needs `observer=0`.
+       - `run-live.sh` 99–100, `run-baseline.sh` 78–79 and `adapter_check.py` 53–55 run
+         `-m xverse_compat_carla.observe --role …` from `src`, so the new relative import `.timeconv`
+         resolves.
+       - The truncating open and the exit status are kept. Only argparse's wording for a missing
+         `--role` changes, and it still exits 2. No consumer reads that text.
+     - Clock: `simElapsedNs` is `seconds_to_ns(snapshot.timestamp.elapsed_seconds)` (observe.py 207).
+       This is the rule of `items.py` 39 and of the vehicle-motion origin (`protocol.py` 130 from
+       `sources.py` 223), and of the export at `protocol.py` 233. The test value 5.05 s catches the naive
+       `int(s * 1e9)`.
+     - Role resolution (observe.py 190–205) matches the record:
+       - one live actor gives `observed`;
+       - several give `ambiguous`, with sorted ids, none chosen, and the role is resolved again;
+       - none gives `absent`;
+       - an actor missing from the snapshot gives `not-in-snapshot`;
+       - a non-float or non-finite state or control value gives `non-finite`, and no value is written.
+       Each status has a test.
+     - Fail-closed paths:
+       - connect or map failure: exit 3, no file;
+       - an existing output, including `/dev/stdout`: `O_EXCL` refuses it, the file is untouched, exit 3;
+       - an error after the header: error footer, exit 3;
+       - a non-finite or negative simulation clock: `seconds_to_ns` raises and `allow_nan=False` holds,
+         giving an error footer and exit 3.
+     - The passivity fakes are effectively an allow-list. `World` and `Actor` raise on any undefined
+       attribute, and the client is a two-member `SimpleNamespace`, so any new CARLA call on a path the
+       tests exercise fails them. That includes the tick-timeout branch.
+     - The XDL scan is not vacuous: six JSON files under `xdl/`.
+   - **Issues.**
+     - **MEDIUM-1: "complete" does not bound coverage, and a lost server is not fail-closed.** Not
+       blocking; it needs a recorded residual.
+       - Where: observe.py 184–188 and 211–213; record finding 1, "Footer" and "Failure behaviour".
+       - Every `wait_for_tick` `RuntimeError` counts as a tick timeout. A server that stops responding
+         while every role is resolved therefore never reaches `get_actors()`, because `is_alive` reads
+         local episode state.
+       - The observer then runs to the bound or to SIGTERM. It exits 0 with `error: null` and a footer
+         that meets the record's definition of complete. Only `tickTimeouts` shows the loss. Trailing
+         timeouts leave no `frame` gap, so R-5 does not reveal them.
+       - This is inherited from v1, and a paused tick owner (the restore guard) legitimately produces
+         timeouts, so I propose no code change.
+       - Proposed R-8: a v2 file is complete only as a record. Coverage, meaning frame continuity over the
+         evaluation window and `tickTimeouts`, is an oracle (WP-17) acceptance criterion that must be
+         declared there.
+     - **MEDIUM-2: no actor extent is recorded for the FR-037 oracle, and no residual says where it will
+       come from.** Not blocking.
+       - Where: observe.py 141–144.
+       - FR-037 needs collision or not and the minimum gap from ground truth. WP-09 consumes WP-01 labels.
+         Both need the vehicles' extents (`actor.bounding_box`, which is static and passive) as well as
+         their centre transforms.
+       - WP-01 as planned ("full transform, velocity and acceleration") is met.
+       - The gap belongs in the residuals: either v2 records each resolved actor's bounding box (for
+         example in the role entry on resolution, or once in the header, which needs a schema decision),
+         or WP-17 and WP-09 declare another source.
+     - **LOW-1: control and liveness are not aligned with the record's frame.** Not blocking.
+       - Where: observe.py 135 and 191.
+       - `get_control()` and `is_alive` read the client's latest episode state, not the snapshot being
+         written. When the observer lags the tick owner, `cachedControl`, and an `absent` caused by a
+         death already seen, can belong to a later frame than `frame`.
+       - `cachedControl` is already labelled non-actuator, but the frame skew is not stated anywhere.
+         Proposed: add it to R-5, or as R-9, so that the oracle never joins control timing on `frame`
+         from this stream.
+     - **LOW-2: the import-isolation tests are static only.** Not blocking.
+       - Where: test_observe_v2.py 339–380.
+       - Mutation probe: appending `importlib.import_module("xverse_compat_carla" + ".observe")` to
+         `xverse_compat/live/loop.py`. All 24 v2 tests still passed.
+       - A runtime unit that launched `-m xverse_compat_carla.observe` would also pass undetected. Today
+         only `adapter_check.py`, a harness, contains the string.
+       - Proposed: a test that rejects `import_module`, `__import__`, `runpy` and the string
+         `xverse_compat_carla.observe` in the runtime-entry closure. Otherwise, name this limit in R-3
+         as a V14 import-scan scope.
+     - **LOW-3: the AST mutator list is incomplete.** Not blocking.
+       - Where: test_observe_v2.py 29–30 and 261–263.
+       - The static check misses `apply_batch`, `apply_batch_sync`, `load_world`, `reload_world`,
+         `set_weather`, `get_trafficmanager` (which would create a Traffic Manager on the observer
+         client), `set_simulate_physics`, `listen` and `start_recorder`.
+       - The dynamic allow-list covers the exercised paths, so the only exposure is code added on a path
+         no test exercises.
+     - **LOW-4: an unresolved role lists every actor on every frame.** Not blocking.
+       - Where: observe.py 191–196.
+       - A declared role that is permanently absent turns one `get_actors()` RPC per frame (20 Hz) into a
+         steady cost. An example is `--track xverse-lite-target` before WP-02. That cost can increase
+         missed frames (R-5).
+       - Proposed: state it in R-5, or bound how often a role is resolved again.
+     - **LOW-5: R-7 is understated.** Not blocking; documentation only.
+       - `carla` is also imported lazily in `restore.py` 190 and `main.py` 88, not only in `observe.py`.
+         The stale package docstring (`__init__.py` 4) is therefore wrong in more places than R-7 says.
+     - **LOW-6: two paths are untested.** Not blocking.
+       - The SIGINT stop path (only SIGTERM is driven) and a write or close failure on the outer
+         `except` (observe.py 214–215) have no test. The code is straightforward.
+   - **Residuals R-1 to R-7.** R-1 to R-6 are accurate, and R-3 honestly limits the separation to
+     construction rather than OS enforcement. R-7 is accurate but incomplete (LOW-5). Missing items:
+     MEDIUM-1 (proposed R-8), MEDIUM-2 and LOW-1, and the dynamic-import limit of LOW-2.
+   - **Spec conformance.**
+     - WP-01's scope is met: a declared role set; the full transform, velocity and acceleration; a
+       separate process; its own exclusive output; and the K-5 refusal untouched (`main.py`, `sources.py`,
+       `protocol.py` and `groundtruth.py` are unchanged).
+     - FR-021 and V14 are met within the scope of this repository: import scan, process separation, no
+       flow, and the runtime intake refuses every v2 line. The data-provenance audit remains WP-17's.
+   - **Recommendation.** Merge after the author's acceptance. Record MEDIUM-1, MEDIUM-2 and LOW-1 as
+     residuals, in a repair entry or in the acceptance record. LOW-2 to LOW-6 are optional before the
+     blueprint wiring (R-2).
