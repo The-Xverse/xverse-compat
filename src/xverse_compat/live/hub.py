@@ -24,6 +24,7 @@ import threading
 import time
 from typing import Any, Callable
 
+from .hub_relay import FaultRelay, MaestroClosed, RelayInvalid
 from .hub_topology import validate as validate_topology
 
 PROTOCOL = "xverse-compat.hub-units/1"
@@ -308,6 +309,7 @@ class HubResult:
     max_rounds: int = 0
     discarded: list = field(default_factory=list)
     boundary_gaps: list = field(default_factory=list)
+    faults: list = field(default_factory=list)  # WP-10 #4: digest-only fault records, never on a runtime flow
 
 
 class Hub:
@@ -315,9 +317,12 @@ class Hub:
 
     def __init__(self, topology: dict, *, link, units_socket_path, command_source: Callable, wait_bound_s, hold_bound_s,
                  startup_deadlines_ns: dict, connect_timeout_s, frames=None, frame_wait_s=None,
-                 local_consumers: dict | None = None, local_producers: tuple = ()) -> None:
-        self.frames, self.units, self._closed = frames, None, False
+                 local_consumers: dict | None = None, local_producers: tuple = (), relay: FaultRelay | None = None) -> None:
+        self.frames, self.units, self._closed, self.relay = frames, None, False, relay
+        self._relay_records = relay  # kept after Maestro ends the channel, for the records and the close
         try:
+            if relay is not None and type(relay) is not FaultRelay:
+                raise ValueError("relay must be a FaultRelay")
             self._init(topology, link=link, units_socket_path=units_socket_path, command_source=command_source,
                        wait_bound_s=wait_bound_s, hold_bound_s=hold_bound_s, startup_deadlines_ns=startup_deadlines_ns,
                        connect_timeout_s=connect_timeout_s, frames=frames, frame_wait_s=frame_wait_s,
@@ -360,6 +365,11 @@ class Hub:
         self._delivered_flows: set[str] = set()
         self._lost_flows: set[str] = set()
         self._deadline_checked: set[str] = set()
+        # WP-10 #4 (R-9): a frozen unit gets no round, is not waited for and cannot be lost through a send timeout;
+        # its deliveries and lost notices are queued in order and delivered at its first round after the thaw.
+        self.frozen: set[str] = set()
+        self._queued: dict[str, list] = {}
+        self._queued_control: dict[str, list] = {}
 
     # ---- origin and verdicts ------------------------------------------------------------------------
 
@@ -374,10 +384,34 @@ class Hub:
             if self.frames is not None:
                 self.frames.close()
         finally:
-            if self.units is not None:
-                self.units.close()
+            try:
+                if self._relay_records is not None:
+                    self._relay_records.maestro.close()
+            finally:
+                if self.units is not None:
+                    self.units.close()
 
-    def _bind_origin(self, origin_ns: int) -> None:
+    def freeze_unit(self, unit: str) -> None:
+        """Maestro acknowledged a freeze of ``unit`` (step-hold handshake)."""
+
+        if unit not in self.schedule.topology["units"] or unit in (self.hub_unit, self.adapter_unit):
+            raise HubProtocolError(f"unit {unit} cannot be frozen")
+        self.frozen.add(unit)
+
+    def thaw_unit(self, unit: str) -> None:
+        """Maestro acknowledged the thaw of ``unit``; its queued messages go out at its next round."""
+
+        self.frozen.discard(unit)
+
+    def _notify(self, unit: str, message: dict, step: int) -> None:
+        """A control message (``lost``) to ``unit``: queued while frozen; a failed send loses the unit at once (N2)."""
+
+        if unit in self.frozen:
+            self._queued_control.setdefault(unit, []).append(message)
+        elif not self.units.send(unit, message):
+            self._unit_gone(unit, f"send failed: {self.units.failed.get(unit, 'link closed')}", step)
+
+    def _bind_origin(self, origin_ns: int, step: int = 0) -> None:
         if self._origin is not None:
             if origin_ns != self._origin:
                 raise HubProtocolError(f"episode origin {origin_ns} differs from the bound {self._origin}")
@@ -388,7 +422,8 @@ class Hub:
                 if hasattr(consumer, "bind_origin"):
                     consumer.bind_origin(origin_ns)
         for unit in sorted(self.live):
-            self.units.send(unit, {"type": "origin", "episodeOriginNs": origin_ns})
+            if not self.units.send(unit, {"type": "origin", "episodeOriginNs": origin_ns}):  # N2: lost at once
+                self._unit_gone(unit, f"send failed: {self.units.failed.get(unit, 'link closed')}", step)
 
     def _mark_lost(self, flow_id: str, reason: str, step: int) -> None:
         if flow_id in self._lost_flows:
@@ -403,7 +438,7 @@ class Hub:
                     if hasattr(consumer, "mark_lost"):
                         consumer.mark_lost()
             elif dest["unit"] in self.live:
-                self.units.send(dest["unit"], {"type": "lost", "flowId": flow_id})
+                self._notify(dest["unit"], {"type": "lost", "flowId": flow_id}, step)
 
     def _unit_gone(self, unit: str, reason: str, step: int) -> None:
         if unit not in self.live:
@@ -445,11 +480,21 @@ class Hub:
 
     def _round(self, step: int, rnd: int, per_unit: dict, recipients) -> None:
         sim_ns = self.schedule.boundaries[step]
-        targets = sorted(u for u in recipients if u in self.live)
+        for unit in sorted(u for u in per_unit if u in self.frozen and u in self.live):  # R-9: queued, in order
+            self._queued.setdefault(unit, []).extend(per_unit[unit])
+        targets = sorted(u for u in recipients if u in self.live and u not in self.frozen)
+        deadline = time.monotonic() + self.wait_bound_s  # N1: one deadline covers the round's sends and its wait
         for unit in targets:
-            if not self.units.send(unit, {"type": "round", "step": step, "round": rnd, "simNs": sim_ns, "deliveries": per_unit.get(unit, [])}):
+            for control in self._queued_control.pop(unit, []):
+                if not self.units.send(unit, control, deadline=deadline):
+                    self._unit_gone(unit, f"send failed: {self.units.failed.get(unit, 'link closed')}", step)
+                    break
+            if unit not in self.live:
+                continue
+            deliveries = self._queued.pop(unit, []) + per_unit.get(unit, [])
+            if not self.units.send(unit, {"type": "round", "step": step, "round": rnd, "simNs": sim_ns, "deliveries": deliveries},
+                                   deadline=deadline):
                 self._unit_gone(unit, f"send failed: {self.units.failed.get(unit, 'link closed')}", step)
-        deadline = time.monotonic() + self.wait_bound_s
         for unit in targets:
             if unit not in self.live:
                 continue
@@ -478,7 +523,10 @@ class Hub:
         rnd = 0
         recipients = set(self.live)  # round 0 reaches every live unit, deliveries or not
         while True:
-            per_unit = self._deliver(step, rnd, self.schedule.due(step))
+            due = self.schedule.due(step)
+            if self.relay is not None:  # WP-10 #4: message faults at the delivery point
+                due = self.relay.filter(step, due)
+            per_unit = self._deliver(step, rnd, due)
             if rnd > 0:
                 recipients = set(per_unit)
             if recipients & self.live:
@@ -508,6 +556,11 @@ class Hub:
         sim_s, last_motion = 0.0, None
         try:
             self.units.accept_all(self.connect_timeout_s)
+            if self.relay is not None:
+                try:
+                    self.relay.arm()  # before the first tick: no step exists before arming
+                except RelayInvalid as error:
+                    raise HubInvalidRun(f"fault arming refused: {error}") from error
             for tick in range(max_steps):
                 throttle, brake, _meta = self.command_source(sim_s, last_motion)
                 self.link.command(f"t{tick}", brake, 1, throttle)
@@ -524,7 +577,17 @@ class Hub:
                 frame_ns = motion["originNs"]
                 step = self.schedule.boundary(frame_ns)
                 if self._origin is None:  # late binding at the first frame, before any consumer runs
-                    self._bind_origin(frame_ns)
+                    self._bind_origin(frame_ns, step)
+                if self.relay is not None:  # WP-10 #4: grid check, reports and the step hold, before the step runs
+                    try:
+                        self.relay.at_step(self, step, frame_ns - self._origin)
+                    except MaestroClosed:
+                        self.relay.close_on_maestro_end(step)
+                        self.relay = None  # no fault after Maestro's end; queued and frozen state stays as is
+                        self.result.end_reason = "maestro-closed"
+                        break
+                    except RelayInvalid as error:
+                        raise HubInvalidRun(f"fault relay: {error}") from error
                 sim_s = (frame_ns - self._origin) / 1e9
                 if motion is not None:
                     last_motion = motion
@@ -546,8 +609,12 @@ class Hub:
                 self.result.steps += 1
             else:
                 self.result.end_reason = "max-steps"
+            if self.relay is not None:  # ST-2: close the Maestro end only when settled, or after Maestro closes
+                self.relay.finish(self.result.steps - 1 if self.result.steps else None)
         finally:
             self.result.refused = self.result.refused + self.schedule.refused
             self.result.discarded = list(self.schedule.discarded)
+            if self._relay_records is not None:
+                self.result.faults = self._relay_records.records
             self.close()  # WP-06 N1: the frame receiver always; the unit links within their bound
         return self.result
