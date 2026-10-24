@@ -1139,3 +1139,8 @@ engineering stabilization candidate: not M1, not AEB evidence.
     - **H2** (run directory on tmpfs) is deferred to the S1d soak environment decision; it is not applied here.
     - **Re-run plan.** Rebuild the dev venv from the repaired platform head, then run part 2 live: nominal,
       long-run, freeze-vcu, cancel-paused and no-carla, recording the load. Independent review follows.
+    - **Revision (02:03:50).** Platform finding 25 (DR-16) adds RA2 (renewal before a marker start step) and
+      RA5. RA5 is a reserve that also covers the failure-statement RPC. The final live admission bound is W ≤ 2.75 − 2 × 0.38 = 1.99 s. H1 is therefore
+      1.95 s (attempts at 0, 0.85 and 1.70 s), above the slowest measured adapter latency of 1.31 s. A cut window ends
+      as `ML-PROBE-WINDOW-CUT`, and the harness records `readinessWindows` (W, W′, L, t0) from the dispatch result.
+      Blueprints commits `4aa6d55` (H1 at 2.25 s, H3) and its successor (H1 at 1.95 s, readinessWindows).
