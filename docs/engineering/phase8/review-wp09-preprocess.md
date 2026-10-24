@@ -173,3 +173,17 @@ repairs. This is an engineering increment verified offline; no parameter value i
    - **Residuals R-1 to R-6.** They are honest and correctly scoped. R-2 is now strengthened: bit-equality also holds
      at 800 × 600 on this host and build. The proposed additions are L1 and L2 under R-5 (for WP-13), and L3 and L4
      under R-3.
+
+## 4. Acceptance (written at 15:30:39 2026-10-24)
+
+- **Accepted** under the author's delegation of 2026-10-24 (thesis `specs/002-assured-aeb/decisions.md` §G and
+  the "WP-09 training pipeline" row). It is flagged for the author's review.
+- **Basis:** finding 3, PASS WITH NOTES, all LOW. The suite gives 443 passed with the U4 venv and 433 passed with 10
+  skipped without it. The reviewer independently confirmed bit-exactness at 800×600.
+- **Declared and carried:**
+  - L1 goes to WP-13: U4 re-verifies the frame bytes against `rawSha256` on receipt, before `preprocess_frame`,
+    because U4 reads frames across a process boundary. The probe's fake hash is a test artefact.
+  - L2: reusing WP-06's `load_format` is optional hardening.
+  - L3: a hand-computed expected tensor is added with WP-09 #4.
+  - L4: `nearest` uses centre sampling (R-3), which is valid while U4 and training share this one function.
+- **Merged** into compat main and pushed (see the merge commit).
